@@ -1,0 +1,37 @@
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/.env.local
+backend/*.backup
+
+# Frontend
+frontend/node_modules/
+frontend/.firebase/
+frontend/.firebaserc
+frontend/.env
+frontend/.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Google Cloud credentials (if stored locally)
+*.json
+!firebase.json
+service-account*.json
+gcloud-key*.json
+
