@@ -51,12 +51,25 @@ function displayMessage(msg) {
     // Check if we need to show input area and tutorial
     checkAndShowInputArea(msg.content, msg);
     
-    // If there are buttons, add them
-    if (msg.buttons && msg.buttons.length > 0) {
+    const buttons = Array.isArray(msg.buttons) ? [...msg.buttons] : [];
+    const isTutorMessage = (
+        (typeof msg.character === 'string' && msg.character.toLowerCase() === 'tutor') ||
+        (typeof msg.character_name === 'string' && msg.character_name.toLowerCase().includes('tutor')) ||
+        (typeof msg.type === 'string' && msg.type.toLowerCase() === 'language_tutor')
+    );
+
+    if (isTutorMessage) {
+        const hasHideButton = buttons.some(btn => btn.action === 'hide_message');
+        if (!hasHideButton) {
+            buttons.push({ text: 'Hide this message', action: 'hide_message' });
+        }
+    }
+
+    if (buttons.length > 0) {
         const buttonRow = document.createElement('div');
         buttonRow.className = 'button-row';
-        
-        msg.buttons.forEach(btn => {
+
+        buttons.forEach(btn => {
             const button = document.createElement('button');
             button.textContent = btn.text;
             if (btn.action === 'hide_message') {
@@ -69,7 +82,7 @@ function displayMessage(msg) {
             }
             buttonRow.appendChild(button);
         });
-        
+
         // Insert after the message content
         const messageContent = messageDiv.querySelector('.message-content');
         if (messageContent) {

@@ -57,7 +57,7 @@ function initTutorial() {
         {
             selector: '#chatArea',
             title: '💬 Chat Area',
-            text: 'This is where all conversations take place. You\'ll see messages from characters and system notifications here.',
+            text: 'This is where all conversations take place. You\'ll see messages from characters and system notifications here. Highlight any unfamiliar word and click it to get its definition.',
             position: 'right',
             highlightPadding: 10
         },

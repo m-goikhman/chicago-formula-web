@@ -5,6 +5,10 @@ class HighlightManager {
     constructor() {
         this.highlights = new Map(); // messageId -> Set of highlighted words/phrases
         this.messageIdCounter = 0;
+        this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        this.selectionTimeout = null;
+        this.selectionPending = false;
+        this.lastSelectionData = null;
         this.loadHighlights();
         this.setupEventListeners();
     }
@@ -57,18 +61,27 @@ class HighlightManager {
         
         // Track if text is currently selected
         let hasSelection = false;
-        
-        // Prevent context menu only when text is selected or on highlights
+        const isTouchDevice = this.isTouchDevice;
+
         document.addEventListener('contextmenu', (e) => {
             const highlight = e.target.closest('.highlight');
-            const selection = window.getSelection();
-            const hasTextSelected = selection && selection.rangeCount > 0 && selection.toString().trim().length > 0;
-            
-            // Block context menu on highlights or when text is selected in message text
-            if (highlight || (hasTextSelected && e.target.closest('.message-text'))) {
+
+            // On touch devices we allow the browser selection menu except on highlights themselves.
+            if (highlight) {
                 e.preventDefault();
                 e.stopPropagation();
                 return false;
+            }
+
+            if (!isTouchDevice) {
+                const selection = window.getSelection();
+                const hasTextSelected = selection && selection.rangeCount > 0 && selection.toString().trim().length > 0;
+
+                if (hasTextSelected && e.target.closest('.message-text')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
             }
         }, false);
         
@@ -76,20 +89,47 @@ class HighlightManager {
         document.addEventListener('selectionchange', () => {
             const selection = window.getSelection();
             hasSelection = selection && selection.rangeCount > 0 && selection.toString().trim().length > 0;
+
+            if (!isTouchDevice) {
+                return;
+            }
+
+            if (hasSelection && selection && selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const messageText = this.getMessageTextFromRange(range);
+                const selectedText = selection.toString().trim();
+
+                if (messageText && !this.isSelectionWithinHighlight(range) && this.isValidSelection(selectedText)) {
+                    this.selectionPending = true;
+                    this.lastSelectionData = {
+                        range: range.cloneRange(),
+                        selectedText,
+                        messageText
+                    };
+                } else {
+                    this.selectionPending = false;
+                    this.lastSelectionData = null;
+                }
+            } else if (this.selectionPending && this.lastSelectionData) {
+                // Selection was cleared (e.g., user tapped outside). Use stored data while still fresh.
+                this.processSelection('selectionchange');
+            }
         });
         
         // Track touch start (passive to not interfere with text selection)
         document.addEventListener('touchstart', (e) => {
-            // Only track if not on a highlight
             const highlight = e.target.closest('.highlight');
-            if (!highlight) {
-                const messageText = e.target.closest('.message-text');
-                if (messageText) {
-                    touchStartTime = Date.now();
-                    touchStartElement = e.target;
-                }
+            const messageText = e.target.closest('.message-text');
+
+            if (!highlight && messageText) {
+                touchStartTime = Date.now();
+                touchStartElement = e.target;
             }
-        }, { passive: true });
+
+            if (isTouchDevice && this.selectionPending && this.lastSelectionData && !messageText) {
+                this.processSelection('touchstart', e.target);
+            }
+        }, { passive: false });
         
         // Common handler for text selection (works for both mouse and touch)
         const handleTextSelection = (e) => {
@@ -105,47 +145,14 @@ class HighlightManager {
                 }
             }
             
-            // Shorter delay for touch events to allow proper text selection
-            const delay = e.type === 'touchend' ? 100 : 10;
+            const isTouch = e.type === 'touchend';
+            const delay = isTouch ? 100 : 10;
+
             setTimeout(() => {
-                const selection = window.getSelection();
-                if (!selection || selection.rangeCount === 0) return;
-                
-                const range = selection.getRangeAt(0);
-                const selectedText = selection.toString().trim();
-                
-                // Only process if there's selected text and it's in a message
-                if (selectedText.length === 0) return;
-                
-                // Check if selection is within a message text element
-                const messageText = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
-                    ? range.commonAncestorContainer.parentElement.closest('.message-text')
-                    : range.commonAncestorContainer.closest('.message-text');
-                
-                if (!messageText) return;
-                
-                // Check if clicking on an existing highlight (already handled by click handler)
-                const clickedHighlight = e.target.closest('.highlight');
-                if (clickedHighlight) {
-                    // Selection was made on a highlight, don't process
-                    window.getSelection().removeAllRanges();
+                if (isTouch) {
                     return;
                 }
-                
-                // Don't highlight if selection is too short or too long
-                if (selectedText.length < 2 || selectedText.length > 50) {
-                    window.getSelection().removeAllRanges();
-                    return;
-                }
-                
-                // Don't highlight if selection contains only whitespace or special chars
-                if (!/[\w\u0400-\u04FF]/.test(selectedText)) {
-                    window.getSelection().removeAllRanges();
-                    return;
-                }
-                
-                // Highlight the selected text
-                this.highlightSelection(range, messageText, selectedText);
+                this.processSelection(e.type, e.target);
             }, delay);
         };
         
@@ -168,6 +175,143 @@ class HighlightManager {
         
         document.addEventListener('mousedown', preventSelectionOnHighlight);
         document.addEventListener('touchstart', preventSelectionOnHighlight, { passive: false });
+    }
+
+    getMessageTextFromRange(range) {
+        if (!range) return null;
+
+        const container = range.commonAncestorContainer;
+        if (!container) return null;
+
+        if (container.nodeType === Node.TEXT_NODE) {
+            return container.parentElement ? container.parentElement.closest('.message-text') : null;
+        }
+
+        if (container.nodeType === Node.ELEMENT_NODE) {
+            return container.closest('.message-text');
+        }
+
+        return null;
+    }
+
+    isSelectionWithinHighlight(range) {
+        if (!range) return false;
+        const container = range.commonAncestorContainer;
+        if (!container) return false;
+
+        if (container.nodeType === Node.TEXT_NODE) {
+            return !!(container.parentElement && container.parentElement.closest('.highlight'));
+        }
+
+        if (container.nodeType === Node.ELEMENT_NODE) {
+            return !!container.closest('.highlight');
+        }
+
+        return false;
+    }
+
+    isValidSelection(text) {
+        if (text.length < 2 || text.length > 50) {
+            return false;
+        }
+
+        if (!/[\w\u0400-\u04FF]/.test(text)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    processSelection(eventType, eventTarget = null) {
+        try {
+            let selectionDetails = this.getActiveSelectionDetails();
+            let usedStoredSelection = false;
+
+            if (!selectionDetails && this.selectionPending && this.lastSelectionData) {
+                selectionDetails = {
+                    range: this.lastSelectionData.range.cloneRange(),
+                    selectedText: this.lastSelectionData.selectedText,
+                    messageText: this.lastSelectionData.messageText
+                };
+                usedStoredSelection = true;
+            }
+
+            if (!selectionDetails) {
+                return;
+            }
+
+            const { range, selectedText, messageText } = selectionDetails;
+
+            if (eventTarget && typeof eventTarget.closest === 'function') {
+                const clickedHighlight = eventTarget.closest('.highlight');
+                if (clickedHighlight) {
+                    const selection = window.getSelection();
+                    if (selection) {
+                        selection.removeAllRanges();
+                    }
+                    return;
+                }
+            }
+
+            if (!this.isValidSelection(selectedText)) {
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                }
+                return;
+            }
+
+            if (this.isSelectionWithinHighlight(range)) {
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                }
+                return;
+            }
+
+            this.highlightSelection(range, messageText, selectedText);
+
+            if (usedStoredSelection) {
+                this.lastSelectionData = null;
+            }
+        } catch (error) {
+            console.warn('Error processing selection:', error);
+            const selection = window.getSelection();
+            if (selection) {
+                selection.removeAllRanges();
+            }
+        } finally {
+            if (this.selectionTimeout) {
+                clearTimeout(this.selectionTimeout);
+                this.selectionTimeout = null;
+            }
+            this.selectionPending = false;
+            this.lastSelectionData = null;
+        }
+    }
+
+    getActiveSelectionDetails() {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) {
+            return null;
+        }
+
+        const selectedText = selection.toString().trim();
+        if (!selectedText) {
+            return null;
+        }
+
+        const range = selection.getRangeAt(0);
+        const messageText = this.getMessageTextFromRange(range);
+        if (!messageText) {
+            return null;
+        }
+
+        return {
+            range,
+            selectedText,
+            messageText
+        };
     }
     
     // Highlight selected text
