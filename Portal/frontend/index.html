@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Teach or Tell · Participant Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/portal.css">
+</head>
+<body>
+    <div class="portal-container">
+        <header class="portal-header">
+            <h1>Teach or Tell</h1>
+            <p>Enter your participant code once, then choose the experience that fits your session — <em>Teach</em> for the reading journey or <em>Tell</em> for the interactive investigation.</p>
+        </header>
+
+        <main class="portal-content">
+            <section class="card" data-view="login" id="loginView">
+                <h2>Unlock Your Session</h2>
+                <p>Participant codes are provided by the research team. The same code works for both modes.</p>
+
+                <div class="input-group">
+                    <label for="participantCode">Participant code</label>
+                    <div class="input-row">
+                        <input type="text" id="participantCode" placeholder="Enter code (e.g., AN0842)" autocomplete="one-time-code">
+                        <button class="button primary" id="loginButton">Unlock access</button>
+                    </div>
+                </div>
+
+                <div class="status-text error" id="loginError"></div>
+                <div class="status-text" id="loginStatus"></div>
+            </section>
+
+            <section class="card" data-view="mode-select" id="modeSelectView">
+                <div class="session-chip">
+                    Active session · <span id="sessionCode">—</span>
+                </div>
+                <div class="mode-details">
+                    <h2>Select how you want to continue</h2>
+                    <p>Both modes use the same participant progress. You can switch at any time.</p>
+                </div>
+
+                <div class="mode-grid">
+                    <article class="mode-card">
+                        <div class="mode-details">
+                            <h3>Teach · Detective Reading Journey</h3>
+                            <p>Four-week storyline with guided reading, reflection notes, and mission-style tasks for each chapter.</p>
+                            <div class="mode-badges">
+                                <span class="badge">Weekly chapters</span>
+                                <span class="badge">Notes &amp; tasks</span>
+                                <span class="badge">Self-paced</span>
+                            </div>
+                        </div>
+                        <button class="button primary" data-action="enter-teach">Enter Teach</button>
+                    </article>
+
+                    <article class="mode-card">
+                        <div class="mode-details">
+                            <h3>Tell · Interactive Mystery</h3>
+                            <p>Chat with suspects, collect clues, and collaborate with the AI director to solve the Chicago Formula case.</p>
+                            <div class="mode-badges">
+                                <span class="badge">Live dialogue</span>
+                                <span class="badge">AI assistants</span>
+                                <span class="badge">Level adaptable</span>
+                            </div>
+                        </div>
+                        <button class="button primary" data-action="enter-tell">Enter Tell</button>
+                    </article>
+                </div>
+
+                <div class="actions-row">
+                    <button class="button secondary" id="switchCodeButton">Use a different participant code</button>
+                </div>
+
+                <div class="status-text" id="modeStatus"></div>
+            </section>
+        </main>
+
+        <footer class="portal-footer">
+            Need support? Contact the study coordinator or refresh the page to start over.
+        </footer>
+    </div>
+
+    <script>
+        window.portalDestinations = Object.assign({}, window.portalDestinations, {
+            tellProduction: 'https://chicago-formula-n.web.app/',
+            teachProduction: 'https://chicago-formula-t.web.app/',
+            tellLocal: '../../Tell/frontend/index.html',
+            teachLocal: '../../Teach/frontend/index.html'
+        });
+    </script>
+    <script src="js/portal.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Teach Mode — Detective Reading Journey</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="../Tell/frontend/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="../Tell/frontend/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../Tell/frontend/favicon-16x16.png">
+    <link rel="icon" type="image/svg+xml" href="../Tell/frontend/favicon.svg">
+    <link rel="shortcut icon" href="../Tell/frontend/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./shared/css/styles.css">
+    <link rel="stylesheet" href="./shared/css/components.css">
+    <link rel="stylesheet" href="css/teach.css">
+</head>
+<body>
+    <div class="container teach-container">
+        <div class="header">
+            <button class="burger-button" id="burgerButton" type="button">
+                <div class="burger-icon">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </button>
+            <div class="header-title-container">
+                <h1>Teach</h1>
+                <p>Detective Reading Journey · 4 Weeks</p>
+            </div>
+            <div class="header-actions">
+                <span class="progress-chip" id="overallProgressChip">Overall completion · 0%</span>
+            </div>
+        </div>
+
+        <div class="horizontal-menu" id="horizontalMenu"></div>
+
+        <div class="main-chat-area teach-chat">
+            <div class="chat-area" id="chatArea">
+                <div class="message bot">
+                    <div class="message-content">
+                        <div class="message-sender">Mentor</div>
+                        <div class="message-text">Loading your weekly materials…</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-area" id="inputArea" style="display: none;">
+                <textarea id="messageInput" placeholder="Type your message..." rows="1" disabled></textarea>
+                <button id="sendBtn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./shared/js/config.js?v=20251110"></script>
+    <script src="js/config.js?v=20251110"></script>
+    <script src="./shared/js/ui-shared.js?v=20251110"></script>
+    <script src="./shared/js/api-client.js?v=20251110"></script>
+    <script src="js/state.js?v=20251110"></script>
+    <script src="js/content-loader.js?v=20251110"></script>
+    <script src="js/ui.js?v=20251110"></script>
+    <script src="js/app.js?v=20251110"></script>
+</body>
+</html>
+

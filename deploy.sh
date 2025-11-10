@@ -29,9 +29,57 @@ error() {
     echo -e "${RED}✗ ${NC}$1"
 }
 
+should_deploy() {
+    local flag=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    case "$flag" in
+        true|1|yes|y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+deploy_frontend() {
+    local label="$1"
+    local directory="$2"
+    local hosting_target="$3"
+
+    if [ ! -d "$directory" ]; then
+        warning "Skipping ${label} frontend: directory not found ($directory)"
+        return
+    fi
+
+    if [ ! -f "$directory/firebase.json" ]; then
+        warning "Skipping ${label} frontend: firebase.json missing in $directory"
+        return
+    fi
+
+    info "Deploying ${label} frontend (${directory})..."
+    pushd "$directory" > /dev/null
+    if [ -n "$hosting_target" ]; then
+        firebase deploy --only "hosting:${hosting_target}" --project "$FIREBASE_PROJECT_ID"
+    else
+        firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID"
+    fi
+    local status=$?
+    popd > /dev/null
+
+    if [ $status -eq 0 ]; then
+        success "${label} frontend deployed successfully!"
+    else
+        error "Error deploying ${label} frontend!"
+        exit 1
+    fi
+}
+
 # Get project root directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
+
+DEPLOY_PORTAL_FRONTEND=${DEPLOY_PORTAL_FRONTEND:-true}
+DEPLOY_TELL_FRONTEND=${DEPLOY_TELL_FRONTEND:-true}
+DEPLOY_TEACH_FRONTEND=${DEPLOY_TEACH_FRONTEND:-true}
+PORTAL_FIREBASE_TARGET=${PORTAL_FIREBASE_TARGET:-chicago-formula}
+TELL_FIREBASE_TARGET=${TELL_FIREBASE_TARGET:-chicago-formula-n}
+TEACH_FIREBASE_TARGET=${TEACH_FIREBASE_TARGET:-chicago-formula-t}
 
 info "Starting TeachOrTell deployment..."
 echo ""
@@ -62,19 +110,50 @@ fi
 info "Using GCP project: ${GREEN}$PROJECT_ID${NC}"
 echo ""
 
+FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-$PROJECT_ID}
+if [ -z "$FIREBASE_PROJECT_ID" ]; then
+    error "Firebase project ID not set. Provide FIREBASE_PROJECT_ID env var or configure gcloud project."
+    exit 1
+fi
+
+# Display Firebase project for clarity
+info "Using Firebase project: ${GREEN}$FIREBASE_PROJECT_ID${NC}"
+echo ""
+
+# ============================================
+# PREPARE CONTENT
+# ============================================
+info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+info "Step 0/3: Building Teach content bundle"
+info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+node Teach/scripts/build-content.mjs
+
+if [ $? -eq 0 ]; then
+    success "Teach content bundle updated!"
+else
+    error "Unable to build Teach content bundle"
+    exit 1
+fi
+
 # ============================================
 # BACKEND DEPLOYMENT
 # ============================================
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-info "Step 1/2: Deploying Backend (Cloud Run)"
+info "Step 1/3: Deploying Backend (Cloud Run)"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-cd backend
+BACKEND_IMAGE=${BACKEND_IMAGE:-"gcr.io/$PROJECT_ID/teach-tell-backend"}
+
+info "Building backend container image..."
+gcloud builds submit "$SCRIPT_DIR" \
+  --tag "$BACKEND_IMAGE"
 
 info "Deploying backend to Cloud Run..."
 gcloud run deploy teach-tell-backend \
-  --source . \
+  --image "$BACKEND_IMAGE" \
   --platform managed \
   --region europe-west4 \
   --allow-unauthenticated \
@@ -101,30 +180,32 @@ else
 fi
 
 echo ""
-cd ..
 
 # ============================================
 # FRONTEND DEPLOYMENT
 # ============================================
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-info "Step 2/2: Deploying Frontend (Firebase Hosting)"
+info "Step 2/3: Deploying Frontends (Firebase Hosting)"
 info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-cd frontend
-
-info "Deploying frontend to Firebase Hosting..."
-firebase deploy --only hosting
-
-if [ $? -eq 0 ]; then
-    success "Frontend deployed successfully!"
+if should_deploy "$DEPLOY_PORTAL_FRONTEND"; then
+    deploy_frontend "Portal" "$SCRIPT_DIR/Portal/frontend" "$PORTAL_FIREBASE_TARGET"
 else
-    error "Error deploying frontend!"
-    exit 1
+    warning "Skipping Portal frontend deployment (DEPLOY_PORTAL_FRONTEND=${DEPLOY_PORTAL_FRONTEND})"
 fi
 
-echo ""
-cd ..
+if should_deploy "$DEPLOY_TELL_FRONTEND"; then
+    deploy_frontend "Tell" "$SCRIPT_DIR/Tell/frontend" "$TELL_FIREBASE_TARGET"
+else
+    warning "Skipping Tell frontend deployment (DEPLOY_TELL_FRONTEND=${DEPLOY_TELL_FRONTEND})"
+fi
+
+if should_deploy "$DEPLOY_TEACH_FRONTEND"; then
+    deploy_frontend "Teach" "$SCRIPT_DIR/Teach/frontend" "$TEACH_FIREBASE_TARGET"
+else
+    warning "Skipping Teach frontend deployment (DEPLOY_TEACH_FRONTEND=${DEPLOY_TEACH_FRONTEND})"
+fi
 
 # ============================================
 # COMPLETION

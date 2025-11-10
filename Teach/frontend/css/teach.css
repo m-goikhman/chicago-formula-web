@@ -1,0 +1,233 @@
+.teach-container {
+    padding: 0;
+    min-height: 100vh;
+    background: #f5f3ef;
+}
+
+.teach-container .header {
+    gap: 16px;
+    align-items: center;
+}
+
+.teach-container .header-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.teach-container .progress-chip {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.teach-container .header-title-container h1 {
+    font-size: 1.7rem;
+}
+
+.teach-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.teach-chat .chat-area {
+    background: #f5f3ef;
+}
+
+.horizontal-menu {
+    border-bottom: 1px solid rgba(26, 85, 99, 0.08);
+}
+
+.horizontal-menu-item.active {
+    background: rgba(26, 85, 99, 0.08);
+}
+
+.horizontal-menu-item.active::after {
+    opacity: 1;
+}
+
+.horizontal-menu-empty {
+    padding: 16px;
+    font-size: 0.9rem;
+    color: #5a6a72;
+    text-align: center;
+}
+
+.teach-section-message .message-content {
+    width: 100%;
+    max-width: 680px;
+}
+
+.teach-section-heading {
+    display: block;
+    margin-bottom: 0.75rem;
+    font-size: 1.05rem;
+    color: #1a5563;
+}
+
+.teach-section-message .message-text p {
+    margin-bottom: 1em;
+}
+
+.teach-section-message .message-text ul,
+.teach-section-message .message-text ol {
+    margin: 0 0 1em 1.25em;
+    padding-left: 0.6em;
+}
+
+.teach-section-message .message-text li {
+    margin-bottom: 0.4em;
+}
+
+.teach-task-controls {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(26, 85, 99, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.teach-task-controls-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.teach-task-badge {
+    background: rgba(26, 85, 99, 0.1);
+    color: #1a5563;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.teach-task-label {
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(26, 85, 99, 0.65);
+}
+
+.teach-task-toggle {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #1a5563;
+    position: relative;
+}
+
+.teach-task-toggle input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.teach-task-toggle-indicator {
+    width: 42px;
+    height: 24px;
+    background: rgba(26, 85, 99, 0.2);
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.2s ease;
+}
+
+.teach-task-toggle-indicator::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 4px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+}
+
+.teach-task-toggle input:checked + .teach-task-toggle-indicator {
+    background: linear-gradient(135deg, #1e6a7a, #1a5563);
+}
+
+.teach-task-toggle input:checked + .teach-task-toggle-indicator::after {
+    transform: translateX(18px);
+}
+
+.teach-task-toggle-text {
+    min-width: 110px;
+}
+
+.teach-task-message-completed .teach-task-toggle-text {
+    font-weight: 600;
+    color: #1a5563;
+}
+
+.teach-task-message-completed .teach-task-controls {
+    border-top-color: rgba(30, 106, 122, 0.3);
+}
+
+.teach-notes-message .message-content {
+    max-width: 680px;
+    background: #ffffff;
+    border: 1px solid rgba(26, 85, 99, 0.15);
+}
+
+.teach-notes-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.teach-notes-wrapper textarea {
+    width: 100%;
+    min-height: 150px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 85, 99, 0.2);
+    padding: 14px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    resize: vertical;
+    background: rgba(26, 85, 99, 0.05);
+    color: #1a5563;
+    font-family: 'Inter', sans-serif;
+}
+
+.teach-notes-wrapper textarea:focus {
+    outline: none;
+    border-color: rgba(30, 106, 122, 0.6);
+    box-shadow: 0 0 0 2px rgba(30, 106, 122, 0.2);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.teach-notes-status {
+    font-size: 0.8rem;
+    text-align: right;
+    color: rgba(26, 85, 99, 0.6);
+}
+
+.burger-button {
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+@media (max-width: 900px) {
+    .teach-container .header {
+        padding: 16px 20px;
+    }
+
+    .teach-container .progress-chip {
+        font-size: 0.8rem;
+    }
+
+    .teach-task-toggle-text {
+        min-width: auto;
+    }
+}
+
