@@ -499,7 +499,7 @@
         .message.typewriter-intro .message-sender {
             font-family: 'Lato', sans-serif;
             font-size: 0.85em;
-            letter-spacing: 8px; /* Increased spacing for asterisks (chapter marker) */
+            letter-spacing: normal;
             text-transform: uppercase;
             color: #8B7355;
             margin-bottom: 20px;
@@ -645,7 +645,7 @@
                 font-size: 0.8em;
             }
 
-            /* Mobile: меню становится 2x2 сеткой */
+            /* Mobile: menu displayed as 2x2 grid */
             .horizontal-menu {
                 flex-wrap: wrap;
                 justify-content: stretch;

@@ -40,7 +40,7 @@ Write one sentence using each of these words:
 
 ---
 
-## Reading Text: The Christmas Party
+## The Christmas Party 
 
 It's Monday, December 18th, and snow is falling over Chicago. At the University of Chicago Business School, the Finance Department is having their Christmas party. The room is warm and decorated with lights. Students are drinking mulled wine and exchanging Secret Santa gifts.
 

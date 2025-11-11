@@ -64,3 +64,7 @@ window.TEACH_CONFIG = {
     TEACH_CONTENT_SETTINGS
 };
 
+if (typeof window !== 'undefined') {
+    window.API_URL = API_URL;
+}
+

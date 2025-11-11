@@ -47,12 +47,111 @@ const TeachContentLoader = (() => {
         return sentences.slice(0, sentenceLimit).join(' ');
     }
 
+    function splitContentIntoSegments(defaultHeading, content) {
+        const lines = String(content ?? '').split(/\r?\n/);
+        const segments = [];
+        let activeHeading = defaultHeading;
+        let buffer = [];
+
+        const flush = () => {
+            const text = buffer.join('\n').trim();
+            if (text) {
+                segments.push({
+                    heading: activeHeading,
+                    content: text
+                });
+            }
+            buffer = [];
+        };
+
+        lines.forEach((line) => {
+            const subHeadingMatch = line.match(/^###\s+(.*)$/);
+            if (subHeadingMatch) {
+                flush();
+                activeHeading = subHeadingMatch[1].trim();
+                return;
+            }
+            buffer.push(line);
+        });
+
+        flush();
+
+        if (segments.length === 0 && String(content ?? '').trim()) {
+            segments.push({
+                heading: defaultHeading,
+                content: String(content ?? '').trim()
+            });
+        }
+
+        return segments;
+    }
+
+    function createSectionEntry(heading, content, meta, settings, slugCounts, orderCounterRef) {
+        const classification = classifyHeading(heading, settings);
+        const defaultSlug = slugify(heading) || `section-${orderCounterRef.value}`;
+        const existingCount = slugCounts.get(defaultSlug) ?? 0;
+        slugCounts.set(defaultSlug, existingCount + 1);
+        const slug = existingCount === 0 ? defaultSlug : `${defaultSlug}-${existingCount + 1}`;
+
+        return {
+            id: `${meta.id}-${slug}`,
+            heading,
+            content,
+            type: classification.type,
+            category: classification.category,
+            order: orderCounterRef.value++
+        };
+    }
+
+    function buildWeekFromSections(baseWeek, meta, settings) {
+        const slugCounts = new Map();
+        const orderCounterRef = { value: 0 };
+        const expandedSections = [];
+
+        (baseWeek.sections ?? []).forEach((section) => {
+            const segments = splitContentIntoSegments(section.heading, section.content);
+            const segmentList = segments.length > 0
+                ? segments
+                : [{
+                    heading: section.heading,
+                    content: String(section.content ?? '').trim()
+                }];
+
+            segmentList.forEach((segment) => {
+                const entry = createSectionEntry(
+                    segment.heading,
+                    segment.content,
+                    meta,
+                    settings,
+                    slugCounts,
+                    orderCounterRef
+                );
+                expandedSections.push(entry);
+            });
+        });
+
+        const tasks = expandedSections.filter((section) => section.type === 'task');
+        const readingSections = expandedSections.filter((section) => section.type === 'reading');
+        const referenceReading =
+            readingSections.find((section) => !/vocabulary/i.test(section.heading)) ||
+            readingSections[0] ||
+            expandedSections.find((section) => section.type === 'info');
+
+        return {
+            ...baseWeek,
+            sections: expandedSections,
+            tasks,
+            readingSections,
+            summary: extractSummary(referenceReading, settings.summarySentenceLimit),
+            preview: referenceReading?.content?.slice(0, settings.maxReadingPreviewChars) ?? ''
+        };
+    }
+
     function parseWeekMarkdown(markdown, meta, settings) {
         const lines = markdown.split(/\r?\n/);
         let title = meta.title;
         const sections = [];
         let current = null;
-        const slugCounts = new Map();
 
         lines.forEach((line) => {
             if (line.startsWith('# ')) {
@@ -68,8 +167,7 @@ const TeachContentLoader = (() => {
                 }
                 current = {
                     heading: line.replace(/^##\s*/, '').trim(),
-                    lines: [],
-                    order: orderCounter++
+                    lines: []
                 };
                 return;
             }
@@ -83,88 +181,18 @@ const TeachContentLoader = (() => {
             sections.push(current);
         }
 
-        let orderCounter = 0;
-        const expandedSections = [];
-
-        sections.forEach((section) => {
-            const segments = [];
-            let activeHeading = section.heading;
-            let buffer = [];
-
-            const flushSegment = () => {
-                const content = buffer.join('\n').trim();
-                if (!content) {
-                    buffer = [];
-                    return;
-                }
-                segments.push({
-                    heading: activeHeading,
-                    content
-                });
-                buffer = [];
-            };
-
-            section.lines.forEach((line) => {
-                const subHeadingMatch = line.match(/^###\s+(.*)$/);
-                if (subHeadingMatch) {
-                    flushSegment();
-                    activeHeading = subHeadingMatch[1].trim();
-                    return;
-                }
-                buffer.push(line);
-            });
-
-            flushSegment();
-
-            if (segments.length === 0) {
-                segments.push({
-                    heading: section.heading,
-                    content: section.lines.join('\n').trim()
-                });
-            }
-
-            segments.forEach((segment) => {
-                const classification = classifyHeading(segment.heading, settings);
-                let baseSlug = slugify(segment.heading) || `section-${orderCounter}`;
-                if (slugCounts.has(baseSlug)) {
-                    const count = slugCounts.get(baseSlug) + 1;
-                    slugCounts.set(baseSlug, count);
-                    baseSlug = `${baseSlug}-${count}`;
-                } else {
-                    slugCounts.set(baseSlug, 1);
-                }
-
-                expandedSections.push({
-                    id: `${meta.id}-${baseSlug}`,
-                    heading: segment.heading,
-                    content: segment.content,
-                    type: classification.type,
-                    category: classification.category,
-                    order: orderCounter++
-                });
-            });
-        });
-
-        const parsedSections = expandedSections;
-
-        const tasks = parsedSections.filter((section) => section.type === 'task');
-        const readingSections = parsedSections.filter((section) => section.type === 'reading');
-        const referenceReading =
-            readingSections.find((section) => !/vocabulary/i.test(section.heading)) ||
-            readingSections[0] ||
-            parsedSections.find((section) => section.type === 'info');
-
-        return {
+        const baseWeek = {
             id: meta.id,
             title: title || meta.title || meta.id,
             order: meta.order ?? 0,
             source: meta.source,
-            sections: parsedSections,
-            tasks,
-            readingSections,
-            summary: extractSummary(referenceReading, settings.summarySentenceLimit),
-            preview: referenceReading?.content?.slice(0, settings.maxReadingPreviewChars) ?? ''
+            sections: sections.map((section) => ({
+                heading: section.heading,
+                content: section.lines.join('\n')
+            }))
         };
+
+        return buildWeekFromSections(baseWeek, { id: meta.id }, settings);
     }
 
     async function fetchPrebuiltContent() {
@@ -187,12 +215,16 @@ const TeachContentLoader = (() => {
         const prebuilt = await fetchPrebuiltContent();
         if (prebuilt) {
             return prebuilt
-                .map((week) => ({
-                    ...week,
-                    sections: week.sections ?? [],
-                    tasks: week.tasks ?? [],
-                    readingSections: week.readingSections ?? []
-                }))
+                .map((week) =>
+                    buildWeekFromSections(
+                        {
+                            ...week,
+                            sections: week.sections ?? []
+                        },
+                        { id: week.id },
+                        settings
+                    )
+                )
                 .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         }
 
