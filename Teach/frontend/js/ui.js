@@ -5,6 +5,7 @@ const TeachUI = (() => {
     }
 
     const { addMessage } = shared;
+    const stepProgressByWeek = new Map();
 
     function appendNextButton(messageEl, onClick, label = 'Continue') {
         if (!messageEl) {
@@ -34,6 +35,19 @@ const TeachUI = (() => {
 
         actions.appendChild(button);
         content.appendChild(actions);
+    }
+
+    function resolveMessageElement(result) {
+        if (!result) {
+            return null;
+        }
+        if (result instanceof HTMLElement) {
+            return result;
+        }
+        if (result.messageEl instanceof HTMLElement) {
+            return result.messageEl;
+        }
+        return null;
     }
 
     function getSectionHeadingInfo(section) {
@@ -765,19 +779,7 @@ const TeachUI = (() => {
         const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
         const sequence = [];
         const onNotesReady = typeof options.onNotesReady === 'function' ? options.onNotesReady : null;
-
-        const resolveMessageElement = (result) => {
-            if (!result) {
-                return null;
-            }
-            if (result instanceof HTMLElement) {
-                return result;
-            }
-            if (result.messageEl instanceof HTMLElement) {
-                return result.messageEl;
-            }
-            return null;
-        };
+        let notesRefsResult = null;
 
         sequence.push({
             type: 'summary',
@@ -814,6 +816,7 @@ const TeachUI = (() => {
                     onNotesReady(notesRefs);
                 }
 
+                notesRefsResult = notesRefs;
                 return notesRefs;
             }
         });
@@ -830,42 +833,77 @@ const TeachUI = (() => {
             });
         });
 
-        let stepIndex = 0;
-        const runStep = () => {
-            if (stepIndex >= sequence.length) {
-                return;
+        const renderedSteps = [];
+
+        const renderStepAt = (index) => {
+            const step = sequence[index];
+            if (!step || typeof step.factory !== 'function') {
+                return null;
             }
-
-            const step = sequence[stepIndex];
-            stepIndex += 1;
-
-            const factory = step?.factory;
-
-            if (typeof factory !== 'function') {
-                if (stepIndex < sequence.length) {
-                    runStep();
-                }
-                return;
-            }
-
-            const result = factory();
+            const result = step.factory();
             const messageEl = resolveMessageElement(result);
 
-            if (!messageEl) {
-                if (stepIndex < sequence.length) {
-                    runStep();
-                }
+            if (messageEl) {
+                renderedSteps[index] = { step, messageEl };
+            }
+
+            if (step.type === 'notes' && notesRefsResult == null && result) {
+                notesRefsResult = result;
+            }
+
+            return messageEl;
+        };
+
+        const totalSteps = sequence.length;
+        const desiredProgress = Math.max(
+            1,
+            Math.min(stepProgressByWeek.get(week.id) ?? 1, totalSteps)
+        );
+
+        let actualRendered = 0;
+        for (let i = 0; i < desiredProgress && i < totalSteps; i += 1) {
+            const rendered = renderStepAt(i);
+            if (!rendered) {
+                break;
+            }
+            actualRendered = i + 1;
+        }
+
+        const unlockedSteps = Math.max(actualRendered, 1);
+        stepProgressByWeek.set(week.id, unlockedSteps);
+
+        const setupNextButton = (currentIndex) => {
+            const current = renderedSteps[currentIndex];
+            const nextIndex = currentIndex + 1;
+            if (!current || nextIndex >= totalSteps) {
                 return;
             }
 
-            if (stepIndex < sequence.length) {
-                appendNextButton(messageEl, runStep, step?.label);
-            }
+            appendNextButton(
+                current.messageEl,
+                () => {
+                    const newMessage = renderStepAt(nextIndex);
+                    if (!newMessage) {
+                        return;
+                    }
+
+                    const updatedProgress = Math.max(
+                        stepProgressByWeek.get(week.id) ?? 1,
+                        nextIndex + 1
+                    );
+                    stepProgressByWeek.set(week.id, updatedProgress);
+
+                    chatArea.scrollTop = chatArea.scrollHeight;
+                    setupNextButton(nextIndex);
+                },
+                current.step.label
+            );
         };
 
-        runStep();
+        setupNextButton(unlockedSteps - 1);
 
-        return {};
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return notesRefsResult ?? {};
     }
 
     return {
