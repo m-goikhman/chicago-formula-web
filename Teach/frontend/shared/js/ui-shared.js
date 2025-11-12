@@ -8,119 +8,15 @@
         return div.innerHTML;
     }
 
-    function renderMarkdown(markdown) {
-        if (!markdown) {
-            return '';
-        }
+    function renderMarkdown(text) {
+        let html = escapeHtml(text);
 
-        const lines = String(markdown).replace(/\r\n?/g, '\n').split('\n');
-        const htmlParts = [];
-        let inUnorderedList = false;
-        let inOrderedList = false;
-        let lastListItemIndex = null;
+        html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
+        html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+        html = html.replace(/\n/g, '<br>');
 
-        const closeLists = () => {
-            if (inUnorderedList) {
-                htmlParts.push('</ul>');
-                inUnorderedList = false;
-            }
-            if (inOrderedList) {
-                htmlParts.push('</ol>');
-                inOrderedList = false;
-            }
-            lastListItemIndex = null;
-        };
-
-        const processInline = (text) => {
-            let escaped = escapeHtml(text);
-            escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-            escaped = escaped.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-            escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-            escaped = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
-            escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-            return escaped;
-        };
-
-        const appendToLastListItem = (content) => {
-            if (lastListItemIndex == null) {
-                return;
-            }
-            htmlParts[lastListItemIndex] = htmlParts[lastListItemIndex].replace(
-                /<\/li>$/,
-                `<br>${content}</li>`
-            );
-        };
-
-        lines.forEach((line) => {
-            if (!line.trim()) {
-                if (lastListItemIndex != null) {
-                    appendToLastListItem('<br>');
-                }
-                return;
-            }
-
-            const unorderedMatch = line.match(/^\s*[-*]\s+(.*)$/);
-            if (unorderedMatch) {
-                if (inOrderedList) {
-                    htmlParts.push('</ol>');
-                    inOrderedList = false;
-                }
-                if (!inUnorderedList) {
-                    htmlParts.push('<ul>');
-                    inUnorderedList = true;
-                }
-                const content = processInline(unorderedMatch[1]);
-                htmlParts.push(`<li>${content}</li>`);
-                lastListItemIndex = htmlParts.length - 1;
-                return;
-            }
-
-            const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
-            if (orderedMatch) {
-                if (inUnorderedList) {
-                    htmlParts.push('</ul>');
-                    inUnorderedList = false;
-                }
-                if (!inOrderedList) {
-                    htmlParts.push('<ol>');
-                    inOrderedList = true;
-                }
-                const content = processInline(orderedMatch[1]);
-                htmlParts.push(`<li>${content}</li>`);
-                lastListItemIndex = htmlParts.length - 1;
-                return;
-            }
-
-            const continuationMatch = line.match(/^\s{2,}(.*)$/);
-            if (continuationMatch && lastListItemIndex != null) {
-                appendToLastListItem(processInline(continuationMatch[1]));
-                return;
-            }
-
-            const horizontalRuleMatch = line.trim().match(/^(-{3,}|\*{3,}|_{3,})$/);
-            if (horizontalRuleMatch) {
-                closeLists();
-                htmlParts.push('<hr>');
-                return;
-            }
-
-            const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-            if (headingMatch) {
-                closeLists();
-                const level = Math.min(headingMatch[1].length, 6);
-                htmlParts.push(
-                    `<h${level}>${processInline(headingMatch[2].trim())}</h${level}>`
-                );
-                return;
-            }
-
-            closeLists();
-            htmlParts.push(`<p>${processInline(line.trim())}</p>`);
-        });
-
-        closeLists();
-
-        return htmlParts.join('');
+        return html;
     }
 
     function renderTypewriterText(text) {
