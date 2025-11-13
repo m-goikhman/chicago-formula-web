@@ -10,15 +10,17 @@ const TeachContentLoader = (() => {
             .replace(/-+/g, '-');
     }
 
-    function classifyHeading(heading, settings) {
+    function classifyHeading(heading, settings, content = '') {
         const normalized = heading.toLowerCase();
         const taskMatch = settings.taskHeadingPatterns.some((pattern) => normalized.includes(pattern));
         const readingMatch = settings.readingHeadingPatterns.some((pattern) => normalized.includes(pattern));
 
+        // If it matches reading patterns, it's definitely reading
         if (readingMatch) {
             return { type: 'reading', category: 'reading' };
         }
 
+        // If it matches task patterns, classify as task
         if (taskMatch) {
             if (normalized.includes('vocabulary')) {
                 return { type: 'task', category: 'vocabulary' };
@@ -33,6 +35,22 @@ const TeachContentLoader = (() => {
                 return { type: 'task', category: 'questions' };
             }
             return { type: 'task', category: 'exercise' };
+        }
+
+        // Check if it's a long text with a heading (likely a reading text)
+        // Minimum length threshold: 500 characters
+        const contentLength = String(content).trim().length;
+        const hasHeading = heading && heading.trim().length > 0;
+        const isLongText = contentLength >= 500;
+        
+        // If it has a heading and is a long text, and doesn't look like a task, treat as reading
+        if (hasHeading && isLongText && !taskMatch) {
+            // Exclude obvious non-reading sections
+            const excludePatterns = ['vocabulary', 'exercise', 'question', 'grammar', 'comprehension', 'reflection'];
+            const shouldExclude = excludePatterns.some((pattern) => normalized.includes(pattern));
+            if (!shouldExclude) {
+                return { type: 'reading', category: 'reading' };
+            }
         }
 
         return { type: 'info', category: 'info' };
@@ -87,7 +105,7 @@ const TeachContentLoader = (() => {
     }
 
     function createSectionEntry(heading, content, meta, settings, slugCounts, orderCounterRef) {
-        const classification = classifyHeading(heading, settings);
+        const classification = classifyHeading(heading, settings, content);
         const defaultSlug = slugify(heading) || `section-${orderCounterRef.value}`;
         const existingCount = slugCounts.get(defaultSlug) ?? 0;
         slugCounts.set(defaultSlug, existingCount + 1);

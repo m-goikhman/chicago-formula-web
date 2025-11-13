@@ -7,6 +7,135 @@ const TeachUI = (() => {
     const { addMessage } = shared;
     const stepProgressByWeek = new Map();
 
+    /**
+     * Парсит Answer Key из секции недели и возвращает объект с правильными ответами
+     * @param {Object} week - объект недели с секциями
+     * @returns {Object} объект с правильными ответами, ключ - название упражнения, значение - массив ответов
+     */
+    function parseAnswerKey(week) {
+        if (!week || !week.sections) {
+            return {};
+        }
+
+        const answerKeySection = week.sections.find(section => 
+            /answer.?key/i.test(section.heading || '')
+        );
+
+        if (!answerKeySection || !answerKeySection.content) {
+            return {};
+        }
+
+        const answerKey = {};
+        const content = answerKeySection.content;
+
+        // Парсим ответы в формате: **Exercise Name:** ответ1, ответ2, ответ3
+        // Или: **Exercise Name:** 1. ответ1, 2. ответ2, 3. ответ3
+        const exercisePattern = /\*\*([^*]+?):\*\*\s*([^\n]+)/g;
+        let match;
+
+        while ((match = exercisePattern.exec(content)) !== null) {
+            const exerciseName = match[1].trim();
+            const answersText = match[2].trim();
+
+            // Нормализуем название упражнения для сопоставления
+            const normalizedName = exerciseName.toLowerCase()
+                .replace(/exercise\s*(\d+)/i, 'exercise $1')
+                .replace(/grammar\s*exercise\s*(\d+)/i, 'grammar exercise $1')
+                .trim();
+
+            // Парсим ответы
+            // Формат может быть: "1-d, 2-c, 3-a, 4-b" или "1. looked, 2. was trying, 3. were exchanging/received"
+            const answers = [];
+            
+            // Если есть формат "1-ответ" или "1. ответ"
+            const numberedPattern = /(\d+)[-.)]\s*([^,\n]+?)(?=\s*,\s*\d+[-.)]|$)/g;
+            let answerMatch;
+            while ((answerMatch = numberedPattern.exec(answersText)) !== null) {
+                let answer = answerMatch[2].trim();
+                // Убираем лишние пробелы и нормализуем
+                // Сохраняем "/" в ответе, если он есть (для случаев типа "were exchanging/received")
+                answers.push(answer);
+            }
+
+            // Если не нашли пронумерованные ответы, пробуем разбить по запятым
+            if (answers.length === 0) {
+                const parts = answersText.split(',').map(part => part.trim()).filter(Boolean);
+                answers.push(...parts);
+            }
+
+            if (answers.length > 0) {
+                answerKey[normalizedName] = answers;
+            }
+        }
+
+        return answerKey;
+    }
+
+    /**
+     * Находит правильные ответы для конкретного упражнения по его названию
+     * @param {Object} answerKey - объект с правильными ответами из parseAnswerKey
+     * @param {Object} section - секция упражнения
+     * @returns {Array|null} массив правильных ответов или null, если не найдено
+     */
+    function getAnswersForExercise(answerKey, section) {
+        if (!answerKey || !section) {
+            return null;
+        }
+
+        const heading = section.heading || '';
+        const content = section.content || '';
+        
+        // Нормализуем название упражнения для сопоставления
+        const normalizedHeading = heading.toLowerCase()
+            .replace(/grammar\s*focus[^:]*:\s*/i, '')
+            .replace(/exercise\s*(\d+)/i, 'exercise $1')
+            .replace(/grammar\s*exercise\s*(\d+)/i, 'grammar exercise $1')
+            .trim();
+
+        // Извлекаем номер упражнения, если есть
+        const exerciseNumberMatch = normalizedHeading.match(/exercise\s*(\d+)/);
+        const exerciseNumber = exerciseNumberMatch ? exerciseNumberMatch[1] : null;
+        const isGrammarExercise = /grammar/i.test(normalizedHeading);
+
+        // Пробуем найти точное совпадение
+        for (const [key, answers] of Object.entries(answerKey)) {
+            const normalizedKey = key.toLowerCase();
+            
+            // Если есть номер упражнения, проверяем его
+            if (exerciseNumber) {
+                const keyNumberMatch = normalizedKey.match(/exercise\s*(\d+)/);
+                const keyNumber = keyNumberMatch ? keyNumberMatch[1] : null;
+                
+                if (keyNumber === exerciseNumber) {
+                    // Проверяем, что это правильный тип упражнения (grammar или обычное)
+                    const keyIsGrammar = /grammar/i.test(normalizedKey);
+                    if (isGrammarExercise === keyIsGrammar) {
+                        return answers;
+                    }
+                }
+            }
+            
+            // Альтернативный способ: проверяем частичное совпадение
+            if (normalizedHeading.includes(normalizedKey) || normalizedKey.includes(normalizedHeading)) {
+                // Для "Grammar Exercise 2" ищем "grammar exercise 2"
+                if (normalizedHeading.includes('grammar exercise 2') && normalizedKey.includes('grammar exercise 2')) {
+                    return answers;
+                }
+                if (normalizedHeading.includes('grammar exercise 1') && normalizedKey.includes('grammar exercise 1')) {
+                    return answers;
+                }
+                if (normalizedHeading.includes('exercise 1') && normalizedKey.includes('exercise 1') && !normalizedHeading.includes('grammar')) {
+                    return answers;
+                }
+                if (normalizedHeading.includes('exercise 3') && normalizedKey.includes('exercise 3')) {
+                    return answers;
+                }
+            }
+        }
+
+        return null;
+    }
+
     function appendNextButton(messageEl, onClick, label = 'Continue') {
         if (!messageEl) {
             return;
@@ -52,10 +181,24 @@ const TeachUI = (() => {
 
     function getSectionHeadingInfo(section) {
         const heading = typeof section?.heading === 'string' ? section.heading.trim() : '';
+        const content = typeof section?.content === 'string' ? section.content.trim() : '';
+        const contentLength = content.length;
+        
+        // Exclude vocabulary sections from typewriter styling
+        const normalizedHeading = heading.toLowerCase();
+        const isVocabularySection = /vocabulary/i.test(normalizedHeading);
+        
+        // A section is a story/reading section if:
+        // 1. It's marked as type 'reading', OR
+        // 2. It has a heading and is a long text (>= 500 chars) - likely a reading text
+        // BUT exclude vocabulary sections
+        const isLongText = contentLength >= 500;
+        const hasHeading = heading && heading.length > 0;
+        
         const isStorySection =
-            section?.type === 'reading' &&
-            heading &&
-            /reading text|story/i.test(heading);
+            !isVocabularySection &&
+            ((section?.type === 'reading' && hasHeading) ||
+            (hasHeading && isLongText && section?.type !== 'task'));
 
         const displayHeading = (() => {
             if (!heading) {
@@ -64,6 +207,7 @@ const TeachUI = (() => {
             if (!isStorySection) {
                 return heading;
             }
+            // Extract title after colon if present (e.g., "Reading Text: The Attack" -> "The Attack")
             const match = heading.match(/:(.*)$/);
             return (match ? match[1] : heading).trim();
         })();
@@ -440,6 +584,27 @@ const TeachUI = (() => {
         resetButton.textContent = 'Reset';
         actions.appendChild(resetButton);
 
+        // Add Continue button to proceed to next exercise
+        const continueButton = document.createElement('button');
+        continueButton.type = 'button';
+        continueButton.className = 'teach-match-words-button continue';
+        continueButton.textContent = 'Continue';
+        continueButton.addEventListener('click', () => {
+            // Try to find and click the next button if it exists
+            const nextButton = messageEl.querySelector('.teach-next-button');
+            if (nextButton && !nextButton.disabled) {
+                nextButton.click();
+            } else {
+                // If no next button, try to trigger next step via custom event
+                const event = new CustomEvent('teach-continue-next', {
+                    bubbles: true,
+                    detail: { messageEl }
+                });
+                messageEl.dispatchEvent(event);
+            }
+        });
+        actions.appendChild(continueButton);
+
         container.appendChild(actions);
 
         const result = document.createElement('div');
@@ -615,7 +780,9 @@ const TeachUI = (() => {
             };
 
             const containsWord = (value) => {
-                const pattern = new RegExp(`\\b${prompt.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+
+                const escapedWord = prompt.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const pattern = new RegExp(`\\b${escapedWord}(?=[a-zA-Z]|[.!?]|\\s|$)`, 'i');
                 return pattern.test(value);
             };
 
@@ -625,7 +792,7 @@ const TeachUI = (() => {
                     handleError('Write your sentence before sending.');
                     return;
                 }
-                if (value.length < 25) {
+                if (value.length < 10) {
                     handleError('Add more detail so your sentence feels complete.');
                     return;
                 }
@@ -652,7 +819,531 @@ const TeachUI = (() => {
         updateStatus();
         container.appendChild(status);
 
+        // Add Continue button to proceed to next exercise
+        const continueActions = document.createElement('div');
+        continueActions.className = 'teach-sentence-actions';
+        const continueButton = document.createElement('button');
+        continueButton.type = 'button';
+        continueButton.className = 'teach-sentence-send continue';
+        continueButton.textContent = 'Continue';
+        continueButton.addEventListener('click', () => {
+            // Try to find and click the next button if it exists
+            const nextButton = messageEl.querySelector('.teach-next-button');
+            if (nextButton && !nextButton.disabled) {
+                nextButton.click();
+            } else {
+                // If no next button, try to trigger next step via custom event
+                const event = new CustomEvent('teach-continue-next', {
+                    bubbles: true,
+                    detail: { messageEl }
+                });
+                messageEl.dispatchEvent(event);
+            }
+        });
+        continueActions.appendChild(continueButton);
+        container.appendChild(continueActions);
+
         contentEl.appendChild(container);
+    }
+
+    function renderFillInTheBlanksExercise(messageEl, section, correctAnswersFromKey = null) {
+        if (!messageEl || messageEl.querySelector('.teach-fill-blanks')) {
+            return;
+        }
+
+        const contentEl = messageEl.querySelector('.message-content');
+        if (!contentEl) {
+            return;
+        }
+
+        const messageText = contentEl.querySelector('.message-text');
+        if (!messageText) {
+            return;
+        }
+
+        // Determine if this is a "Choose and Write" exercise (needs clickable choices)
+        const isChooseAndWrite = /choose and write/i.test(section.heading || '');
+
+        // Find all blanks in the rendered HTML (pattern: 3+ underscores)
+        // Need to search in text nodes to avoid matching underscores in HTML attributes
+        const blankPattern = /_{3,}/g;
+        const walker = document.createTreeWalker(
+            messageText,
+            NodeFilter.SHOW_TEXT,
+            null
+        );
+
+        const textNodesWithBlanks = [];
+        let node;
+        while ((node = walker.nextNode())) {
+            if (blankPattern.test(node.textContent)) {
+                textNodesWithBlanks.push(node);
+            }
+        }
+
+        // For "Choose and Write" exercises, we don't need blanks - we work with clickable choices
+        // For other exercises, we need blanks to proceed
+        if (!isChooseAndWrite && textNodesWithBlanks.length === 0) {
+            return; // No blanks found, skip this renderer
+        }
+        
+        // For "Choose and Write", check if there are any choices to make clickable
+        if (isChooseAndWrite) {
+            const hasChoices = /<strong>.*?\/.*?<\/strong>|<b>.*?\/.*?<\/b>/i.test(messageText.innerHTML);
+            if (!hasChoices) {
+                return; // No choices found, skip this renderer
+            }
+        }
+
+        // Extract choices from HTML if this is a "Choose and Write" exercise
+        // Look for <strong> or <b> tags containing "option1 / option2" pattern
+        // Use correct answers from Answer Key if available, otherwise fall back to first option
+        const choicesArray = [];
+        const correctAnswers = [];
+        if (isChooseAndWrite) {
+            const choicePattern = /<strong>(.*?)<\/strong>|<b>(.*?)<\/b>/gi;
+            const htmlContent = messageText.innerHTML;
+            let match;
+            let choiceIndex = 0;
+            let answerKeyIndex = 0; // Index for answers from Answer Key
+            
+            // First, collect all choice sets to understand the structure
+            const allChoices = [];
+            while ((match = choicePattern.exec(htmlContent)) !== null) {
+                const choiceText = (match[1] || match[2] || '').trim();
+                if (choiceText.includes(' / ')) {
+                    const options = choiceText.split(' / ').map(opt => opt.trim());
+                    allChoices.push({ options, index: choiceIndex });
+                    choiceIndex++;
+                }
+            }
+            
+            // Now process each choice set with correct answers
+            choiceIndex = 0;
+            allChoices.forEach((choiceSet) => {
+                const options = choiceSet.options;
+                choicesArray.push(options);
+                
+                // Use correct answer from Answer Key if available
+                if (correctAnswersFromKey && Array.isArray(correctAnswersFromKey) && correctAnswersFromKey[answerKeyIndex]) {
+                    let correctAnswer = correctAnswersFromKey[answerKeyIndex];
+                    
+                    // Handle cases where answer might be "were exchanging/received" (multiple answers for multiple choice sets)
+                    // Check if this answer contains "/" and we have more choice sets ahead
+                    if (correctAnswer.includes('/') && answerKeyIndex < correctAnswersFromKey.length - 1) {
+                        // This might be a combined answer for multiple choice sets
+                        // But we'll handle it per choice set - find the part that matches this set
+                        const answerParts = correctAnswer.split('/').map(part => part.trim());
+                        // Find the option that best matches any of the answer parts
+                        const matchingOption = options.find(opt => 
+                            answerParts.some(part => {
+                                const optLower = opt.toLowerCase();
+                                const partLower = part.toLowerCase();
+                                return optLower === partLower || 
+                                       optLower.includes(partLower) || 
+                                       partLower.includes(optLower);
+                            })
+                        );
+                        correctAnswers.push(matchingOption || options[0]);
+                    } else if (correctAnswer.includes('/')) {
+                        // Single answer with "/" but it's the last one - split and use first part
+                        const answerParts = correctAnswer.split('/').map(part => part.trim());
+                        const matchingOption = options.find(opt => 
+                            answerParts.some(part => {
+                                const optLower = opt.toLowerCase();
+                                const partLower = part.toLowerCase();
+                                return optLower === partLower || 
+                                       optLower.includes(partLower) || 
+                                       partLower.includes(optLower);
+                            })
+                        );
+                        correctAnswers.push(matchingOption || options[0]);
+                    } else {
+                        // Single answer - find matching option (case-insensitive, partial match)
+                        const matchingOption = options.find(opt => {
+                            const optLower = opt.toLowerCase().trim();
+                            const answerLower = correctAnswer.toLowerCase().trim();
+                            return optLower === answerLower || 
+                                   optLower.includes(answerLower) || 
+                                   answerLower.includes(optLower);
+                        });
+                        correctAnswers.push(matchingOption || options[0]);
+                    }
+                    answerKeyIndex++;
+                } else {
+                    // Fallback to first option if no answer key provided
+                    correctAnswers.push(options[0]);
+                }
+                choiceIndex++;
+            });
+        }
+
+        // Determine if this is a grammar exercise (needs smaller inline inputs)
+        const isGrammarExercise = /grammar/i.test(section.heading || '') || 
+                                  /grammar/i.test(section.category || '') ||
+                                  /fill in the gaps?|choose and write/i.test(section.heading || '');
+
+        // Create container for interactive exercise
+        const container = document.createElement('div');
+        container.className = 'teach-fill-blanks';
+        if (isGrammarExercise) {
+            container.classList.add('teach-fill-blanks-grammar');
+        }
+        if (isChooseAndWrite) {
+            container.classList.add('teach-fill-blanks-choose-write');
+        }
+        
+        // For "Choose and Write" exercises, make choices clickable
+        if (isChooseAndWrite) {
+            const htmlContent = messageText.innerHTML;
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlContent;
+            
+            // Find all choice elements and make them clickable
+            const choiceElements = tempDiv.querySelectorAll('strong, b');
+            let choiceIndex = 0;
+            choiceElements.forEach((el) => {
+                const choiceText = el.textContent.trim();
+                if (choiceText.includes(' / ')) {
+                    const options = choiceText.split(' / ').map(opt => opt.trim());
+                    // Use correct answer from the parsed correctAnswers array
+                    const correctAnswer = correctAnswers[choiceIndex] || options[0];
+                    
+                    // Create container for clickable choices with feedback
+                    const choicesWrapper = document.createElement('span');
+                    choicesWrapper.className = 'teach-choices-wrapper';
+                    
+                    const choicesContainer = document.createElement('span');
+                    choicesContainer.className = 'teach-choices-container';
+                    choicesContainer.dataset.choiceIndex = choiceIndex;
+                    choicesContainer.dataset.correctAnswer = correctAnswer;
+                    
+                    options.forEach((option, optIndex) => {
+                        const choiceButton = document.createElement('button');
+                        choiceButton.type = 'button';
+                        choiceButton.className = 'teach-choice-button';
+                        choiceButton.textContent = option;
+                        choiceButton.dataset.option = option;
+                        choiceButton.dataset.choiceIndex = choiceIndex;
+                        // Compare with correct answer (case-insensitive for robustness)
+                        const isCorrect = option.toLowerCase().trim() === correctAnswer.toLowerCase().trim();
+                        choiceButton.dataset.isCorrect = isCorrect ? 'true' : 'false';
+                        
+                        if (optIndex > 0) {
+                            const separator = document.createTextNode(' / ');
+                            choicesContainer.appendChild(separator);
+                        }
+                        choicesContainer.appendChild(choiceButton);
+                    });
+                    
+                    // Add feedback container right after choices
+                    const feedback = document.createElement('span');
+                    feedback.className = 'teach-choice-feedback';
+                    feedback.dataset.feedbackIndex = choiceIndex;
+                    
+                    choicesWrapper.appendChild(choicesContainer);
+                    choicesWrapper.appendChild(feedback);
+                    
+                    el.parentNode.replaceChild(choicesWrapper, el);
+                    choiceIndex++;
+                }
+            });
+            
+            messageText.innerHTML = tempDiv.innerHTML;
+        } else {
+            // Replace blanks in text nodes with input fields for non-Choose-and-Write exercises
+            let blankIndex = 0;
+            textNodesWithBlanks.forEach((textNode) => {
+                const parent = textNode.parentNode;
+                const text = textNode.textContent;
+                const parts = text.split(blankPattern);
+                const matches = text.match(blankPattern) || [];
+
+                if (matches.length === 0) {
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                
+                parts.forEach((part, index) => {
+                    if (part) {
+                        fragment.appendChild(document.createTextNode(part));
+                    }
+                    if (index < matches.length) {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.id = `teach-blank-${section.id}-${blankIndex}`;
+                        input.className = 'teach-blank-input';
+                        input.dataset.blankIndex = blankIndex;
+                        input.placeholder = 'Fill in the blank';
+                        blankIndex++;
+                        fragment.appendChild(input);
+                    }
+                });
+
+                parent.replaceChild(fragment, textNode);
+            });
+        }
+
+        // Get inputs reference (will be empty for Choose-and-Write exercises)
+        const inputs = messageText.querySelectorAll('.teach-blank-input');
+        
+        // Add feedback containers after each input (only for non-Choose-and-Write exercises)
+        if (!isChooseAndWrite) {
+            inputs.forEach((input, index) => {
+                // Ensure blankIndex is set correctly
+                if (!input.dataset.blankIndex) {
+                    input.dataset.blankIndex = index;
+                }
+                const blankIndex = input.dataset.blankIndex;
+                
+                const feedback = document.createElement('span');
+                feedback.className = 'teach-blank-feedback';
+                feedback.dataset.feedbackIndex = blankIndex;
+                // Insert feedback right after the input
+                if (input.nextSibling) {
+                    input.parentNode.insertBefore(feedback, input.nextSibling);
+                } else {
+                    input.parentNode.appendChild(feedback);
+                }
+            });
+        }
+        
+        // Add action buttons
+        const actions = document.createElement('div');
+        actions.className = 'teach-fill-blanks-actions';
+
+        const checkButton = document.createElement('button');
+        checkButton.type = 'button';
+        checkButton.className = 'teach-fill-blanks-button primary';
+        checkButton.textContent = 'Check answers';
+        actions.appendChild(checkButton);
+
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'teach-fill-blanks-button secondary';
+        resetButton.textContent = 'Reset';
+        actions.appendChild(resetButton);
+
+        // Add Continue button to proceed to next exercise
+        const continueButton = document.createElement('button');
+        continueButton.type = 'button';
+        continueButton.className = 'teach-fill-blanks-button continue';
+        continueButton.textContent = 'Continue';
+        continueButton.addEventListener('click', () => {
+            // Try to find and click the next button if it exists
+            const nextButton = messageEl.querySelector('.teach-next-button');
+            if (nextButton && !nextButton.disabled) {
+                nextButton.click();
+            } else {
+                // If no next button, try to trigger next step via custom event
+                const event = new CustomEvent('teach-continue-next', {
+                    bubbles: true,
+                    detail: { messageEl }
+                });
+                messageEl.dispatchEvent(event);
+            }
+        });
+        actions.appendChild(continueButton);
+
+        container.appendChild(actions);
+
+        const result = document.createElement('div');
+        result.className = 'teach-fill-blanks-result';
+        container.appendChild(result);
+
+        contentEl.appendChild(container);
+
+        // Add click handlers for choice buttons in "Choose and Write" exercises
+        // This must be done AFTER messageText.innerHTML is updated and container is added to DOM
+        if (isChooseAndWrite) {
+            const choiceButtons = messageText.querySelectorAll('.teach-choice-button');
+            
+            if (choiceButtons.length === 0) {
+                console.warn('No choice buttons found for Choose and Write exercise');
+            } else {
+                choiceButtons.forEach((button) => {
+                    button.addEventListener('click', function() {
+                        const choiceIndex = parseInt(this.dataset.choiceIndex);
+                        const selectedOption = this.dataset.option;
+                        const isCorrect = this.dataset.isCorrect === 'true';
+                        
+                        // Find the feedback element for this choice set
+                        const feedback = messageText.querySelector(`.teach-choice-feedback[data-feedback-index="${choiceIndex}"]`);
+                        const container = this.closest('.teach-choices-container');
+                        const allButtons = container?.querySelectorAll('.teach-choice-button') || [];
+                        
+                        // Remove previous classes from all buttons in this set
+                        allButtons.forEach(btn => {
+                            btn.classList.remove('correct', 'incorrect');
+                        });
+                        
+                        // Add appropriate class to the clicked button
+                        if (isCorrect) {
+                            this.classList.add('correct');
+                            if (feedback) {
+                                feedback.textContent = '✓ Correct!';
+                                feedback.classList.remove('incorrect');
+                                feedback.classList.add('correct');
+                            }
+                        } else {
+                            this.classList.add('incorrect');
+                            if (feedback) {
+                                const correctAnswer = container?.dataset.correctAnswer;
+                                feedback.textContent = `✗ Incorrect. Correct: ${correctAnswer}`;
+                                feedback.classList.remove('correct');
+                                feedback.classList.add('incorrect');
+                            }
+                        }
+                        
+                        // Disable all buttons for this choice set
+                        allButtons.forEach(btn => {
+                            btn.disabled = true;
+                            btn.classList.add('disabled');
+                        });
+                    });
+                });
+            }
+        }
+
+        // Validation logic
+        function getFeedbackForInput(input) {
+            const blankIndex = input.dataset.blankIndex;
+            return messageText.querySelector(`.teach-blank-feedback[data-feedback-index="${blankIndex}"]`);
+        }
+
+        function clearState() {
+            if (isChooseAndWrite) {
+                // Clear feedback and reset buttons for "Choose and Write" exercises
+                const feedbacks = messageText.querySelectorAll('.teach-choice-feedback');
+                feedbacks.forEach(fb => {
+                    fb.textContent = '';
+                    fb.classList.remove('correct', 'incorrect');
+                });
+                
+                const choiceButtons = messageText.querySelectorAll('.teach-choice-button');
+                choiceButtons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.classList.remove('disabled', 'correct', 'incorrect');
+                });
+            } else {
+                // Clear inputs for other exercises
+                inputs.forEach((input) => {
+                    input.value = '';
+                    input.classList.remove('correct', 'incorrect');
+                    const feedback = getFeedbackForInput(input);
+                    if (feedback) {
+                        feedback.textContent = '';
+                        feedback.classList.remove('correct', 'incorrect');
+                    }
+                });
+            }
+            
+            result.textContent = '';
+            result.classList.remove('success', 'error', 'warning');
+        }
+
+        function validate() {
+            if (isChooseAndWrite) {
+                // For "Choose and Write", check if all choices have been made
+                const choiceContainers = messageText.querySelectorAll('.teach-choices-container');
+                let allFilled = true;
+                let allCorrect = true;
+                
+                choiceContainers.forEach((container) => {
+                    const buttons = container.querySelectorAll('.teach-choice-button');
+                    const hasSelection = Array.from(buttons).some(btn => 
+                        btn.classList.contains('correct') || btn.classList.contains('incorrect')
+                    );
+                    
+                    if (!hasSelection) {
+                        allFilled = false;
+                    } else {
+                        const hasCorrect = Array.from(buttons).some(btn => btn.classList.contains('correct'));
+                        if (!hasCorrect) {
+                            allCorrect = false;
+                        }
+                    }
+                });
+                
+                if (!allFilled) {
+                    result.textContent = 'Please select an answer for each question.';
+                    result.classList.remove('success', 'error');
+                    result.classList.add('warning');
+                } else if (allCorrect) {
+                    result.textContent = 'Excellent! All answers are correct.';
+                    result.classList.remove('warning', 'error');
+                    result.classList.add('success');
+                } else {
+                    result.textContent = 'Some answers are incorrect. Review the feedback above.';
+                    result.classList.remove('success', 'warning');
+                    result.classList.add('error');
+                }
+            } else {
+                // Regular validation for other exercises
+                let allFilled = true;
+                let hasEmpty = false;
+
+                inputs.forEach((input) => {
+                    const value = input.value.trim();
+                    input.classList.remove('correct', 'incorrect');
+                    const feedback = getFeedbackForInput(input);
+                    
+                    if (feedback) {
+                        feedback.textContent = '';
+                        feedback.classList.remove('correct', 'incorrect');
+                    }
+
+                    if (!value) {
+                        hasEmpty = true;
+                        allFilled = false;
+                        return;
+                    }
+
+                    // For now, just mark as filled (can be extended with actual answer checking)
+                    input.classList.add('correct');
+                    if (feedback) {
+                        feedback.textContent = '✓';
+                        feedback.classList.add('correct');
+                    }
+                });
+
+                if (hasEmpty) {
+                    result.textContent = 'Please fill in all blanks before checking.';
+                    result.classList.remove('success', 'error');
+                    result.classList.add('warning');
+                    return;
+                }
+
+                if (allFilled) {
+                    result.textContent = 'All blanks filled! Great work.';
+                    result.classList.remove('warning', 'error');
+                    result.classList.add('success');
+                }
+            }
+        }
+
+        checkButton.addEventListener('click', validate);
+        resetButton.addEventListener('click', clearState);
+
+        // Allow Enter key to move to next input or check (only for text inputs, not Choose-and-Write)
+        if (!isChooseAndWrite && inputs.length > 0) {
+            inputs.forEach((input, index) => {
+                if (input.tagName === 'INPUT') {
+                    input.addEventListener('keydown', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault();
+                            const nextInput = inputs[index + 1];
+                            if (nextInput) {
+                                nextInput.focus();
+                            } else {
+                                validate();
+                            }
+                        }
+                    });
+                }
+            });
+        }
     }
 
     const interactiveSectionRenderers = {
@@ -694,14 +1385,33 @@ const TeachUI = (() => {
             parts.join('\n\n'),
             null,
             null,
-            isStorySection
+            isStorySection,
+            { sectionType: section.type }
         );
 
         if (messageEl) {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
-            const interactiveRenderer = interactiveSectionRenderers[section.id];
-            if (typeof interactiveRenderer === 'function') {
-                interactiveRenderer(messageEl, section);
+            // Add data attribute to indicate if this is a reading section (for word highlighting)
+            if (section.type === 'reading') {
+                messageEl.dataset.sectionType = 'reading';
+            }
+            
+            // Получаем answerKey из week, если он передан
+            const week = options.week;
+            const answerKey = week ? parseAnswerKey(week) : {};
+            const correctAnswers = getAnswersForExercise(answerKey, section);
+            
+            // Check for specific interactive renderer first
+            const specificRenderer = interactiveSectionRenderers[section.id];
+            if (typeof specificRenderer === 'function') {
+                specificRenderer(messageEl, section);
+            } else {
+                // Auto-detect fill-in-the-blanks exercises or "Choose and Write" exercises
+                const hasBlanks = /_{3,}/.test(section.content || '');
+                const isChooseAndWrite = /choose and write/i.test(section.heading || '');
+                if (hasBlanks || isChooseAndWrite) {
+                    renderFillInTheBlanksExercise(messageEl, section, correctAnswers);
+                }
             }
         }
 
@@ -797,7 +1507,8 @@ const TeachUI = (() => {
                 factory: () =>
                     addSectionMessage(chatArea, section, {
                         isTaskCompleted: options.isTaskCompleted,
-                        onTaskToggle: options.onTaskToggle
+                        onTaskToggle: options.onTaskToggle,
+                        week: week
                     })
             });
         });

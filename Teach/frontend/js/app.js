@@ -127,7 +127,7 @@
             loginScreen.style.display = 'flex';
         }
         if (appContainer) {
-            appContainer.style.display = 'none';
+            appContainer.classList.remove('active');
         }
         if (logoutButton) {
             logoutButton.style.display = 'none';
@@ -141,9 +141,7 @@
             loginScreen.style.display = 'none';
         }
         if (appContainer) {
-            appContainer.style.display = 'flex';
-            appContainer.style.flexDirection = 'column';
-            appContainer.style.minHeight = '0';
+            appContainer.classList.add('active');
         }
         if (logoutButton) {
             logoutButton.style.display = '';

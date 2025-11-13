@@ -108,21 +108,13 @@ Write the correct form of the verb (past simple or past continuous):
 
 ### Grammar Exercise 2: Choose and Write
 
-Write the correct form:
+Chose the correct form:
 
 1. Alex **looked / was looking** shocked when Pauline arrived.
 
-   Answer: Alex __________ shocked when Pauline arrived.
-
 2. Tim **tried / was trying** to avoid Ronnie all evening.
 
-   Answer: Tim __________ to avoid Ronnie all evening.
-
 3. While everyone **exchanged / was exchanging** gifts, Tim **received / was receiving** a threatening message.
-
-   Answer: While everyone __________ gifts, Tim __________ a threatening message.
-
----
 
 ## Writing Task 1: Character Description
 
