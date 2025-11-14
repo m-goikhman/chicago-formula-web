@@ -663,7 +663,7 @@
                 font-size: 0.8em;
             }
 
-            /* Mobile: меню становится 2x2 сеткой */
+            /* Mobile: menu becomes 2x2 grid */
             .horizontal-menu {
                 flex-wrap: wrap;
                 justify-content: stretch;

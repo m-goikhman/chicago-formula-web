@@ -10,7 +10,6 @@
 5. **suspicious** - feeling that something is wrong
 6. **deadline** - the latest time by which something must be done
 
----
 
 ### Exercise 1: Match the Words (Written)
 
@@ -26,7 +25,6 @@ b) hiding and watching secretly
 c) the time by which you must finish  
 d) listening to others' private conversation
 
----
 
 ### Exercise 2: Write Your Own Sentences
 
@@ -38,7 +36,6 @@ Write one sentence using each of these words:
 
 3. **lurking**: _______________________________________________
 
----
 
 ## The Christmas Party 
 
@@ -66,7 +63,6 @@ Suddenly, Fiona appears in the hallway. She sees Tim standing by the door, hidin
 
 Inside the stairwell, Alex finally says, "Fine. Go to my office and get the USB drive. It's shaped like a red fish. We'll talk later." He hands Pauline his office keys.
 
----
 
 ## Comprehension Questions (Written Answers)
 
@@ -88,7 +84,6 @@ Answer these questions in complete sentences:
 
    _______________________________________________
 
----
 
 ## Grammar Focus: Past Simple vs Past Continuous
 
@@ -104,7 +99,6 @@ Write the correct form of the verb (past simple or past continuous):
 
 4. Everyone __________ (exchange) gifts when Tim __________ (receive) the threatening note.
 
----
 
 ### Grammar Exercise 2: Choose and Write
 
@@ -137,7 +131,6 @@ _______________________________________________
 
 _______________________________________________
 
----
 
 ## Writing Task 2: Predictions
 
@@ -158,7 +151,6 @@ _______________________________________________
 
 _______________________________________________
 
----
 
 ## Vocabulary in Context
 
@@ -169,8 +161,6 @@ Fill in the blanks with words from the vocabulary list:
 Last week, I had a __________ to finish my project. I was working late in the library when I noticed someone __________ near my desk. I became __________ because this person kept looking at my papers. I think he was trying to __________ on my conversation with my friend. When I looked at him directly, he __________ and quickly walked away.
 
 Words: **deadline, lurking, suspicious, eavesdrop, turned pale**
-
----
 
 ## Writing Task 3: Personal Connection
 
@@ -194,7 +184,6 @@ Words: **deadline, lurking, suspicious, eavesdrop, turned pale**
 
    _______________________________________________
 
----
 
 ## Grammar Practice: Write Complete Sentences
 
@@ -224,26 +213,12 @@ Use the prompts to write complete sentences in the past simple or past continuou
 - What was the most difficult vocabulary word for you?
 - What grammar point do you need to practice more?
 
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
----
-
 ## Answer Key (for self-checking)
 
 **Exercise 1:** 1-d, 2-c, 3-a, 4-b
 
 **Grammar Exercise 1:** 1. opened/found, 2. were arguing/was eavesdropping, 3. was leaving/saw, 4. were exchanging/received
 
-**Grammar Exercise 2:** 1. looked, 2. was trying, 3. were exchanging/received
+**Grammar Exercise 2:** 1. looked, 2. was trying, 3. was exchanging/received
 
 **Exercise 3:** deadline, lurking, suspicious, eavesdrop, turned pale

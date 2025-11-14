@@ -8,9 +8,9 @@ const TeachUI = (() => {
     const stepProgressByWeek = new Map();
 
     /**
-     * Парсит Answer Key из секции недели и возвращает объект с правильными ответами
-     * @param {Object} week - объект недели с секциями
-     * @returns {Object} объект с правильными ответами, ключ - название упражнения, значение - массив ответов
+     * Parses Answer Key from week section and returns an object with correct answers
+     * @param {Object} week - week object with sections
+     * @returns {Object} object with correct answers, key - exercise name, value - array of answers
      */
     function parseAnswerKey(week) {
         if (!week || !week.sections) {
@@ -28,8 +28,8 @@ const TeachUI = (() => {
         const answerKey = {};
         const content = answerKeySection.content;
 
-        // Парсим ответы в формате: **Exercise Name:** ответ1, ответ2, ответ3
-        // Или: **Exercise Name:** 1. ответ1, 2. ответ2, 3. ответ3
+        // Parse answers in format: **Exercise Name:** answer1, answer2, answer3
+        // Or: **Exercise Name:** 1. answer1, 2. answer2, 3. answer3
         const exercisePattern = /\*\*([^*]+?):\*\*\s*([^\n]+)/g;
         let match;
 
@@ -37,27 +37,28 @@ const TeachUI = (() => {
             const exerciseName = match[1].trim();
             const answersText = match[2].trim();
 
-            // Нормализуем название упражнения для сопоставления
+            // Normalize exercise name for matching
             const normalizedName = exerciseName.toLowerCase()
                 .replace(/exercise\s*(\d+)/i, 'exercise $1')
                 .replace(/grammar\s*exercise\s*(\d+)/i, 'grammar exercise $1')
                 .trim();
 
-            // Парсим ответы
-            // Формат может быть: "1-d, 2-c, 3-a, 4-b" или "1. looked, 2. was trying, 3. were exchanging/received"
+            // Parse answers
+            // Format can be: "1-d, 2-c, 3-a, 4-b" or "1. looked, 2. was trying, 3. were exchanging/received"
             const answers = [];
             
-            // Если есть формат "1-ответ" или "1. ответ"
+            // If format is "1-answer" or "1. answer"
             const numberedPattern = /(\d+)[-.)]\s*([^,\n]+?)(?=\s*,\s*\d+[-.)]|$)/g;
             let answerMatch;
             while ((answerMatch = numberedPattern.exec(answersText)) !== null) {
                 let answer = answerMatch[2].trim();
-                // Убираем лишние пробелы и нормализуем
-                // Сохраняем "/" в ответе, если он есть (для случаев типа "were exchanging/received")
+                // If answer contains "/", this may be multiple answers for one question
+                // For example: "were exchanging/received" means two answers for two sets of options
+                // But we'll save it as is and process it when matching with options
                 answers.push(answer);
             }
 
-            // Если не нашли пронумерованные ответы, пробуем разбить по запятым
+            // If numbered answers not found, try splitting by commas
             if (answers.length === 0) {
                 const parts = answersText.split(',').map(part => part.trim()).filter(Boolean);
                 answers.push(...parts);
@@ -72,10 +73,10 @@ const TeachUI = (() => {
     }
 
     /**
-     * Находит правильные ответы для конкретного упражнения по его названию
-     * @param {Object} answerKey - объект с правильными ответами из parseAnswerKey
-     * @param {Object} section - секция упражнения
-     * @returns {Array|null} массив правильных ответов или null, если не найдено
+     * Finds correct answers for a specific exercise by its name
+     * @param {Object} answerKey - object with correct answers from parseAnswerKey
+     * @param {Object} section - exercise section
+     * @returns {Array|null} array of correct answers or null if not found
      */
     function getAnswersForExercise(answerKey, section) {
         if (!answerKey || !section) {
@@ -85,29 +86,29 @@ const TeachUI = (() => {
         const heading = section.heading || '';
         const content = section.content || '';
         
-        // Нормализуем название упражнения для сопоставления
+        // Normalize exercise name for matching
         const normalizedHeading = heading.toLowerCase()
             .replace(/grammar\s*focus[^:]*:\s*/i, '')
             .replace(/exercise\s*(\d+)/i, 'exercise $1')
             .replace(/grammar\s*exercise\s*(\d+)/i, 'grammar exercise $1')
             .trim();
 
-        // Извлекаем номер упражнения, если есть
+        // Extract exercise number if present
         const exerciseNumberMatch = normalizedHeading.match(/exercise\s*(\d+)/);
         const exerciseNumber = exerciseNumberMatch ? exerciseNumberMatch[1] : null;
         const isGrammarExercise = /grammar/i.test(normalizedHeading);
 
-        // Пробуем найти точное совпадение
+        // Try to find exact match
         for (const [key, answers] of Object.entries(answerKey)) {
             const normalizedKey = key.toLowerCase();
             
-            // Если есть номер упражнения, проверяем его
+            // If exercise number exists, check it
             if (exerciseNumber) {
                 const keyNumberMatch = normalizedKey.match(/exercise\s*(\d+)/);
                 const keyNumber = keyNumberMatch ? keyNumberMatch[1] : null;
                 
                 if (keyNumber === exerciseNumber) {
-                    // Проверяем, что это правильный тип упражнения (grammar или обычное)
+                    // Check that this is the correct exercise type (grammar or regular)
                     const keyIsGrammar = /grammar/i.test(normalizedKey);
                     if (isGrammarExercise === keyIsGrammar) {
                         return answers;
@@ -115,9 +116,9 @@ const TeachUI = (() => {
                 }
             }
             
-            // Альтернативный способ: проверяем частичное совпадение
+            // Alternative method: check partial match
             if (normalizedHeading.includes(normalizedKey) || normalizedKey.includes(normalizedHeading)) {
-                // Для "Grammar Exercise 2" ищем "grammar exercise 2"
+                // For "Grammar Exercise 2" we look for "grammar exercise 2"
                 if (normalizedHeading.includes('grammar exercise 2') && normalizedKey.includes('grammar exercise 2')) {
                     return answers;
                 }
@@ -234,84 +235,6 @@ const TeachUI = (() => {
     }
 
     function buildNextButtonLabel(stepType, context = {}) {
-        const { nextStep, week } = context;
-
-        if (!nextStep) {
-            return 'Continue';
-        }
-
-        if (nextStep.type === 'notes') {
-            return "I'm ready to capture my notes";
-        }
-
-        const nextSection = nextStep.type === 'section' ? nextStep.section : null;
-
-        const describeSection = (section) => {
-            if (!section) {
-                return { heading: '', info: { isStorySection: false } };
-            }
-            const info = getSectionHeadingInfo(section);
-            const rawHeading = info.displayHeading || info.heading;
-            const heading = truncateHeading(normaliseHeading(rawHeading));
-            return { heading, info };
-        };
-
-        const { heading: nextHeading, info: nextInfo } = describeSection(nextSection);
-        const nextType = nextSection?.type;
-
-        const buildWithHeading = (prefix, fallback) => {
-            if (nextHeading) {
-                return `${prefix} "${nextHeading}"`;
-            }
-            return fallback;
-        };
-
-        if (stepType === 'summary') {
-            if (nextSection) {
-                if (nextInfo.isStorySection || nextType === 'reading') {
-                    return buildWithHeading("Okay, let's start reading", "Okay, let's start reading");
-                }
-                if (nextType === 'task') {
-                    return buildWithHeading("Okay, let's gear up for", "Okay, let's gear up for the mission");
-                }
-                if (nextType === 'vocabulary') {
-                    return buildWithHeading("Okay, let's explore the new words in", "Okay, let's explore the new words");
-                }
-                if (nextType === 'reflection') {
-                    return buildWithHeading("Okay, let's reflect on", "Okay, let's reflect");
-                }
-                if (/practice|exercise/i.test(nextType ?? '')) {
-                    return buildWithHeading("Okay, let's practice with", "Okay, let's practice");
-                }
-                if (week?.title) {
-                    return buildWithHeading("Okay, let's dive into", `Okay, let's dive into "${truncateHeading(normaliseHeading(week.title))}"`);
-                }
-            }
-            return "Okay, let's get started";
-        }
-
-        if (stepType === 'section') {
-            if (nextSection) {
-                if (nextInfo.isStorySection || nextType === 'reading') {
-                    return buildWithHeading("Let's keep reading", "Let's keep the story going");
-                }
-                if (nextType === 'task') {
-                    return buildWithHeading("Ready for the mission", "I'm ready for the next mission");
-                }
-                if (nextType === 'vocabulary') {
-                    return buildWithHeading("Let's review the vocabulary in", "Let's review the new vocabulary");
-                }
-                if (nextType === 'reflection') {
-                    return buildWithHeading("Time to reflect on", "Time to reflect");
-                }
-                if (/practice|exercise/i.test(nextType ?? '')) {
-                    return buildWithHeading("Let's try the exercise", "Let's try the next exercise");
-                }
-                return buildWithHeading("Show me what's next in", "Show me what's next");
-            }
-            return 'Keep going';
-        }
-
         return 'Continue';
     }
 
@@ -919,62 +842,70 @@ const TeachUI = (() => {
             }
             
             // Now process each choice set with correct answers
-            choiceIndex = 0;
-            allChoices.forEach((choiceSet) => {
+            // We need to handle cases where one answer in Answer Key (like "were exchanging/received")
+            // corresponds to multiple choice sets in the same question
+            let answerKeyIdx = 0;
+            let partIndexInAnswer = 0; // Track which part of a "/" answer we're using
+            let currentAnswerParts = null; // Store split parts of current answer
+            
+            allChoices.forEach((choiceSet, idx) => {
                 const options = choiceSet.options;
                 choicesArray.push(options);
                 
                 // Use correct answer from Answer Key if available
-                if (correctAnswersFromKey && Array.isArray(correctAnswersFromKey) && correctAnswersFromKey[answerKeyIndex]) {
-                    let correctAnswer = correctAnswersFromKey[answerKeyIndex];
+                if (correctAnswersFromKey && Array.isArray(correctAnswersFromKey) && answerKeyIdx < correctAnswersFromKey.length) {
+                    let correctAnswer = correctAnswersFromKey[answerKeyIdx];
                     
-                    // Handle cases where answer might be "were exchanging/received" (multiple answers for multiple choice sets)
-                    // Check if this answer contains "/" and we have more choice sets ahead
-                    if (correctAnswer.includes('/') && answerKeyIndex < correctAnswersFromKey.length - 1) {
-                        // This might be a combined answer for multiple choice sets
-                        // But we'll handle it per choice set - find the part that matches this set
-                        const answerParts = correctAnswer.split('/').map(part => part.trim());
-                        // Find the option that best matches any of the answer parts
-                        const matchingOption = options.find(opt => 
-                            answerParts.some(part => {
-                                const optLower = opt.toLowerCase();
-                                const partLower = part.toLowerCase();
+                    // Handle cases where answer contains "/" (multiple answers for multiple choice sets in one question)
+                    // For example: "were exchanging/received" means two answers for two choice sets
+                    if (correctAnswer && correctAnswer.includes('/')) {
+                        // Split the answer into parts if we haven't already
+                        if (!currentAnswerParts) {
+                            currentAnswerParts = correctAnswer.split('/').map(part => part.trim());
+                            partIndexInAnswer = 0;
+                        }
+                        
+                        // Use the current part of the split answer
+                        if (partIndexInAnswer < currentAnswerParts.length) {
+                            const answerPart = currentAnswerParts[partIndexInAnswer];
+                            const matchingOption = options.find(opt => {
+                                const optLower = opt.toLowerCase().trim();
+                                const partLower = answerPart.toLowerCase().trim();
                                 return optLower === partLower || 
                                        optLower.includes(partLower) || 
                                        partLower.includes(optLower);
-                            })
-                        );
-                        correctAnswers.push(matchingOption || options[0]);
-                    } else if (correctAnswer.includes('/')) {
-                        // Single answer with "/" but it's the last one - split and use first part
-                        const answerParts = correctAnswer.split('/').map(part => part.trim());
-                        const matchingOption = options.find(opt => 
-                            answerParts.some(part => {
-                                const optLower = opt.toLowerCase();
-                                const partLower = part.toLowerCase();
-                                return optLower === partLower || 
-                                       optLower.includes(partLower) || 
-                                       partLower.includes(optLower);
-                            })
-                        );
-                        correctAnswers.push(matchingOption || options[0]);
+                            });
+                            correctAnswers.push(matchingOption || options[0]);
+                            partIndexInAnswer++;
+                            
+                            // If we've used all parts, move to next answer in Answer Key
+                            if (partIndexInAnswer >= currentAnswerParts.length) {
+                                answerKeyIdx++;
+                                currentAnswerParts = null;
+                                partIndexInAnswer = 0;
+                            }
+                        } else {
+                            // Fallback if something went wrong
+                            correctAnswers.push(options[0]);
+                        }
                     } else {
                         // Single answer - find matching option (case-insensitive, partial match)
                         const matchingOption = options.find(opt => {
                             const optLower = opt.toLowerCase().trim();
-                            const answerLower = correctAnswer.toLowerCase().trim();
+                            const answerLower = (correctAnswer || '').toLowerCase().trim();
                             return optLower === answerLower || 
                                    optLower.includes(answerLower) || 
                                    answerLower.includes(optLower);
                         });
                         correctAnswers.push(matchingOption || options[0]);
+                        answerKeyIdx++;
+                        currentAnswerParts = null;
+                        partIndexInAnswer = 0;
                     }
-                    answerKeyIndex++;
                 } else {
                     // Fallback to first option if no answer key provided
                     correctAnswers.push(options[0]);
                 }
-                choiceIndex++;
             });
         }
 
@@ -1396,7 +1327,7 @@ const TeachUI = (() => {
                 messageEl.dataset.sectionType = 'reading';
             }
             
-            // Получаем answerKey из week, если он передан
+            // Get answerKey from week if provided
             const week = options.week;
             const answerKey = week ? parseAnswerKey(week) : {};
             const correctAnswers = getAnswersForExercise(answerKey, section);
