@@ -16,6 +16,7 @@ frontend/.env.local
 # IDE
 .vscode/
 .idea/
+.cursor/rules/
 *.swp
 *.swo
 *~
