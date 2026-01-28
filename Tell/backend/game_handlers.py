@@ -603,12 +603,12 @@ def _normalize_intro_step(entry, step_index: int, total: int):
 
 def _load_intro_file_safe(filename: str, episode: int) -> str:
     """Load intro file; return fallback text if file missing (no error)."""
-    try:
-        path = get_game_text_path(filename, episode)
-        return load_system_prompt(path)
-    except Exception as e:
-        logger.warning(f"Intro file not found or unreadable: {filename} for ep{episode}: {e}")
+    path = get_game_text_path(filename, episode)
+    content = load_system_prompt(path)
+    if content.strip() == "You are a helpful assistant.":
+        logger.warning(f"Intro file missing or unreadable: {filename} for ep{episode}")
         return "Continue."
+    return content
 
 
 async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
