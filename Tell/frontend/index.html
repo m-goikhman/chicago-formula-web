@@ -34,7 +34,12 @@
             </button>
             <div class="header-title-container">
                 <h1>The Chicago Formula</h1>
-                <p>Language Learning Detective Game</p>
+                <div id="episodeSelector" class="episode-selector">
+                    <span id="episodeDisplay" class="episode-display">Episode 1</span>
+                    <div id="episodeDropdown" class="episode-dropdown" style="display: none;">
+                        <!-- Episode list will be populated here -->
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -139,11 +144,37 @@
             <div id="drawerOverlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
         </div>
         
-        <!-- Tutorial Overlay -->
-        <div id="tutorialOverlay" class="tutorial-overlay"></div>
-        <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
-        <div id="tutorialTooltip" class="tutorial-tooltip" style="display: none;"></div>
-    </div>
+            <!-- Tutorial Overlay -->
+            <div id="tutorialOverlay" class="tutorial-overlay"></div>
+            <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
+            <div id="tutorialTooltip" class="tutorial-tooltip" style="display: none;"></div>
+            
+            <!-- Floating Nina Button -->
+            <button id="ninaFloatingButton" class="nina-floating-button" onclick="openNinaChat()" title="Ask Nina for help" style="display: none;">
+                <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-avatar">
+            </button>
+            
+            <!-- Nina Chat Modal -->
+            <div id="ninaChatModal" class="nina-chat-modal" style="display: none;">
+                <div class="nina-chat-header">
+                    <div class="nina-chat-header-content">
+                        <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-avatar">
+                        <div>
+                            <h3>Sergeant Nina Réyes</h3>
+                            <p>Your mentor and guide</p>
+                        </div>
+                    </div>
+                    <button class="nina-chat-close" onclick="closeNinaChat()">✕</button>
+                </div>
+                <div class="nina-chat-messages" id="ninaChatMessages">
+                    <!-- Messages will be added here -->
+                </div>
+                <div class="nina-chat-input-area">
+                    <textarea id="ninaChatInput" placeholder="Ask Nina for help..." rows="1"></textarea>
+                    <button id="ninaChatSendBtn" onclick="sendNinaMessage()">Send</button>
+                </div>
+            </div>
+        </div>
 
     <!-- JavaScript modules -->
     <script src="./shared/js/config.js"></script>

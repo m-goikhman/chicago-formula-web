@@ -41,6 +41,9 @@ async function login() {
                 navigationBar.style.display = 'flex';
             }
             
+            // Show Nina floating button after investigation starts
+            // It will be shown when investigation actually begins
+            
             // Populate drawers
             if (window.populateCharactersDrawer) {
                 window.populateCharactersDrawer();
@@ -55,6 +58,9 @@ async function login() {
             if (firstDrawerItem) {
                 firstDrawerItem.classList.add('active');
             }
+            
+            // Load episode selector
+            await loadEpisodeSelector();
             
             // Load game
             loadGame();
@@ -215,6 +221,12 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
         
         // Check if this is the "start_investigation" action and tutorial needs to be shown
         if (action === 'start_investigation') {
+            // Show Nina floating button when investigation starts
+            const ninaButton = document.getElementById('ninaFloatingButton');
+            if (ninaButton) {
+                ninaButton.style.display = 'flex';
+            }
+            
             const tutorialCompleted = localStorage.getItem(`tutorial_completed_${participantCode}`);
             if (!tutorialCompleted) {
                 // Initialize and show tutorial after a delay to let messages appear
@@ -381,6 +393,15 @@ function logout() {
         navigationBar.style.display = 'none';
     }
     
+    // Hide Nina floating button
+    const ninaButton = document.getElementById('ninaFloatingButton');
+    if (ninaButton) {
+        ninaButton.style.display = 'none';
+    }
+    
+    // Close Nina chat if open
+    closeNinaChat();
+    
     // Clear chat area
     const chatArea = document.getElementById('chatArea');
     if (chatArea) {
@@ -460,8 +481,29 @@ async function restoreSession() {
                 firstDrawerItem.classList.add('active');
             }
             
+            // Load episode selector
+            await loadEpisodeSelector();
+            
             // Load game
             await loadGame();
+            
+            // Check if investigation has started (look for Nina messages or navigation bar visibility)
+            // If navigation bar is visible, investigation likely started
+            if (navigationBar && navigationBar.style.display !== 'none') {
+                const ninaButton = document.getElementById('ninaFloatingButton');
+                if (ninaButton) {
+                    // Check if there are any messages from Nina in the chat
+                    const chatArea = document.getElementById('chatArea');
+                    if (chatArea) {
+                        const ninaMessages = chatArea.querySelectorAll('.message.character');
+                        // If we have character messages (especially from Nina), show the button
+                        if (ninaMessages.length > 0) {
+                            ninaButton.style.display = 'flex';
+                        }
+                    }
+                }
+            }
+            
             return true;
         } else {
             // Token expired or invalid, clear storage
@@ -478,6 +520,310 @@ async function restoreSession() {
     }
 }
 
+// Nina chat functions
+function openNinaChat() {
+    const modal = document.getElementById('ninaChatModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        // Focus on input
+        const input = document.getElementById('ninaChatInput');
+        if (input) {
+            setTimeout(() => input.focus(), 100);
+        }
+    }
+}
+
+function closeNinaChat() {
+    const modal = document.getElementById('ninaChatModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function sendNinaMessage() {
+    const input = document.getElementById('ninaChatInput');
+    const sendBtn = document.getElementById('ninaChatSendBtn');
+    const messagesContainer = document.getElementById('ninaChatMessages');
+    
+    if (!input || !sendBtn || !messagesContainer) return;
+    
+    const text = input.value.trim();
+    if (!text) return;
+    
+    // Disable input and button
+    input.disabled = true;
+    sendBtn.disabled = true;
+    
+    // Show user message
+    const userMessageDiv = document.createElement('div');
+    userMessageDiv.className = 'nina-chat-message user';
+    userMessageDiv.innerHTML = `
+        <div class="nina-chat-message-content">${text}</div>
+    `;
+    messagesContainer.appendChild(userMessageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Clear input
+    input.value = '';
+    input.style.height = 'auto';
+    
+    // Show typing indicator
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'nina-chat-message nina';
+    typingDiv.innerHTML = `
+        <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+        <div class="nina-chat-message-content">Nina is typing...</div>
+    `;
+    messagesContainer.appendChild(typingDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    try {
+        const { response, data } = await apiClient.postJson('/api/game/nina', { text }, {
+            token: sessionToken
+        });
+        
+        // Remove typing indicator
+        typingDiv.remove();
+        
+        if (!response.ok) {
+            const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to send message';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'nina-chat-message nina';
+            errorDiv.innerHTML = `
+                <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+                <div class="nina-chat-message-content" style="color: #d32f2f;">Error: ${errorMessage}</div>
+            `;
+            messagesContainer.appendChild(errorDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return;
+        }
+        
+        // Display Nina's response
+        if (data && data.messages && Array.isArray(data.messages)) {
+            for (const msg of data.messages) {
+                const ninaMessageDiv = document.createElement('div');
+                ninaMessageDiv.className = 'nina-chat-message nina';
+                
+                // Render markdown content
+                const content = renderMarkdownForNina(msg.content || '');
+                
+                ninaMessageDiv.innerHTML = `
+                    <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+                    <div class="nina-chat-message-content">${content}</div>
+                `;
+                messagesContainer.appendChild(ninaMessageDiv);
+            }
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+    } catch (error) {
+        // Remove typing indicator
+        typingDiv.remove();
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'nina-chat-message nina';
+        errorDiv.innerHTML = `
+            <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+            <div class="nina-chat-message-content" style="color: #d32f2f;">Error: Failed to send message</div>
+        `;
+        messagesContainer.appendChild(errorDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } finally {
+        // Re-enable input and button
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+    }
+}
+
+// Use the shared markdown renderer if available
+function renderMarkdownForNina(text) {
+    if (!text) return '';
+    
+    // Use the shared renderMarkdown function if available
+    if (window.uiShared && typeof window.uiShared.renderMarkdown === 'function') {
+        return window.uiShared.renderMarkdown(text);
+    }
+    
+    // Fallback: simple markdown renderer
+    // Escape HTML first
+    let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    
+    // Bold **text**
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // Italic *text*
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Line breaks
+    html = html.replace(/\n/g, '<br>');
+    
+    return html;
+}
+
+// Handle Enter key in Nina chat input
+document.addEventListener('DOMContentLoaded', function() {
+    const ninaInput = document.getElementById('ninaChatInput');
+    if (ninaInput) {
+        ninaInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendNinaMessage();
+            }
+        });
+        
+        // Auto-resize textarea
+        ninaInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+        });
+    }
+    
+    // Close modal when clicking outside
+    const ninaModal = document.getElementById('ninaChatModal');
+    if (ninaModal) {
+        ninaModal.addEventListener('click', function(e) {
+            if (e.target === ninaModal) {
+                closeNinaChat();
+            }
+        });
+    }
+});
+
+// Episode selector functions
+async function loadEpisodeSelector() {
+    try {
+        const { response, data } = await apiClient.get('/api/game/stages', {
+            token: sessionToken
+        });
+        
+        if (!response.ok) {
+            console.error('Failed to load stages');
+            return;
+        }
+        
+        const stagesInfo = data.stages_info || [];
+        const currentStage = data.current_stage || 1;
+        const availableStages = data.available_stages || [1];
+        
+        const episodeDisplay = document.getElementById('episodeDisplay');
+        const episodeSelector = document.getElementById('episodeSelector');
+        const episodeDropdown = document.getElementById('episodeDropdown');
+        
+        if (!episodeDisplay || !episodeSelector || !episodeDropdown) {
+            return;
+        }
+        
+        // Update display
+        episodeDisplay.textContent = `Episode ${currentStage}`;
+        
+        // If only one stage is available, don't show dropdown
+        if (availableStages.length <= 1) {
+            episodeSelector.classList.remove('has-dropdown');
+            episodeDropdown.style.display = 'none';
+            episodeDisplay.style.cursor = 'default';
+            return;
+        }
+        
+        // Show dropdown functionality
+        episodeSelector.classList.add('has-dropdown');
+        episodeDisplay.style.cursor = 'pointer';
+        
+        // Populate dropdown
+        episodeDropdown.innerHTML = '';
+        stagesInfo.forEach(stageInfo => {
+            const item = document.createElement('div');
+            item.className = 'episode-dropdown-item';
+            
+            if (stageInfo.current) {
+                item.classList.add('current');
+            }
+            
+            if (stageInfo.completed) {
+                item.classList.add('completed');
+            }
+            
+            if (!stageInfo.available) {
+                item.classList.add('locked');
+            }
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'episode-name';
+            nameSpan.textContent = `Episode ${stageInfo.stage}: ${stageInfo.name}`;
+            
+            const statusSpan = document.createElement('span');
+            statusSpan.className = 'episode-status';
+            if (stageInfo.completed) {
+                statusSpan.textContent = 'Completed';
+            } else if (stageInfo.current) {
+                statusSpan.textContent = 'Current';
+            } else if (!stageInfo.available) {
+                statusSpan.textContent = 'Locked';
+            } else {
+                statusSpan.textContent = 'Available';
+            }
+            
+            item.appendChild(nameSpan);
+            item.appendChild(statusSpan);
+            
+            if (stageInfo.available && !stageInfo.locked) {
+                item.onclick = () => switchEpisode(stageInfo.stage);
+            }
+            
+            episodeDropdown.appendChild(item);
+        });
+        
+        // Toggle dropdown on click
+        episodeDisplay.onclick = (e) => {
+            e.stopPropagation();
+            episodeSelector.classList.toggle('dropdown-open');
+            if (episodeSelector.classList.contains('dropdown-open')) {
+                episodeDropdown.style.display = 'block';
+            } else {
+                episodeDropdown.style.display = 'none';
+            }
+        };
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function closeDropdownOnOutsideClick(e) {
+            if (!episodeSelector.contains(e.target)) {
+                episodeSelector.classList.remove('dropdown-open');
+                episodeDropdown.style.display = 'none';
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error loading episode selector:', error);
+    }
+}
+
+async function switchEpisode(stageNumber) {
+    try {
+        const { response, data } = await apiClient.postJson('/api/game/stage/switch', {
+            stage_number: stageNumber
+        }, {
+            token: sessionToken
+        });
+        
+        if (!response.ok) {
+            alert('Failed to switch episode. Please try again.');
+            return;
+        }
+        
+        // Reload episode selector
+        await loadEpisodeSelector();
+        
+        // Reload game to show new episode content
+        await loadGame();
+        
+    } catch (error) {
+        console.error('Error switching episode:', error);
+        alert('Failed to switch episode. Please try again.');
+    }
+}
+
 // Export to window for HTML compatibility
 window.login = login;
 window.loadGame = loadGame;
@@ -486,3 +832,8 @@ window.sendMessage = sendMessage;
 window.explainWord = explainWord;
 window.logout = logout;
 window.restoreSession = restoreSession;
+window.openNinaChat = openNinaChat;
+window.closeNinaChat = closeNinaChat;
+window.sendNinaMessage = sendNinaMessage;
+window.loadEpisodeSelector = loadEpisodeSelector;
+window.switchEpisode = switchEpisode;

@@ -158,6 +158,98 @@
         .header p a:hover {
             opacity: 0.8;
         }
+
+        /* Episode Selector */
+        .episode-selector {
+            position: relative;
+            display: inline-block;
+        }
+
+        .episode-display {
+            font-size: 14px;
+            font-weight: 300;
+            opacity: 0.85;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .episode-selector.has-dropdown .episode-display::after {
+            content: '▼';
+            font-size: 10px;
+            opacity: 0.7;
+            transition: transform 0.2s;
+        }
+
+        .episode-selector.has-dropdown .episode-display:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .episode-selector.dropdown-open .episode-display::after {
+            transform: rotate(180deg);
+        }
+
+        .episode-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 8px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            min-width: 200px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+
+        .episode-dropdown-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .episode-dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .episode-dropdown-item:hover {
+            background-color: #f5f3ef;
+        }
+
+        .episode-dropdown-item.current {
+            background-color: #e8f4f7;
+            font-weight: 500;
+        }
+
+        .episode-dropdown-item.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .episode-dropdown-item.completed::after {
+            content: '✓';
+            color: #0097b2;
+            margin-left: 8px;
+        }
+
+        .episode-name {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .episode-status {
+            font-size: 12px;
+            color: #666;
+            margin-left: 8px;
+        }
         
         /* Horizontal dropdown menu */
         .horizontal-menu {
@@ -660,6 +752,10 @@
             }
 
             .header-title-container p {
+                font-size: 0.8em;
+            }
+
+            .episode-display {
                 font-size: 0.8em;
             }
 

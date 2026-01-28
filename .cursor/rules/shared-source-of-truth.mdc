@@ -1,0 +1,22 @@
+---
+description: Edit shared version when the file exists in shared/
+alwaysApply: true
+---
+
+# Shared as source of truth
+
+Before changing any file, check whether a shared version exists:
+
+- **Frontend**: `Teach/frontend/shared/` and `Tell/frontend/shared/` are copies of `shared/frontend/`. Deploy overwrites them from there.
+- **Backend**: `shared/backend/` holds shared backend code.
+
+**Rule:** If you are about to edit a file under `Teach/frontend/shared/` or `Tell/frontend/shared/`, check for the same path under `shared/frontend/`. If it exists, edit `shared/frontend/...` instead. Same idea for any path that has an equivalent under `shared/` (frontend or backend).
+
+**Mapping:**
+
+| Copy (do not edit here)     | Source of truth (edit here)   |
+|-----------------------------|-------------------------------|
+| `Teach/frontend/shared/**`  | `shared/frontend/**`         |
+| `Tell/frontend/shared/**`   | `shared/frontend/**`         |
+
+Example: to change shared styles, edit `shared/frontend/css/styles.css`, not `Tell/frontend/shared/css/styles.css` or `Teach/frontend/shared/css/styles.css`.

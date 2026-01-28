@@ -153,7 +153,7 @@ class GameStateManager:
         """Restore sets in the game state from lists."""
         restored = {}
         for key, value in game_state.items():
-            if key in ["clues_examined", "suspects_interrogated"] and isinstance(value, list):
+            if key in ["clues_examined", "suspects_interrogated", "stages_completed"] and isinstance(value, list):
                 restored[key] = set(value)
             elif key == "topic_memory" and isinstance(value, dict):
                 # Handle nested topic_memory structure
@@ -164,6 +164,21 @@ class GameStateManager:
                     else:
                         topic_memory[topic_key] = topic_value
                 restored[key] = topic_memory
+            elif key == "stage_progress" and isinstance(value, dict):
+                # Handle stage_progress with nested sets
+                stage_progress = {}
+                for stage_num, stage_data in value.items():
+                    if isinstance(stage_data, dict):
+                        restored_stage = {}
+                        for stage_key, stage_value in stage_data.items():
+                            if stage_key in ["clues_examined", "suspects_interrogated"] and isinstance(stage_value, list):
+                                restored_stage[stage_key] = set(stage_value)
+                            else:
+                                restored_stage[stage_key] = stage_value
+                        stage_progress[stage_num] = restored_stage
+                    else:
+                        stage_progress[stage_num] = stage_data
+                restored[key] = stage_progress
             else:
                 restored[key] = value
         return restored

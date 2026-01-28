@@ -241,7 +241,7 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     logger.info(f"Message from {participant_code}: {request.text}")
     
     from config import GAME_STATE
-    from game_handlers import handle_private_message, handle_public_message, analyze_and_log_user_text
+    from game_handlers import handle_private_message, handle_public_message, handle_nina_message, analyze_and_log_user_text
     
     state = GAME_STATE.get(participant_code, {})
     mode = state.get("mode", "public")
@@ -263,6 +263,18 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     
     # Handle public mode with director logic
     messages = await handle_public_message(participant_code, request.text)
+    return {"messages": messages}
+
+
+@app.post("/api/game/nina")
+async def send_message_to_nina(request: MessageRequest, current_user=Depends(get_current_user)):
+    """Send a message to Nina (mentor/guide character)."""
+    participant_code = current_user["participant_code"]
+    logger.info(f"Message to Nina from {participant_code}: {request.text}")
+    
+    from game_handlers import handle_nina_message
+    
+    messages = await handle_nina_message(participant_code, request.text)
     return {"messages": messages}
 
 
@@ -383,6 +395,125 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         return {"messages": messages}
     
     return {"error": "Unknown action"}
+
+
+# Multi-stage game endpoints
+
+@app.get("/api/game/stages")
+async def get_available_stages(current_user=Depends(get_current_user)):
+    """Get list of available stages for the current user."""
+    participant_code = current_user["participant_code"]
+    logger.info(f"Getting available stages for participant: {participant_code}")
+    
+    from game_handlers import get_available_stages, GAME_STATE
+    from config import STAGE_CONFIG, TOTAL_STAGES
+    
+    # Ensure state is loaded
+    if participant_code not in GAME_STATE:
+        from game_handlers import start_game_handler
+        await start_game_handler(participant_code)
+    
+    available_stages = get_available_stages(participant_code)
+    current_stage = GAME_STATE.get(participant_code, {}).get("current_stage", 1)
+    stages_completed = list(GAME_STATE.get(participant_code, {}).get("stages_completed", set()))
+    stage_progress = GAME_STATE.get(participant_code, {}).get("stage_progress", {})
+    
+    # Special test mode: for TEST participant, show all stages as available
+    is_test_mode = participant_code.upper() == "TEST"
+    
+    # Build stage info
+    stages_info = []
+    # For test mode, include all stages; otherwise only available ones
+    stages_to_show = list(range(1, TOTAL_STAGES + 1)) if is_test_mode else available_stages
+    
+    for stage_num in stages_to_show:
+        stage_config = STAGE_CONFIG.get(stage_num, {})
+        progress = stage_progress.get(stage_num, {})
+        is_available = stage_num in available_stages if not is_test_mode else True
+        
+        stages_info.append({
+            "stage": stage_num,
+            "name": stage_config.get("name", f"Stage {stage_num}"),
+            "available": is_available,
+            "current": stage_num == current_stage,
+            "completed": stage_num in stages_completed,
+            "status": progress.get("completion_status", "not_started")
+        })
+    
+    return {
+        "available_stages": available_stages,
+        "current_stage": current_stage,
+        "stages_completed": stages_completed,
+        "stages_info": stages_info
+    }
+
+
+class StageSwitchRequest(BaseModel):
+    stage_number: int
+
+
+@app.post("/api/game/stage/switch")
+async def switch_stage(request: StageSwitchRequest, current_user=Depends(get_current_user)):
+    """Switch to a different stage."""
+    participant_code = current_user["participant_code"]
+    logger.info(f"Switching to stage {request.stage_number} for participant: {participant_code}")
+    
+    from game_handlers import switch_stage, GAME_STATE
+    
+    # Ensure state is loaded
+    if participant_code not in GAME_STATE:
+        from game_handlers import start_game_handler
+        await start_game_handler(participant_code)
+    
+    success = await switch_stage(participant_code, request.stage_number)
+    
+    if success:
+        return {"success": True, "current_stage": request.stage_number}
+    else:
+        raise HTTPException(status_code=400, detail="Stage not available or invalid")
+
+
+@app.post("/api/game/stage/skip")
+async def skip_stage(request: StageSwitchRequest, current_user=Depends(get_current_user)):
+    """Skip the current stage."""
+    participant_code = current_user["participant_code"]
+    logger.info(f"Skipping stage {request.stage_number} for participant: {participant_code}")
+    
+    from game_handlers import skip_stage, GAME_STATE
+    
+    # Ensure state is loaded
+    if participant_code not in GAME_STATE:
+        from game_handlers import start_game_handler
+        await start_game_handler(participant_code)
+    
+    success = await skip_stage(participant_code, request.stage_number)
+    
+    if success:
+        return {"success": True, "stage_skipped": request.stage_number}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to skip stage")
+
+
+@app.get("/api/game/knowledge")
+async def get_knowledge(current_user=Depends(get_current_user)):
+    """Get accumulated knowledge from all stages."""
+    participant_code = current_user["participant_code"]
+    logger.info(f"Getting knowledge for participant: {participant_code}")
+    
+    from game_handlers import GAME_STATE
+    
+    # Ensure state is loaded
+    if participant_code not in GAME_STATE:
+        from game_handlers import start_game_handler
+        await start_game_handler(participant_code)
+    
+    state = GAME_STATE.get(participant_code, {})
+    global_knowledge = state.get("global_knowledge", [])
+    
+    return {
+        "knowledge": global_knowledge,
+        "total_items": len(global_knowledge)
+    }
 
 
 @app.websocket("/ws/{participant_code}")

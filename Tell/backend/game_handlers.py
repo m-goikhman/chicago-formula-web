@@ -6,15 +6,17 @@ import logging
 import json
 import time
 import random
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
+from datetime import datetime, timedelta
 
 import bootstrap  # noqa: F401
 
-from utils import load_system_prompt, combine_character_prompt, save_message_to_cache, log_message
-from config import GAME_STATE, CHARACTER_DATA, SUSPECT_KEYS, TOTAL_CLUES
+from utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
+from config import GAME_STATE, CHARACTER_DATA, SUSPECT_KEYS, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG
 from game_state_manager import game_state_manager
 from shared.backend.progress_manager import progress_manager
 from ai_services import ask_for_dialogue
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,34 @@ def generate_message_id() -> int:
 
 def initialize_game_state(participant_code: str) -> Dict:
     """Initialize new game state for a participant."""
+    from datetime import datetime
+    import pytz
+    
+    # Special test mode: for TEST participant, set current stage to 4 and unlock all stages
+    is_test_mode = participant_code.upper() == "TEST"
+    
+    # Initialize stage progress for all stages
+    stage_progress = {}
+    for stage_num in range(1, 5):  # Stages 1-4
+        stage_progress[stage_num] = {
+            "clues_examined": set(),
+            "suspects_interrogated": set(),
+            "key_information_found": [],
+            "completion_status": "not_started"  # "not_started", "in_progress", "completed", "skipped"
+        }
+    
+    # Stage 1 is always available, or all stages for TEST mode
+    cet_tz = pytz.timezone('Europe/Berlin')
+    now = datetime.now(cet_tz)
+    stage_unlock_dates = {
+        1: now.isoformat()  # Stage 1 unlocked immediately
+    }
+    
+    # For test mode, unlock all stages immediately
+    if is_test_mode:
+        for stage_num in range(2, TOTAL_STAGES + 1):
+            stage_unlock_dates[stage_num] = now.isoformat()
+    
     return {
         "mode": "public",
         "current_character": None,
@@ -34,16 +64,280 @@ def initialize_game_state(participant_code: str) -> Dict:
         "accusation_attempts": 0,
         "reveal_step": 0,
         "custom_reveal_step": 0,
-        "clues_examined": set(),
-        "suspects_interrogated": set(),
+        "clues_examined": set(),  # Legacy - for current stage
+        "suspects_interrogated": set(),  # Legacy - for current stage
         "accuse_unlocked": False,
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
         "participant_code": participant_code,
         "waiting_for_participant_code": False,
         "onboarding_step": "consent",
-        "current_language_level": "B1"  # Default level
+        "current_language_level": "B1",  # Default level
+        # Multi-stage fields
+        "current_stage": 4 if is_test_mode else 1,  # Test mode starts at stage 4
+        "stages_completed": set(),
+        "stage_unlock_dates": stage_unlock_dates,
+        "stage_progress": stage_progress,
+        "global_knowledge": []  # List of dicts: {"stage": int, "information": str, "source": str, "importance": str}
     }
+
+
+def migrate_legacy_game_state(state: Dict) -> Dict:
+    """Migrate legacy game state to multi-stage format."""
+    participant_code = state.get("participant_code", "")
+    is_test_mode = participant_code.upper() == "TEST"
+    
+    # If state doesn't have multi-stage fields, initialize them
+    if "current_stage" not in state:
+        state["current_stage"] = 4 if is_test_mode else 1
+        
+    if "stages_completed" not in state:
+        # If game was completed, mark stage 1 as completed
+        if state.get("game_completed", False):
+            state["stages_completed"] = {1}
+        else:
+            state["stages_completed"] = set()
+    
+    if "stage_unlock_dates" not in state:
+        cet_tz = pytz.timezone('Europe/Berlin')
+        now = datetime.now(cet_tz)
+        state["stage_unlock_dates"] = {
+            1: now.isoformat()
+        }
+        # For test mode, unlock all stages immediately
+        if is_test_mode:
+            for stage_num in range(2, TOTAL_STAGES + 1):
+                state["stage_unlock_dates"][stage_num] = now.isoformat()
+    
+    if "stage_progress" not in state:
+        stage_progress = {}
+        for stage_num in range(1, TOTAL_STAGES + 1):
+            stage_progress[stage_num] = {
+                "clues_examined": set(),
+                "suspects_interrogated": set(),
+                "key_information_found": [],
+                "completion_status": "not_started"
+            }
+        
+        # Migrate current progress to stage 1
+        if "clues_examined" in state:
+            stage_progress[1]["clues_examined"] = state.get("clues_examined", set())
+        if "suspects_interrogated" in state:
+            stage_progress[1]["suspects_interrogated"] = state.get("suspects_interrogated", set())
+        
+        # If game was in progress, mark stage 1 as in_progress
+        if state.get("onboarding_step") == "investigation_started" and not state.get("game_completed", False):
+            stage_progress[1]["completion_status"] = "in_progress"
+        elif 1 in state.get("stages_completed", set()):
+            stage_progress[1]["completion_status"] = "completed"
+        
+        state["stage_progress"] = stage_progress
+    
+    if "global_knowledge" not in state:
+        state["global_knowledge"] = []
+    
+    return state
+
+
+def get_available_stages(participant_code: str) -> List[int]:
+    """Get list of stages available to the player."""
+    # Special test mode: for TEST participant, all stages are always available
+    if participant_code.upper() == "TEST":
+        return list(range(1, TOTAL_STAGES + 1))
+    
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [1]  # Stage 1 always available
+    
+    # Ensure state is migrated
+    state = migrate_legacy_game_state(state)
+    
+    available = [1]  # Stage 1 is always available
+    cet_tz = pytz.timezone('Europe/Berlin')
+    now = datetime.now(cet_tz)
+    
+    stage_unlock_dates = state.get("stage_unlock_dates", {})
+    stages_completed = state.get("stages_completed", set())
+    stage_progress = state.get("stage_progress", {})
+    
+    for stage_num in range(2, TOTAL_STAGES + 1):
+        # Check if previous stage is completed or skipped
+        prev_stage = stage_num - 1
+        prev_status = stage_progress.get(prev_stage, {}).get("completion_status", "not_started")
+        
+        if prev_status in ["completed", "skipped"]:
+            # Check unlock date
+            unlock_date_str = stage_unlock_dates.get(stage_num)
+            if unlock_date_str:
+                try:
+                    unlock_date = datetime.fromisoformat(unlock_date_str)
+                    if now >= unlock_date:
+                        available.append(stage_num)
+                except (ValueError, TypeError):
+                    # Invalid date format, unlock immediately if previous stage is done
+                    available.append(stage_num)
+            else:
+                # No unlock date set, check if we need to set it
+                if prev_status == "completed":
+                    # Set unlock date to 7 days from now
+                    unlock_date = now + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
+                    stage_unlock_dates[stage_num] = unlock_date.isoformat()
+                    state["stage_unlock_dates"] = stage_unlock_dates
+                    # Stage not yet available
+                elif prev_status == "skipped":
+                    # If skipped, unlock immediately
+                    available.append(stage_num)
+    
+    return sorted(available)
+
+
+async def complete_stage(participant_code: str, stage_number: int) -> bool:
+    """Mark a stage as completed and unlock the next stage."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return False
+    
+    state = migrate_legacy_game_state(state)
+    
+    # Update stage progress
+    if stage_number not in state["stage_progress"]:
+        state["stage_progress"][stage_number] = {
+            "clues_examined": set(),
+            "suspects_interrogated": set(),
+            "key_information_found": [],
+            "completion_status": "completed"
+        }
+    else:
+        state["stage_progress"][stage_number]["completion_status"] = "completed"
+    
+    # Add to completed stages
+    state["stages_completed"].add(stage_number)
+    
+    # Add key information to global knowledge
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    key_info = stage_config.get("key_information", [])
+    
+    for info in key_info:
+        knowledge_entry = {
+            "stage": stage_number,
+            "information": info,
+            "source": "stage_completion",
+            "importance": "high"
+        }
+        # Avoid duplicates
+        if knowledge_entry not in state["global_knowledge"]:
+            state["global_knowledge"].append(knowledge_entry)
+    
+    # Set unlock date for next stage
+    if stage_number < TOTAL_STAGES:
+        next_stage = stage_number + 1
+        cet_tz = pytz.timezone('Europe/Berlin')
+        unlock_date = datetime.now(cet_tz) + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
+        
+        stage_unlock_dates = state.get("stage_unlock_dates", {})
+        stage_unlock_dates[next_stage] = unlock_date.isoformat()
+        state["stage_unlock_dates"] = stage_unlock_dates
+    
+    # Save state
+    await game_state_manager.save_game_state(participant_code, state)
+    
+    logger.info(f"Participant {participant_code}: Stage {stage_number} completed")
+    return True
+
+
+async def skip_stage(participant_code: str, stage_number: int) -> bool:
+    """Skip a stage and add hints to global knowledge."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return False
+    
+    state = migrate_legacy_game_state(state)
+    
+    # Update stage progress
+    if stage_number not in state["stage_progress"]:
+        state["stage_progress"][stage_number] = {
+            "clues_examined": set(),
+            "suspects_interrogated": set(),
+            "key_information_found": [],
+            "completion_status": "skipped"
+        }
+    else:
+        state["stage_progress"][stage_number]["completion_status"] = "skipped"
+    
+    # Add key information from stage config as hints
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    key_info = stage_config.get("key_information", [])
+    
+    for info in key_info:
+        knowledge_entry = {
+            "stage": stage_number,
+            "information": info,
+            "source": "nina_hint",
+            "importance": "medium"
+        }
+        # Avoid duplicates
+        if knowledge_entry not in state["global_knowledge"]:
+            state["global_knowledge"].append(knowledge_entry)
+    
+    # Unlock next stage immediately if it exists
+    if stage_number < TOTAL_STAGES:
+        next_stage = stage_number + 1
+        cet_tz = pytz.timezone('Europe/Berlin')
+        unlock_date = datetime.now(cet_tz)
+        
+        stage_unlock_dates = state.get("stage_unlock_dates", {})
+        stage_unlock_dates[next_stage] = unlock_date.isoformat()
+        state["stage_unlock_dates"] = stage_unlock_dates
+    
+    # Save state
+    await game_state_manager.save_game_state(participant_code, state)
+    
+    logger.info(f"Participant {participant_code}: Stage {stage_number} skipped")
+    return True
+
+
+async def switch_stage(participant_code: str, stage_number: int) -> bool:
+    """Switch to a different stage."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return False
+    
+    state = migrate_legacy_game_state(state)
+    
+    # Special test mode: for TEST participant, allow switching to any stage
+    is_test_mode = participant_code.upper() == "TEST"
+    
+    # Check if stage is available (or if in test mode, just check if stage number is valid)
+    if not is_test_mode:
+        available_stages = get_available_stages(participant_code)
+        if stage_number not in available_stages:
+            logger.warning(f"Participant {participant_code}: Attempted to switch to unavailable stage {stage_number}")
+            return False
+    else:
+        # In test mode, just validate stage number is in valid range
+        if stage_number < 1 or stage_number > TOTAL_STAGES:
+            logger.warning(f"Participant {participant_code}: Attempted to switch to invalid stage {stage_number}")
+            return False
+    
+    # Update current stage
+    old_stage = state.get("current_stage", 1)
+    state["current_stage"] = stage_number
+    
+    # Sync legacy fields with current stage progress
+    stage_progress = state["stage_progress"].get(stage_number, {})
+    state["clues_examined"] = stage_progress.get("clues_examined", set())
+    state["suspects_interrogated"] = stage_progress.get("suspects_interrogated", set())
+    
+    # Mark stage as in_progress if not already completed/skipped
+    if stage_progress.get("completion_status") == "not_started":
+        stage_progress["completion_status"] = "in_progress"
+        state["stage_progress"][stage_number] = stage_progress
+    
+    # Save state
+    await game_state_manager.save_game_state(participant_code, state)
+    
+    logger.info(f"Participant {participant_code}: Switched from stage {old_stage} to stage {stage_number}")
+    return True
 
 
 async def start_game_handler(participant_code: str) -> List[Dict]:
@@ -64,13 +358,28 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     
     # Initialize or restore game state
     if participant_code not in GAME_STATE:
-        GAME_STATE[participant_code] = initialize_game_state(participant_code)
-        logger.info(f"Participant {participant_code}: Game state initialized")
+        if saved_state_data and saved_state_data.get("state"):
+            # Restore existing state and migrate if needed
+            state = saved_state_data["state"]
+            state = migrate_legacy_game_state(state)
+            GAME_STATE[participant_code] = state
+            logger.info(f"Participant {participant_code}: Game state restored and migrated")
+        else:
+            GAME_STATE[participant_code] = initialize_game_state(participant_code)
+            logger.info(f"Participant {participant_code}: Game state initialized")
+    else:
+        # Ensure in-memory state is migrated
+        GAME_STATE[participant_code] = migrate_legacy_game_state(GAME_STATE[participant_code])
     
     state = GAME_STATE[participant_code]
+    episode = state.get("current_stage", 1)
     
-    # Start with welcome message
-    welcome_text = load_system_prompt("game_texts/onboarding_1_welcome.txt")
+    # Onboarding (welcome + language level) only for episode 1. Episodes 2+ start with case intro.
+    if episode != 1:
+        return await handle_case_intro(participant_code, "case_intro_begin")
+    
+    # Start with welcome message (episode 1 only)
+    welcome_text = load_system_prompt(get_game_text_path("onboarding_1_welcome.txt", episode))
     
     # Log system message
     log_message(0, "system", welcome_text, participant_code)
@@ -104,8 +413,9 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
         return [{"type": "error", "content": "Game not initialized. Please restart."}]
     
     if action == "onboarding_step5":
+        episode = state.get("current_stage", 1)
         # Show language level selection text first (without buttons)
-        language_level_text = load_system_prompt("game_texts/onboarding_4_language_level.txt")
+        language_level_text = load_system_prompt(get_game_text_path("onboarding_4_language_level.txt", episode))
         
         # Log first message
         log_message(0, "system", language_level_text, participant_code)
@@ -120,7 +430,7 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
         })
         
         # Then show intro-B1 text separately with typewriter style and buttons
-        intro_b1_text = load_system_prompt("game_texts/intro-B1.txt")
+        intro_b1_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
         
         # Log second message
         log_message(0, "system", intro_b1_text, participant_code)
@@ -159,13 +469,14 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
         return [{"type": "error", "content": "Game not initialized."}]
     
     current_level = state.get("current_language_level", "B1")
-    language_level_text = load_system_prompt("game_texts/onboarding_4_language_level.txt")
+    episode = state.get("current_stage", 1)
+    language_level_text = load_system_prompt(get_game_text_path("onboarding_4_language_level.txt", episode))
     
     # Determine new level and intro text
     if action == "language_adjust_easier":
         if current_level == "B2":
             new_level = "B1"
-            intro_text = load_system_prompt("game_texts/intro-B1.txt")
+            intro_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
@@ -173,7 +484,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
             ]
         elif current_level == "B1":
             new_level = "A2"
-            intro_text = load_system_prompt("game_texts/intro-A2.txt")
+            intro_text = load_system_prompt(get_game_text_path("intro-A2.txt", episode))
             buttons = [
                 {"text": "Perfect!", "action": "language_confirm"},
                 {"text": "More Advanced", "action": "language_adjust_more_advanced"}
@@ -185,7 +496,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     elif action == "language_adjust_more_advanced":
         if current_level == "A2":
             new_level = "B1"
-            intro_text = load_system_prompt("game_texts/intro-B1.txt")
+            intro_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
@@ -193,7 +504,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
             ]
         elif current_level == "B1":
             new_level = "B2"
-            intro_text = load_system_prompt("game_texts/intro-B2.txt")
+            intro_text = load_system_prompt(get_game_text_path("intro-B2.txt", episode))
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"}
@@ -240,9 +551,10 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
     
     # Get confirmed level
     level = state.get("current_language_level", "B1")
+    episode = state.get("current_stage", 1)
     
     # Show confirmation
-    level_confirmed_text = load_system_prompt("game_texts/level_confirmed.txt")
+    level_confirmed_text = load_system_prompt(get_game_text_path("level_confirmed.txt", episode))
     confirmed_text = level_confirmed_text.replace("[LEVEL]", level.upper())
     
     # Log system message
@@ -268,126 +580,112 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
     return messages
 
 
+def _normalize_intro_step(entry, step_index: int, total: int):
+    """Normalize intro_files entry (dict or str) to {file, button, type, image, character}."""
+    is_last = step_index >= total - 1
+    default_button = "🔍 Game Menu" if is_last else "Next"
+    if isinstance(entry, dict):
+        return {
+            "file": entry["file"],
+            "button": entry.get("button", default_button),
+            "type": entry.get("type", "character"),
+            "image": entry.get("image"),
+            "character": entry.get("character", "nina"),
+        }
+    return {
+        "file": entry,
+        "button": default_button,
+        "type": "character",
+        "image": None,
+        "character": "nina",
+    }
+
+
+def _load_intro_file_safe(filename: str, episode: int) -> str:
+    """Load intro file; return fallback text if file missing (no error)."""
+    try:
+        path = get_game_text_path(filename, episode)
+        return load_system_prompt(path)
+    except Exception as e:
+        logger.warning(f"Intro file not found or unreadable: {filename} for ep{episode}: {e}")
+        return "Continue."
+
+
 async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
-    """Handle case introduction sequence."""
+    """Handle case introduction sequence. Driven by STAGE_CONFIG[episode][intro_files]; length may vary per episode."""
     messages = []
     state = GAME_STATE.get(participant_code)
     
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
+    episode = state.get("current_stage", 1)
+    intro_files = STAGE_CONFIG.get(episode, {}).get("intro_files", [])
+    
     if action == "case_intro_begin":
-        # Show atmospheric start
-        atmospheric_text = load_system_prompt("game_texts/atmospheric_start.txt")
-        
-        # Log narrator/system message
-        log_message(0, "narrator", atmospheric_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, atmospheric_text)
-        messages.append({
-            "type": "system",
-            "content": atmospheric_text,
-            "image": "aric-cheng-7Bv9MrBan9s-unsplash.jpg",
+        if not intro_files:
+            return await start_investigation(participant_code)
+        step = 0
+        state["case_intro_step"] = step
+    elif action == "case_intro_next":
+        step = state.get("case_intro_step", 0) + 1
+        if step >= len(intro_files):
+            return await start_investigation(participant_code)
+        state["case_intro_step"] = step
+    else:
+        return messages
+    
+    entry = _normalize_intro_step(intro_files[step], step, len(intro_files))
+    content = _load_intro_file_safe(entry["file"], episode)
+    
+    log_role = entry.get("character", "narrator") if entry["type"] == "character" else "narrator"
+    log_message(0, log_role, content, participant_code)
+    
+    message_id = generate_message_id()
+    if entry["type"] == "character":
+        char_key = entry.get("character", "nina")
+        save_message_to_cache(message_id, content, char_key)
+        char_data = CHARACTER_DATA.get(char_key, {})
+        msg = {
+            "type": "character",
+            "character": char_key,
+            "character_name": char_data.get("full_name", "Nina"),
+            "character_image": char_data.get("image") or "nina.png",
+            "content": content,
             "message_id": message_id,
             "show_explain": True,
-            "buttons": [
-                {"text": "Accept the Call", "action": "case_intro_call"}
-            ]
-        })
-    
-    elif action == "case_intro_call":
-        # Call introduction
-        call_text = load_system_prompt("game_texts/case_intro_1_call.txt")
-        
-        # Log narrator/system message
-        log_message(0, "narrator", call_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, call_text)
-        messages.append({
+            "buttons": [{"text": entry["button"], "action": "case_intro_next"}]
+        }
+        if entry.get("image"):
+            msg["image"] = entry["image"]
+    else:
+        save_message_to_cache(message_id, content)
+        msg = {
             "type": "system",
-            "content": call_text,
+            "content": content,
             "message_id": message_id,
             "show_explain": True,
-            "buttons": [
-                {"text": "What happened?", "action": "case_intro_situation"}
-            ]
-        })
+            "buttons": [{"text": entry["button"], "action": "case_intro_next"}]
+        }
+        if entry.get("image"):
+            msg["image"] = entry["image"]
     
-    elif action == "case_intro_situation":
-        # Situation description
-        situation_text = load_system_prompt("game_texts/case_intro_2_situation.txt")
-        
-        # Log narrator/system message
-        log_message(0, "narrator", situation_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, situation_text)
-        messages.append({
-            "type": "system",
-            "content": situation_text,
-            "message_id": message_id,
-            "show_explain": True,
-            "buttons": [
-                {"text": "Who is there?", "action": "case_intro_suspects"}
-            ]
-        })
-    
-    elif action == "case_intro_suspects":
-        # Suspects introduction
-        suspects_text = load_system_prompt("game_texts/case_intro_3_suspects.txt")
-        
-        # Log narrator/system message
-        log_message(0, "narrator", suspects_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, suspects_text)
-        messages.append({
-            "type": "system",
-            "content": suspects_text,
-            "image": "suspects.png",
-            "message_id": message_id,
-            "show_explain": True,
-            "buttons": [
-                {"text": "Start Investigation!", "action": "start_investigation"}
-            ]
-        })
-    
-    # Save state
+    messages.append(msg)
     await game_state_manager.save_game_state(participant_code, state)
-    
     return messages
 
 
 async def start_investigation(participant_code: str) -> List[Dict]:
-    """Start the main investigation."""
-    messages = []
+    """Mark investigation started and show main menu. No file is loaded here (last intro step is shown in handle_case_intro)."""
     state = GAME_STATE.get(participant_code)
     
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
-    # Show main menu
-    investigation_text = "🎭 You're now at the crime scene. Choose your next action:"
-    
-    # Log system message
-    log_message(0, "system", investigation_text, participant_code)
-    
-    messages.append({
-        "type": "system",
-        "content": investigation_text,
-        "buttons": [
-            {"text": "🔍 Game Menu", "action": "show_main_menu"}
-        ]
-    })
-    
     state["onboarding_step"] = "investigation_started"
-    
-    # Save state
     await game_state_manager.save_game_state(participant_code, state)
     
-    return messages
+    return await handle_main_menu(participant_code)
 
 
 async def handle_main_menu(participant_code: str) -> List[Dict]:
@@ -471,15 +769,17 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     
     # Get current language level
     current_language_level = state.get("current_language_level", "B1")
+    current_stage = state.get("current_stage", 1)
     
     # Generate narrator transition
     try:
-        narrator_prompt = combine_character_prompt("narrator", current_language_level)
+        narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage)
         description_text = await ask_for_dialogue(
             participant_code, 
             f"Describe the detective taking {char_name} aside for a private talk.",
             narrator_prompt, 
-            "narrator"
+            "narrator",
+            participant_code
         )
         
         # Log narrator message
@@ -539,9 +839,10 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
         state.setdefault("suspects_interrogated", set()).add(char_key)
         # Note: Accuse unlock logic would go here
     
-    # Get current language level
+    # Get current language level and episode for prompt resolution
     current_language_level = state.get("current_language_level", "B1")
-    system_prompt = combine_character_prompt(char_key, current_language_level)
+    current_stage = state.get("current_stage", 1)
+    system_prompt = combine_character_prompt(char_key, current_language_level, current_stage)
     
     # Create context trigger
     topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
@@ -558,7 +859,8 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             participant_code,
             context_trigger,
             system_prompt,
-            char_key
+            char_key,
+            participant_code
         )
         
         if reply_text:
@@ -607,6 +909,87 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     return messages
 
 
+async def handle_nina_message(participant_code: str, message_text: str) -> List[Dict]:
+    """Handle message to Nina (mentor/guide character)."""
+    messages = []
+    state = GAME_STATE.get(participant_code)
+    
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+    
+    char_key = "nina"
+    char_data = CHARACTER_DATA.get(char_key)
+    
+    if not char_data:
+        return [{"type": "error", "content": "Nina character not found."}]
+    
+    # Load Nina's prompt (episode-aware path; she doesn't need language level adjustments as she's a mentor)
+    current_stage = state.get("current_stage", 1)
+    system_prompt = load_system_prompt(get_prompt_path(char_key, current_stage))
+    
+    # Create context trigger for mentor guidance
+    context_trigger = f"The detective is asking you for help: '{message_text}'. Provide supportive guidance and hints to help them progress in their investigation."
+    
+    logger.info(f"Participant {participant_code}: Message to Nina (mentor)")
+    
+    # Log user message
+    log_message(0, "user", message_text, participant_code)
+    
+    try:
+        reply_text = await ask_for_dialogue(
+            participant_code,
+            context_trigger,
+            system_prompt,
+            char_key,
+            participant_code
+        )
+        
+        if reply_text:
+            message_id = generate_message_id()
+            save_message_to_cache(message_id, reply_text, char_key)
+            
+            # Log Nina's response
+            log_message(0, f"character_{char_key}", reply_text, participant_code)
+            
+            messages.append({
+                "type": "character",
+                "character": char_key,
+                "character_name": char_data["full_name"],
+                "character_emoji": char_data["emoji"],
+                "character_image": char_data.get("image"),
+                "content": reply_text,
+                "message_id": message_id,
+                "show_explain": True
+            })
+        else:
+            logger.error(f"Nina generated empty reply")
+            messages.append({
+                "type": "character",
+                "character": char_key,
+                "character_name": char_data["full_name"],
+                "character_emoji": char_data["emoji"],
+                "character_image": char_data.get("image"),
+                "content": "[Nina is thinking...]",
+                "show_explain": False
+            })
+    except Exception as e:
+        logger.error(f"Failed to get reply from Nina: {e}")
+        messages.append({
+            "type": "character",
+            "character": char_key,
+            "character_name": char_data["full_name"],
+            "character_emoji": char_data["emoji"],
+            "character_image": char_data.get("image"),
+            "content": "[Nina is thinking...]",
+            "show_explain": False
+        })
+    
+    # Save state
+    await game_state_manager.save_game_state(participant_code, state)
+    
+    return messages
+
+
 async def handle_public_message(participant_code: str, message_text: str) -> List[Dict]:
     """Handle message in public conversation mode using director logic."""
     messages = []
@@ -623,9 +1006,10 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         # Handle direct character addressing
         char_data = CHARACTER_DATA[character_key]
         
-        # Get current language level
+        # Get current language level and episode for prompt resolution
         current_language_level = state.get("current_language_level", "B1")
-        system_prompt = combine_character_prompt(character_key, current_language_level)
+        current_stage = state.get("current_stage", 1)
+        system_prompt = combine_character_prompt(character_key, current_language_level, current_stage)
         
         # Create context trigger
         topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
@@ -746,9 +1130,10 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
             if char_key in CHARACTER_DATA and trigger_msg:
                 char_data = CHARACTER_DATA[char_key]
                 
-                # Get current language level
+                # Get current language level and episode for prompt resolution
                 current_language_level = state.get("current_language_level", "B1")
-                system_prompt = combine_character_prompt(char_key, current_language_level)
+                current_stage = state.get("current_stage", 1)
+                system_prompt = combine_character_prompt(char_key, current_language_level, current_stage)
                 
                 try:
                     reply_text = await ask_for_dialogue(
@@ -875,8 +1260,9 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
-    # Load clue text
-    clue_filepath = f"game_texts/Clue{clue_id}.txt"
+    episode = state.get("current_stage", 1)
+    # Load clue text (episode-specific)
+    clue_filepath = get_game_text_path(f"Clue{clue_id}.txt", episode)
     try:
         clue_text = load_system_prompt(clue_filepath)
     except Exception as e:

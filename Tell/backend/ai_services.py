@@ -3,7 +3,7 @@ import re
 import sys
 from groq import Groq
 from config import GROQ_API_KEY, user_histories
-from utils import load_system_prompt, log_message, combine_character_prompt
+from utils import load_system_prompt, get_prompt_path, log_message, combine_character_prompt
 
 # Initialize the Groq API client
 if not GROQ_API_KEY:
@@ -126,26 +126,79 @@ def clear_user_conversation_history(user_id: int):
 
 
 
-async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, character_key: str = None) -> str:
+def _filter_history_for_character(history: list, character_key: str) -> list:
+    """Filter conversation history to include only messages related to a specific character."""
+    if not character_key:
+        return history
+    
+    filtered = []
+    for msg in history:
+        content = msg.get("content", "")
+        role = msg.get("role", "")
+        
+        # Include user messages addressed to this character
+        user_tag = f"[Detective to {character_key}]: "
+        if role == "user" and content.startswith(user_tag):
+            # Remove the tag for cleaner context
+            clean_content = content[len(user_tag):].strip()
+            filtered.append({"role": "user", "content": clean_content})
+        
+        # Include assistant messages from this character
+        assistant_tag = f"[{character_key}]: "
+        if role == "assistant" and content.startswith(assistant_tag):
+            # Remove the tag for cleaner context
+            clean_content = content[len(assistant_tag):].strip()
+            filtered.append({"role": "assistant", "content": clean_content})
+    
+    return filtered
+
+async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, character_key: str = None, participant_code: str = None) -> str:
     """The main function for all dialogue-based AI calls. Always expects and returns a simple string."""
-    # Use shared conversation history so characters can see what others have said
-    # but enhance the system prompt to clearly identify the speaking character
     history_key = str(user_id)
     
     if history_key not in user_histories:
         user_histories[history_key] = []
+    
+    # Get global knowledge from game state if participant_code is provided
+    knowledge_context = ""
+    if participant_code:
+        from config import GAME_STATE
+        state = GAME_STATE.get(participant_code, {})
+        global_knowledge = state.get("global_knowledge", [])
+        
+        if global_knowledge:
+            # Format knowledge for context
+            knowledge_items = []
+            for item in global_knowledge:
+                stage = item.get("stage", "?")
+                info = item.get("information", "")
+                if info:
+                    knowledge_items.append(f"Stage {stage}: {info}")
+            
+            if knowledge_items:
+                knowledge_context = f"\n\nCONTEXT FROM PREVIOUS INVESTIGATIONS:\n" + "\n".join(f"- {item}" for item in knowledge_items)
+                knowledge_context += "\n\nYou may reference this information naturally in conversation, but don't force it. Only mention it if it's relevant to the current discussion."
     
     # Enhance system prompt with character identity reminder
     if character_key:
         from config import CHARACTER_DATA  # Local import to avoid circular dependency
         char_data = CHARACTER_DATA.get(character_key, {})
         char_name = char_data.get("full_name", character_key)
-        enhanced_system_prompt = f"{system_prompt}\n\nIMPORTANT: You are {char_name}. You must respond ONLY as {char_name}, speaking in first person about YOUR OWN experiences and observations. Do not speak for other characters or describe their actions."
+        enhanced_system_prompt = f"{system_prompt}{knowledge_context}\n\nIMPORTANT: You are {char_name}. You must respond ONLY as {char_name}, speaking in first person about YOUR OWN experiences and observations. Do not speak for other characters or describe their actions."
     else:
-        enhanced_system_prompt = system_prompt
+        enhanced_system_prompt = f"{system_prompt}{knowledge_context}"
     
-    messages = [{"role": "system", "content": enhanced_system_prompt}]
-    messages.extend(user_histories[history_key][-10:])
+    # For Nina, use filtered history (only her conversations with the user)
+    # For other characters, use shared history so they can see what others have said
+    if character_key == "nina":
+        character_history = _filter_history_for_character(user_histories[history_key], character_key)
+        messages = [{"role": "system", "content": enhanced_system_prompt}]
+        messages.extend(character_history[-10:])
+    else:
+        # Use shared conversation history so characters can see what others have said
+        messages = [{"role": "system", "content": enhanced_system_prompt}]
+        messages.extend(user_histories[history_key][-10:])
+    
     messages.append({"role": "user", "content": user_message})
     
     if client is None:
@@ -208,6 +261,18 @@ async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, chara
                 if assistant_reply.startswith(pattern):
                     assistant_reply = assistant_reply[len(pattern):].strip()
                     break
+            
+            # Remove quotes from the beginning and end of the response
+            # Handle various quote types: regular quotes, single quotes, typographic quotes
+            quote_chars = ['"', "'", '"', '"', ''', ''', '«', '»']
+            
+            # Remove quotes from the start
+            while assistant_reply and assistant_reply[0] in quote_chars:
+                assistant_reply = assistant_reply[1:].strip()
+            
+            # Remove quotes from the end
+            while assistant_reply and assistant_reply[-1] in quote_chars:
+                assistant_reply = assistant_reply[:-1].strip()
         
         # Store the conversation with character identification
         if character_key:
@@ -330,7 +395,7 @@ async def ask_tutor_for_final_summary(user_id: int, progress_data: dict) -> dict
 
 async def ask_word_spotter(text_to_analyze: str) -> list:
     """Asks the Word Spotter AI to find difficult words in a text."""
-    prompt = load_system_prompt("prompts/prompt_lexicographer.md")
+    prompt = load_system_prompt(get_prompt_path("lexicographer", 1))
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": text_to_analyze}]
     if client is None:
         return []
@@ -377,8 +442,10 @@ async def ask_director(user_id: int, context_text: str, message: str) -> dict:
         traceback.print_exc()
         # Continue to AI director as fallback
     
-    # Fallback to AI Director
-    director_prompt = load_system_prompt("prompts/prompt_director.md")
+    # Fallback to AI Director (episode-aware path)
+    state = GAME_STATE.get(user_id, {})
+    episode = state.get("current_stage", 1)
+    director_prompt = load_system_prompt(get_prompt_path("director", episode))
     full_context_for_director = f"Context: \"{context_text}\"\nMessage: \"{message}\""
     director_messages = [{"role": "system", "content": director_prompt}, {"role": "user", "content": full_context_for_director}]
     try:
