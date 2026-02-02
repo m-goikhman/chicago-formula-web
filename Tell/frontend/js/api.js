@@ -219,14 +219,20 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
             closeAllDrawers();
         }
         
-        // Check if this is the "start_investigation" action and tutorial needs to be shown
-        if (action === 'start_investigation') {
-            // Show Nina floating button when investigation starts
+        // Show Nina floating button when investigation starts (last intro step sends case_intro_next, backend returns menu)
+        const investigationJustStarted = (
+            action === 'start_investigation' ||
+            (action === 'case_intro_next' && data.messages && data.messages.some(m => m.type === 'menu'))
+        );
+        if (investigationJustStarted) {
             const ninaButton = document.getElementById('ninaFloatingButton');
             if (ninaButton) {
                 ninaButton.style.display = 'flex';
             }
-            
+        }
+
+        // Tutorial: show when investigation has just started
+        if (investigationJustStarted) {
             const tutorialCompleted = localStorage.getItem(`tutorial_completed_${participantCode}`);
             if (!tutorialCompleted) {
                 // Initialize and show tutorial after a delay to let messages appear
@@ -294,28 +300,24 @@ async function sendMessage() {
     // Determine current character for typing indicator
     let characterForTyping = currentCharacter;
     
-    // If currentCharacter is not set, try to get it from active drawer item
+    // Use current episode's characters when set by loadEpisodeSelector, else config fallback
+    const charactersForTyping = (window.allCharacters && window.allCharacters.length) ? window.allCharacters : allCharacters;
+    
     if (!characterForTyping) {
         const activeDrawerItem = document.querySelector('.drawer-item.active');
         if (activeDrawerItem) {
             const charName = activeDrawerItem.querySelector('.name')?.textContent;
-            // Check if it's not "Everyone" (public mode)
             if (charName && charName !== 'Everyone') {
-                // Find character data from allCharacters array
-                const charData = allCharacters.find(c => c.name === charName);
-                if (charData) {
-                    characterForTyping = charData;
-                }
+                const charData = charactersForTyping.find(c => c.name === charName);
+                if (charData) characterForTyping = charData;
             }
         }
     }
     
     if (characterForTyping) {
-        // In private chat, show typing from current character
         typingMsg = showTypingIndicator(characterForTyping);
-    } else {
-        // In public mode, randomly pick a character who "started typing"
-        const randomCharacter = allCharacters[Math.floor(Math.random() * allCharacters.length)];
+    } else if (charactersForTyping.length) {
+        const randomCharacter = charactersForTyping[Math.floor(Math.random() * charactersForTyping.length)];
         typingMsg = showTypingIndicator(randomCharacter);
     }
 
@@ -487,19 +489,15 @@ async function restoreSession() {
             // Load game
             await loadGame();
             
-            // Check if investigation has started (look for Nina messages or navigation bar visibility)
-            // If navigation bar is visible, investigation likely started
-            if (navigationBar && navigationBar.style.display !== 'none') {
-                const ninaButton = document.getElementById('ninaFloatingButton');
-                if (ninaButton) {
-                    // Check if there are any messages from Nina in the chat
-                    const chatArea = document.getElementById('chatArea');
-                    if (chatArea) {
-                        const ninaMessages = chatArea.querySelectorAll('.message.character');
-                        // If we have character messages (especially from Nina), show the button
-                        if (ninaMessages.length > 0) {
-                            ninaButton.style.display = 'flex';
-                        }
+            // Show Nina floating button if investigation has started (character messages or menu visible)
+            const ninaButton = document.getElementById('ninaFloatingButton');
+            if (ninaButton && navigationBar && navigationBar.style.display !== 'none') {
+                const chatArea = document.getElementById('chatArea');
+                if (chatArea) {
+                    const hasCharacterMessages = chatArea.querySelectorAll('.message.character').length > 0;
+                    const hasMenuMessage = chatArea.querySelectorAll('.message.menu').length > 0;
+                    if (hasCharacterMessages || hasMenuMessage) {
+                        ninaButton.style.display = 'flex';
                     }
                 }
             }
@@ -708,18 +706,21 @@ async function loadEpisodeSelector() {
         const currentStage = data.current_stage || 1;
         const availableStages = data.available_stages || [1];
         
+        // Set current episode's characters for drawer and typing indicator (before any early return)
+        const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
+        window.currentStageCharacters = currentStageInfo?.characters || [];
+        window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
+        if (window.populateCharactersDrawer) window.populateCharactersDrawer();
+        
         const episodeDisplay = document.getElementById('episodeDisplay');
         const episodeSelector = document.getElementById('episodeSelector');
         const episodeDropdown = document.getElementById('episodeDropdown');
-        
         if (!episodeDisplay || !episodeSelector || !episodeDropdown) {
             return;
         }
         
-        // Update display
         episodeDisplay.textContent = `Episode ${currentStage}`;
         
-        // If only one stage is available, don't show dropdown
         if (availableStages.length <= 1) {
             episodeSelector.classList.remove('has-dropdown');
             episodeDropdown.style.display = 'none';
@@ -815,7 +816,19 @@ async function switchEpisode(stageNumber) {
         // Reload episode selector
         await loadEpisodeSelector();
         
-        // Reload game to show new episode content
+        // Clear chat so only the selected episode's messages will be shown
+        const chatArea = document.getElementById('chatArea');
+        if (chatArea) {
+            chatArea.innerHTML = '';
+        }
+        // Show loading while fetching episode messages
+        const loadingMessage = document.createElement('div');
+        loadingMessage.id = 'loadingMessage';
+        loadingMessage.className = 'message bot';
+        loadingMessage.innerHTML = '<div class="message-content"><div class="message-sender">Game Bot</div><div>Loading episode...</div></div>';
+        chatArea.appendChild(loadingMessage);
+        
+        // Reload game to show new episode content (messages for this episode only)
         await loadGame();
         
     } catch (error) {

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 import bootstrap  # noqa: F401
 
 from utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
-from config import GAME_STATE, CHARACTER_DATA, SUSPECT_KEYS, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG
+from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG
 from game_state_manager import game_state_manager
 from shared.backend.progress_manager import progress_manager
 from ai_services import ask_for_dialogue
@@ -78,7 +78,8 @@ def initialize_game_state(participant_code: str) -> Dict:
         "stages_completed": set(),
         "stage_unlock_dates": stage_unlock_dates,
         "stage_progress": stage_progress,
-        "global_knowledge": []  # List of dicts: {"stage": int, "information": str, "source": str, "importance": str}
+        "global_knowledge": [],  # List of dicts: {"stage": int, "information": str, "source": str, "importance": str}
+        "episode_messages": {}  # stage_num -> list of message dicts shown in chat for that episode
     }
 
 
@@ -135,6 +136,9 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     
     if "global_knowledge" not in state:
         state["global_knowledge"] = []
+    
+    if "episode_messages" not in state:
+        state["episode_messages"] = {}
     
     return state
 
@@ -373,10 +377,22 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     
     state = GAME_STATE[participant_code]
     episode = state.get("current_stage", 1)
+    episode_messages = state.get("episode_messages", {})
+    # Keys may be int (in-memory) or str (after JSON load)
+    ep_key = str(episode)
+    stored = episode_messages.get(episode, episode_messages.get(ep_key, []))
+    
+    # Return stored messages when user returns to an already-visited episode
+    if stored:
+        return stored
     
     # Onboarding (welcome + language level) only for episode 1. Episodes 2+ start with case intro.
     if episode != 1:
-        return await handle_case_intro(participant_code, "case_intro_begin")
+        messages = await handle_case_intro(participant_code, "case_intro_begin")
+        episode_messages[ep_key] = episode_messages.get(episode, episode_messages.get(ep_key, [])) + messages
+        state["episode_messages"] = episode_messages
+        await game_state_manager.save_game_state(participant_code, state)
+        return messages
     
     # Start with welcome message (episode 1 only)
     welcome_text = load_system_prompt(get_game_text_path("onboarding_1_welcome.txt", episode))
@@ -397,6 +413,8 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     })
     
     state["onboarding_step"] = "welcome_shown"
+    episode_messages[ep_key] = episode_messages.get(episode, episode_messages.get(ep_key, [])) + messages
+    state["episode_messages"] = episode_messages
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -715,21 +733,24 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
 
 
 async def handle_menu_talk(participant_code: str) -> List[Dict]:
-    """Show character selection for talking."""
+    """Show character selection for talking (characters for current episode)."""
     messages = []
     state = GAME_STATE.get(participant_code)
     
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
+    current_stage = state.get("current_stage", 1)
+    stage_config = STAGE_CONFIG.get(current_stage, {})
+    character_keys = stage_config.get("characters", [])
+    
     buttons = [{"text": "💬 Talk to Everyone (Public)", "action": "mode_public"}]
     
-    # Add character buttons
-    for key in SUSPECT_KEYS:
+    for key in character_keys:
         if key in CHARACTER_DATA:
             char_data = CHARACTER_DATA[key]
             buttons.append({
-                "text": f"{char_data['emoji']} Talk to {char_data['full_name']}",
+                "text": f"Talk to {char_data['full_name']}",
                 "action": f"talk_{key}"
             })
     
@@ -833,15 +854,15 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
         return [{"type": "error", "content": "No active character conversation."}]
     
     char_data = CHARACTER_DATA[char_key]
+    current_language_level = state.get("current_language_level", "B1")
+    current_stage = state.get("current_stage", 1)
+    stage_characters = STAGE_CONFIG.get(current_stage, {}).get("characters", [])
     
-    # Check if this is first interrogation
-    if char_key in SUSPECT_KEYS and char_key not in state.get("suspects_interrogated", set()):
+    # Check if this is first interrogation (for current episode's characters)
+    if char_key in stage_characters and char_key not in state.get("suspects_interrogated", set()):
         state.setdefault("suspects_interrogated", set()).add(char_key)
         # Note: Accuse unlock logic would go here
     
-    # Get current language level and episode for prompt resolution
-    current_language_level = state.get("current_language_level", "B1")
-    current_stage = state.get("current_stage", 1)
     system_prompt = combine_character_prompt(char_key, current_language_level, current_stage)
     
     # Create context trigger
@@ -874,7 +895,6 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
                 "type": "character",
                 "character": char_key,
                 "character_name": char_data["full_name"],
-                "character_emoji": char_data["emoji"],
                 "character_image": char_data.get("image"),
                 "content": reply_text,
                 "message_id": message_id,
@@ -886,7 +906,6 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
                 "type": "character",
                 "character": char_key,
                 "character_name": char_data["full_name"],
-                "character_emoji": char_data["emoji"],
                 "character_image": char_data.get("image"),
                 "content": "[Character is thinking...]",
                 "show_explain": False
@@ -897,7 +916,6 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             "type": "character",
             "character": char_key,
             "character_name": char_data["full_name"],
-            "character_emoji": char_data["emoji"],
             "character_image": char_data.get("image"),
             "content": "[Character is thinking...]",
             "show_explain": False
@@ -955,7 +973,6 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
                 "type": "character",
                 "character": char_key,
                 "character_name": char_data["full_name"],
-                "character_emoji": char_data["emoji"],
                 "character_image": char_data.get("image"),
                 "content": reply_text,
                 "message_id": message_id,
@@ -967,7 +984,6 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
                 "type": "character",
                 "character": char_key,
                 "character_name": char_data["full_name"],
-                "character_emoji": char_data["emoji"],
                 "character_image": char_data.get("image"),
                 "content": "[Nina is thinking...]",
                 "show_explain": False
@@ -978,7 +994,6 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
             "type": "character",
             "character": char_key,
             "character_name": char_data["full_name"],
-            "character_emoji": char_data["emoji"],
             "character_image": char_data.get("image"),
             "content": "[Nina is thinking...]",
             "show_explain": False
@@ -1039,7 +1054,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                     "type": "character",
                     "character": character_key,
                     "character_name": char_data["full_name"],
-                    "character_emoji": char_data["emoji"],
                     "character_image": char_data.get("image"),
                     "content": reply_text,
                     "message_id": message_id,
@@ -1051,7 +1065,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                     "type": "character",
                     "character": character_key,
                     "character_name": char_data["full_name"],
-                    "character_emoji": char_data["emoji"],
                     "character_image": char_data.get("image"),
                     "content": "[Character is thinking...]",
                     "show_explain": False
@@ -1062,7 +1075,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 "type": "character",
                 "character": character_key,
                 "character_name": char_data["full_name"],
-                "character_emoji": char_data["emoji"],
                 "character_image": char_data.get("image"),
                 "content": "[Character is thinking...]",
                 "show_explain": False
@@ -1154,7 +1166,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                             "type": "character",
                             "character": char_key,
                             "character_name": char_data["full_name"],
-                            "character_emoji": char_data["emoji"],
                             "character_image": char_data.get("image"),
                             "content": reply_text,
                             "message_id": message_id,
@@ -1169,7 +1180,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                             "type": "character",
                             "character": char_key,
                             "character_name": char_data["full_name"],
-                            "character_emoji": char_data["emoji"],
                             "character_image": char_data.get("image"),
                             "content": "[Character is thinking...]",
                             "show_explain": False
@@ -1181,7 +1191,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                         "type": "character",
                         "character": char_key,
                         "character_name": char_data["full_name"],
-                        "character_emoji": char_data["emoji"],
                         "character_image": char_data.get("image"),
                         "content": "[Character is thinking...]",
                         "show_explain": False
@@ -1279,7 +1288,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
         "type": "clue",
         "clue_id": clue_id,
         "content": clue_text,
-        "image": f"clue{clue_id}.png"
+        "image": f"ep1/clue{clue_id}.png"
     })
     
     # Save state

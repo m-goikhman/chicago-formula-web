@@ -116,9 +116,15 @@ def _get_fallback_response(character_key: str = None) -> str:
         return f"I need a moment to think about that properly."
     return "I'm having trouble processing that request right now."
 
-def clear_user_conversation_history(user_id: int):
-    """Clears conversation history for a user, useful when corruption is detected."""
-    history_key = str(user_id)
+def clear_user_conversation_history(user_id, participant_code: str = None):
+    """Clears conversation history for a user (optionally for current episode only), useful when corruption is detected."""
+    if participant_code:
+        from config import GAME_STATE
+        state = GAME_STATE.get(participant_code, {})
+        episode = state.get("current_stage", 1)
+        history_key = f"{user_id}:{episode}"
+    else:
+        history_key = str(user_id)
     if history_key in user_histories:
         print(f"WARNING: Clearing conversation history for user {user_id} due to corruption")
         user_histories[history_key] = []
@@ -155,6 +161,11 @@ def _filter_history_for_character(history: list, character_key: str) -> list:
 async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, character_key: str = None, participant_code: str = None) -> str:
     """The main function for all dialogue-based AI calls. Always expects and returns a simple string."""
     history_key = str(user_id)
+    if participant_code:
+        from config import GAME_STATE
+        state = GAME_STATE.get(participant_code, {})
+        episode = state.get("current_stage", 1)
+        history_key = f"{user_id}:{episode}"
     
     if history_key not in user_histories:
         user_histories[history_key] = []
@@ -230,7 +241,7 @@ async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, chara
             
             if should_clear_history:
                 print(f"WARNING: Severe AI corruption detected for user {user_id}, clearing conversation history")
-                clear_user_conversation_history(user_id)
+                clear_user_conversation_history(user_id, participant_code)
             
             assistant_reply = validated_response
         else:

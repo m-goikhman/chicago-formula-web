@@ -125,28 +125,36 @@ function checkAndCloseOverlay() {
     }
 }
 
-// Populate characters drawer
+// Populate characters drawer (uses current episode's characters from API when available)
 function populateCharactersDrawer() {
     const charactersList = document.getElementById('charactersList');
-    const characters = [
-        { emoji: '💬', name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null },
-        { emoji: '📚', name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'tim.png' },
-        { emoji: '😎', name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ronnie.png' },
-        { emoji: '💔', name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'fiona.png' },
-        { emoji: '💼', name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'pauline.png' }
-    ];
+    if (!charactersList) return;
+    
+    // Use current episode's characters from API, or fallback to ep1 list for first paint / restore
+    const stageChars = window.currentStageCharacters || [];
+    const list = [
+        { name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null }
+    ].concat(
+        stageChars.length > 0
+            ? stageChars.map(c => ({ name: c.full_name, status: 'Private Chat', action: `talk_${c.key}`, image: c.image }))
+            : [
+                { name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'ep1/tim.png' },
+                { name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ep1/ronnie.png' },
+                { name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'ep1/fiona.png' },
+                { name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'ep1/pauline.png' }
+            ]
+    );
 
     charactersList.innerHTML = '';
-    characters.forEach(char => {
+    list.forEach(char => {
         const item = document.createElement('div');
         item.className = 'drawer-item';
-        // Use image if available, otherwise use emoji
         let iconHTML = '';
         const characterImageUrl = buildImageUrl(char.image);
         if (characterImageUrl) {
             iconHTML = `<img src="${characterImageUrl}" alt="${char.name}" loading="lazy" />`;
         } else {
-            iconHTML = char.emoji;
+            iconHTML = char.name === 'Everyone' ? '💬' : `<span class="drawer-item-initial">${(char.name || '?')[0]}</span>`;
         }
         
         item.innerHTML = `
@@ -157,28 +165,18 @@ function populateCharactersDrawer() {
             </div>
         `;
         item.onclick = async () => {
-            // Highlight active item
             document.querySelectorAll('.drawer-item').forEach(el => el.classList.remove('active'));
             item.classList.add('active');
             
-            // Update current character
             if (char.name === 'Everyone') {
-                currentCharacter = null; // Public chat
+                currentCharacter = null;
             } else {
-                currentCharacter = {
-                    name: char.name,
-                    image: char.image
-                };
+                currentCharacter = { name: char.name, image: char.image };
             }
             
-            // Close drawer before handling action on mobile for better UX
             const isMobile = window.innerWidth <= 767;
-            if (isMobile) {
-                closeLeftDrawer();
-            }
-            
-            // Handle the action - on mobile drawer is already closed
-            await handleAction(char.action, !isMobile); // Close drawer on desktop, already closed on mobile
+            if (isMobile) closeLeftDrawer();
+            await handleAction(char.action, !isMobile);
         };
         charactersList.appendChild(item);
     });

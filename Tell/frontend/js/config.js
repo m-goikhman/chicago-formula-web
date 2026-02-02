@@ -16,12 +16,12 @@ if (typeof window !== 'undefined') {
 
 console.log('API URL:', API_URL, '(Localhost:', String(isLocalhost) + ')');
 
-// List of all characters (excluding "Everyone")
+// List of all characters (excluding "Everyone") — images in ep1/
 const allCharacters = [
-    { name: 'Tim Kane', image: 'tim.png' },
-    { name: 'Ronnie Snapper', image: 'ronnie.png' },
-    { name: 'Fiona McAllister', image: 'fiona.png' },
-    { name: 'Pauline Thompson', image: 'pauline.png' }
+    { name: 'Tim Kane', image: 'ep1/tim.png' },
+    { name: 'Ronnie Snapper', image: 'ep1/ronnie.png' },
+    { name: 'Fiona McAllister', image: 'ep1/fiona.png' },
+    { name: 'Pauline Thompson', image: 'ep1/pauline.png' }
 ];
 
 // Global state variables

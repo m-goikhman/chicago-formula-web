@@ -16,8 +16,9 @@ import bootstrap  # noqa: F401
 
 from shared.backend.auth import validate_session_token, login_participant
 from shared.backend.progress_manager import progress_manager  # used in some endpoints
-from config import GAME_STATE, CHARACTER_DATA, SUSPECT_KEYS, TOTAL_CLUES, GROQ_API_KEY
+from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
 from utils import log_message
+from game_state_manager import game_state_manager
 
 # Configure logging
 logging.basicConfig(
@@ -130,21 +131,18 @@ async def session_status(authorization: str = Header(...)):
     return SessionResponse(participant_code=session["participant_code"])
 
 
-@app.get("/api/images/{image_name}")
-async def get_image(image_name: str):
-    """Serve images from the images directory."""
-    # Base directory where images are stored
+@app.get("/api/images/{image_path:path}")
+async def get_image(image_path: str):
+    """Serve images from the images directory (e.g. ep1/clue1.png or nina.png)."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    image_path = os.path.join(base_dir, "images", image_name)
-    
-    # Security check: ensure the path is within the images directory
-    if not os.path.commonpath([base_dir, os.path.abspath(image_path)]) == base_dir:
+    images_dir = os.path.abspath(os.path.join(base_dir, "images"))
+    resolved = os.path.abspath(os.path.join(images_dir, image_path))
+    # Security: path must stay inside images directory
+    if os.path.commonpath([images_dir, resolved]) != images_dir:
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    if not os.path.exists(image_path):
+    if not os.path.exists(resolved):
         raise HTTPException(status_code=404, detail="Image not found")
-    
-    return FileResponse(image_path)
+    return FileResponse(resolved)
 
 
 @app.get("/api/game/start")
@@ -231,6 +229,16 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     else:
         messages = [{"type": "error", "content": "Unknown action"}]
     
+    # Append messages to current episode's chat history so they are restored when returning to this episode
+    if messages:
+        state = GAME_STATE.get(participant_code)
+        if state is not None:
+            episode = state.get("current_stage", 1)
+            episode_messages = state.get("episode_messages", {})
+            episode_messages.setdefault(str(episode), []).extend(messages)
+            state["episode_messages"] = episode_messages
+            await game_state_manager.save_game_state(participant_code, state)
+    
     return {"messages": messages}
 
 
@@ -259,10 +267,26 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     # Handle private conversation mode
     if mode == "private":
         messages = await handle_private_message(participant_code, request.text)
+        if messages:
+            state = GAME_STATE.get(participant_code)
+            if state is not None:
+                episode = state.get("current_stage", 1)
+                episode_messages = state.get("episode_messages", {})
+                episode_messages.setdefault(str(episode), []).extend(messages)
+                state["episode_messages"] = episode_messages
+                await game_state_manager.save_game_state(participant_code, state)
         return {"messages": messages}
     
     # Handle public mode with director logic
     messages = await handle_public_message(participant_code, request.text)
+    if messages:
+        state = GAME_STATE.get(participant_code)
+        if state is not None:
+            episode = state.get("current_stage", 1)
+            episode_messages = state.get("episode_messages", {})
+            episode_messages.setdefault(str(episode), []).extend(messages)
+            state["episode_messages"] = episode_messages
+            await game_state_manager.save_game_state(participant_code, state)
     return {"messages": messages}
 
 
@@ -275,6 +299,14 @@ async def send_message_to_nina(request: MessageRequest, current_user=Depends(get
     from game_handlers import handle_nina_message
     
     messages = await handle_nina_message(participant_code, request.text)
+    if messages:
+        state = GAME_STATE.get(participant_code)
+        if state is not None:
+            episode = state.get("current_stage", 1)
+            episode_messages = state.get("episode_messages", {})
+            episode_messages.setdefault(str(episode), []).extend(messages)
+            state["episode_messages"] = episode_messages
+            await game_state_manager.save_game_state(participant_code, state)
     return {"messages": messages}
 
 
@@ -334,7 +366,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         if contextual_explanation:
             reply_text += f"\n*In Context:*\n_{contextual_explanation}_"
         
-        formatted_reply = f"{tutor_data['emoji']} *{tutor_data['full_name']}:*\n{reply_text}"
+        formatted_reply = f"*{tutor_data['full_name']}:*\n{reply_text}"
         
         # Log tutor response
         log_message(0, "character_tutor", formatted_reply, participant_code)
@@ -343,7 +375,6 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
             "type": "character",
             "character": "tutor",
             "character_name": tutor_data["full_name"],
-            "character_emoji": tutor_data["emoji"],
             "content": formatted_reply,
             "show_explain": False
         })
@@ -378,7 +409,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         if contextual_explanation:
             reply_text += f"\n*Additional Context:*\n_{contextual_explanation}_"
         
-        formatted_reply = f"{tutor_data['emoji']} *{tutor_data['full_name']}:*\n{reply_text}"
+        formatted_reply = f"*{tutor_data['full_name']}:*\n{reply_text}"
         
         # Log tutor response
         log_message(0, "character_tutor", formatted_reply, participant_code)
@@ -387,7 +418,6 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
             "type": "character",
             "character": "tutor",
             "character_name": tutor_data["full_name"],
-            "character_emoji": tutor_data["emoji"],
             "content": formatted_reply,
             "show_explain": False
         })
@@ -406,7 +436,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     logger.info(f"Getting available stages for participant: {participant_code}")
     
     from game_handlers import get_available_stages, GAME_STATE
-    from config import STAGE_CONFIG, TOTAL_STAGES
+    from config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
     # Ensure state is loaded
     if participant_code not in GAME_STATE:
@@ -430,14 +460,19 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         stage_config = STAGE_CONFIG.get(stage_num, {})
         progress = stage_progress.get(stage_num, {})
         is_available = stage_num in available_stages if not is_test_mode else True
-        
+        character_keys = stage_config.get("characters", [])
+        characters = [
+            {"key": k, "full_name": CHARACTER_DATA[k]["full_name"], "image": CHARACTER_DATA.get(k, {}).get("image")}
+            for k in character_keys if k in CHARACTER_DATA
+        ]
         stages_info.append({
             "stage": stage_num,
             "name": stage_config.get("name", f"Stage {stage_num}"),
             "available": is_available,
             "current": stage_num == current_stage,
             "completed": stage_num in stages_completed,
-            "status": progress.get("completion_status", "not_started")
+            "status": progress.get("completion_status", "not_started"),
+            "characters": characters
         })
     
     return {

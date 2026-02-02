@@ -1,0 +1,83 @@
+INFORMATIVA SUL TRATTAMENTO DEI DATI PERSONALI PER FINALITÀ DI RICERCA SCIENTIFICA
+(ART. 13 REG. UE 2016/679)
+
+Titolo del Progetto di ricerca (di seguito Progetto):
+
+Building English Writing Confidence in Adult Learners through AI Text Detective Game
+
+Gentile partecipante,
+desideriamo informarla che la normativa vigente in materia di protezione dei dati, con particolare riguardo all'ambito della ricerca scientifica, sancisce il diritto di ogni persona alla protezione dei dati di carattere personale che la riguardano.
+In qualità di Interessato, le forniamo quindi le seguenti informazioni relative al trattamento dei suoi dati personali.
+
+TITOLARE DEL TRATTAMENTO
+
+Il Titolare del trattamento è l'Università degli Studi di Trento, via Calepina n. 14, 38122 Trento, email: ateneo@unitn.it; ateneo@pec.unitn.it.
+
+DATI DI CONTATTO DEL RESPONSABILE DELLA PROTEZIONE DEI DATI
+Il Responsabile della protezione dei dati (RPD), al quale rivolgersi per informazioni relative ai propri dati personali, può essere contattato al seguente indirizzo email: rpd@unitn.it.
+
+FINALITÀ E BASE GIURIDICA DEL TRATTAMENTO
+
+Il trattamento dei dati personali è effettuato per la realizzazione delle finalità scientifiche illustrate nella nota informativa di partecipazione al seguente Progetto di ricerca: Building English Writing Confidence in Adult Learners through AI Text Detective Game
+In particolare, il trattamento dei dati personali comuni è effettuato ai sensi dell'art. 6, par. 1, lett. e) del <em>GDPR</em> (esecuzione di compiti di interesse pubblico).
+
+Il Progetto è stato redatto conformemente agli standard metodologici del settore disciplinare interessato ed è depositato e conservato per cinque anni dal 31/10/2026 presso il Dipartimento di Psicologia e Scienze Cognitive dell'Università degli Studi di Trento.
+
+FONTE DEI DATI PERSONALI E CATEGORIE DI DATI PERSONALI
+
+I dati personali sono stati raccolti presso:
+• l'interessato;
+• soggetti terzi
+
+Nella realizzazione del Progetto verranno trattati i seguenti dati personali:
+• dati anagrafici;
+• dati di contatto;
+• voce (registrazione audio dell'intervista opzionale previo consenso del soggetto);
+• immagini;
+• dati relativi al collegamento, all'accesso e all'utilizzo dell'applicativo/software (log di accesso);
+• opinioni personali espresse, se associate a dati che consentono l'identificazione della persona (solo nel corso dell'intervista opzionale);
+• altro;
+• dati particolari, fra cui dati relativi alla salute; biometrici; genetici; relativi a convinzioni religiose/filosofiche; relativi all'appartenenza sindacale; relativi all'origine razziale/etnica; relativi a opinioni politiche; relativi alla vita sessuale o all'orientamento sessuale;
+• dati giudiziari.
+
+MODALITÀ DEL TRATTAMENTO
+Il trattamento dei dati personali verrà effettuato mediante i seguenti strumenti/modalità informatizzati:
+• questionari/sondaggi in forma cartacea;
+• piattaforme di analisi di dati, in particolare: Python, Google Sheets;
+• applicazioni informatiche per questionari/sondaggi (survey), in particolare: Google Forms;
+• analisi di materiale organico;
+• profilazione o altro trattamento completamente automatizzato;
+• altro strumento/altra modalità, in particolare; e adottando le seguenti misure di sicurezza:
+• pseudonimizzazione (per le informazioni raccolte durante l'intervista opzionale);
+• archiviazione protetta;
+• cifratura;
+• altra misura (specificare): i partecipanti che scelgono di non fare l'intervista personale vengono identificati solo con un codice partecipante non riconducibile alla persona (assenza di dati personali).
+
+In particolare, nel caso di utilizzo di questionari o sondaggi:
+• Le risposte ai questionari e i log di gioco saranno trattati in forma anonima, identificati esclusivamente tramite un codice numerico non riconducibile all'identità dell'utente. Si specifica inoltre che gli indirizzi e-mail eventualmente raccolti tramite il modulo di pre-registrazione (fase preliminare) verranno utilizzati al solo fine di inviare il link allo studio e non saranno in alcun modo collegati ai codici dei partecipanti.
+• Fanno eccezione solo i dati dei partecipanti che acconsentono all'intervista: in questo caso, il codice sarà temporaneamente associato all'indirizzo e-mail fornito (forma pseudonimizzata) per permettere il contatto.
+• Le risposte alle domande del questionario/sondaggio e i log di accesso al sito Web del sondaggio saranno aggregati alle risposte fornite durante l'intervista opzionale.
+• I dati di contatto potranno essere utilizzati, nell'ambito del Progetto, per comunicare con l'interessato in relazione al questionario/sondaggio – solo nel caso in cui il partecipante sceglie di fare l'intervista opzionale.
+• Al termine della ricerca, tutti i dati di contatto e le registrazioni audio verranno eliminati definitivamente, lasciando l'intero dataset privo di qualsiasi identificativo personale.
+
+Il trattamento dei dati personali sarà effettuato da soggetti autorizzati al trattamento dei dati in relazione alle attività da svolgere nel Progetto di ricerca e nel rispetto dei principi di liceità, correttezza, trasparenza, adeguatezza, pertinenza, esattezza, non eccedenza, integrità e riservatezza nonché dei principi di privacy by design e by default (artt. 5 e 25 <em>GDPR</em>).
+
+PERIODO DI CONSERVAZIONE DEI DATI
+Al termine del Progetto le registrazioni audio delle interviste e i dati di contatti saranno cancellate, mentre le risposte ai questionari, log di web-app, trascrizioni pseudonimizzate delle interviste saranno conservati al fine della ricerca per un periodo di cinque anni.
+
+NATURA DEL CONFERIMENTO DEI DATI
+Il conferimento dei dati è indispensabile per la realizzazione del Progetto di ricerca ed il mancato conferimento determina l'impossibilità di parteciparvi.
+
+DESTINATARI DEI DATI ED EVENTUALE TRASFERIMENTO ALL'ESTERO
+• I dati personali non saranno comunicati a soggetti terzi.
+• I dati non saranno oggetto di trasferimento verso Paesi al di fuori dello Spazio economico europeo (SEE).
+
+DIVULGAZIONE DEI RISULTATI DELLA RICERCA
+La divulgazione dei risultati statistici e/o scientifici (ad esempio mediante pubblicazione di articoli scientifici e/o la creazione di banche dati, anche con modalità ad accesso aperto, partecipazione a convegni, ecc.) potrà avvenire soltanto in forma anonima e/o aggregata e comunque secondo modalità che non rendano identificabile l'interessato.
+
+DIRITTI DELL'INTERESSATO
+Gli interessati hanno diritto di chiedere in ogni momento al Titolare, ai contatti sopraindicati, l'esercizio di diritti di cui agli artt. 15 e ss. del <em>GDPR</em> e, in particolare, l'accesso ai propri dati personali, la rettifica, l'integrazione, nonché se ricorrono i presupposti normativi, la cancellazione, la limitazione del trattamento dei dati e il diritto di opporsi allo stesso.
+Gli interessati hanno il diritto di revocare il consenso in qualsiasi momento senza pregiudicare la liceità del trattamento basata sul consenso prestato prima della revoca.
+Resta salvo il diritto di proporre reclamo all'Autorità Garante per la protezione dei dati personali ai sensi dell'art. 77 del <em>GDPR</em> o di adire le opportune sedi giudiziarie.
+
+Per informazioni relative al trattamento dei dati effettuato nel Progetto di ricerca può rivolgersi al Preposto al Trattamento dei dati personali del Progetto, Massimo Zancanaro, al seguente recapito: <a href="mailto:massimo.zancanaro@unitn.it">massimo.zancanaro@unitn.it</a>

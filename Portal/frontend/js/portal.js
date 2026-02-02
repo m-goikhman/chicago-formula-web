@@ -181,9 +181,21 @@
         return DEFAULT_DESTINATIONS[mode];
     }
 
+    const CONSENT_STORAGE_KEY = 'portalConsentGiven';
+
+    const consentView = document.getElementById('consentView');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
     const participantInput = document.getElementById('participantCode');
+    const consentToggle1 = document.getElementById('consentToggle1');
+    const consentToggle2 = document.getElementById('consentToggle2');
+    const consentExpandable1 = document.getElementById('consentExpandable1');
+    const consentExpandable2 = document.getElementById('consentExpandable2');
+    const consentBody1 = document.getElementById('consentBody1');
+    const consentBody2 = document.getElementById('consentBody2');
+    const consentCheck1 = document.getElementById('consentCheck1');
+    const consentCheck2 = document.getElementById('consentCheck2');
+    const consentContinueButton = document.getElementById('consentContinueButton');
     const loginButton = document.getElementById('loginButton');
     const loginError = document.getElementById('loginError');
     const loginStatus = document.getElementById('loginStatus');
@@ -233,8 +245,36 @@
         return { token, code };
     }
 
+    function hasConsentGiven() {
+        return localStorage.getItem(CONSENT_STORAGE_KEY) === 'true';
+    }
+
+    function setConsentGiven() {
+        localStorage.setItem(CONSENT_STORAGE_KEY, 'true');
+    }
+
+    function hideConsentView() {
+        if (consentView) {
+            consentView.classList.add('hidden');
+        }
+        if (loginView) {
+            loginView.classList.remove('hidden');
+        }
+    }
+
+    function updateConsentContinueButton() {
+        if (!consentContinueButton) {
+            return;
+        }
+        const bothChecked = consentCheck1 && consentCheck1.checked && consentCheck2 && consentCheck2.checked;
+        consentContinueButton.disabled = !bothChecked;
+    }
+
     function showModeSelect(participantCode, options = {}) {
         sessionCodeEl.textContent = participantCode ?? '—';
+        if (consentView) {
+            consentView.classList.add('hidden');
+        }
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
         if (options.showStatus) {
@@ -328,7 +368,64 @@
         window.location.assign(destination);
     }
 
+    function closeExpandable(toggle, expandable) {
+        if (!expandable) return;
+        expandable.classList.remove('is-open');
+        if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    function setupConsentToggles() {
+        function handleToggle(toggle, expandable) {
+            const expanded = toggle.getAttribute('aria-expanded') === 'true';
+            expandable.classList.toggle('is-open', !expanded);
+            toggle.setAttribute('aria-expanded', !expanded);
+            if (!expanded) {
+                requestAnimationFrame(() => {
+                    toggle.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            }
+        }
+        if (consentToggle1 && consentExpandable1) {
+            consentToggle1.addEventListener('click', () => handleToggle(consentToggle1, consentExpandable1));
+        }
+        if (consentToggle2 && consentExpandable2) {
+            consentToggle2.addEventListener('click', () => handleToggle(consentToggle2, consentExpandable2));
+        }
+        consentExpandable1?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle1, consentExpandable1));
+        consentExpandable2?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle2, consentExpandable2));
+    }
+
+    function setupConsentCheckboxes() {
+        const update = updateConsentContinueButton;
+        if (consentCheck1) {
+            consentCheck1.addEventListener('change', () => {
+                update();
+                if (consentCheck1.checked) closeExpandable(consentToggle1, consentExpandable1);
+            });
+        }
+        if (consentCheck2) {
+            consentCheck2.addEventListener('change', () => {
+                update();
+                if (consentCheck2.checked) closeExpandable(consentToggle2, consentExpandable2);
+            });
+        }
+    }
+
+    function handleConsentContinue() {
+        setConsentGiven();
+        hideConsentView();
+        if (participantInput) {
+            participantInput.focus();
+        }
+    }
+
     loginButton.addEventListener('click', handleLogin);
+
+    if (consentContinueButton) {
+        consentContinueButton.addEventListener('click', handleConsentContinue);
+    }
+    setupConsentToggles();
+    setupConsentCheckboxes();
 
     participantInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
@@ -348,11 +445,14 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
-        tryRestoreSession().then((restored) => {
-            if (!restored && participantInput) {
-                participantInput.focus();
-            }
-        });
+        if (hasConsentGiven()) {
+            hideConsentView();
+            tryRestoreSession().then((restored) => {
+                if (!restored && participantInput) {
+                    participantInput.focus();
+                }
+            });
+        }
     });
 })(window);
 

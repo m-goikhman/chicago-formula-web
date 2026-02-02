@@ -4,15 +4,19 @@
 function checkAndShowInputArea(messageContent, msgObj) {
     const inputArea = document.getElementById('inputArea');
     if (!inputArea || window.inputAreaShown) return;
-    
-    // Check if message starts with "👥 FOUR PEOPLE ARE IN THE APARTMENT"
+
+    // Episode 1: show input when main menu appears after "Start Investigation!" (this message text)
     if (messageContent && messageContent.trim().startsWith('👥 FOUR PEOPLE ARE IN THE APARTMENT')) {
-        // Show input area (but tutorial will start after user clicks "Start Investigation!")
         inputArea.style.display = 'flex';
         window.inputAreaShown = true;
-        // Don't start tutorial here - it will start after "start_investigation" action
+        return;
     }
-    // Don't show input area for other messages during onboarding
+    // Episodes 2–4 (or if user skipped to them before finishing ep1 onboarding): show input when menu is shown
+    // Backend sends type "menu" for main menu and sub-menus once investigation has started for that episode
+    if (msgObj && msgObj.type === 'menu') {
+        inputArea.style.display = 'flex';
+        window.inputAreaShown = true;
+    }
 }
 
 function displayMessage(msg) {
