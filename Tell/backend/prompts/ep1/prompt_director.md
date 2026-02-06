@@ -16,7 +16,7 @@ You have several actors at your disposal (use these keys): "tim", "pauline", "fi
 ### Pauline Thompson
 - Consulting firm assistant
 - Alex's childhood friend and secret business partner
-- Uses AI model for algorithmic trading
+- Uses a secret formula developed by Alex for algorithmic trading
 - Drives gray Toyota Camry
 - Found Alex's body
 
@@ -40,13 +40,13 @@ You have several actors at your disposal (use these keys): "tim", "pauline", "fi
 ### TIMELINE REFERENCE
 **19:00** - Party begins, Alex and Fiona arrive together, Tim already present
 **19:15** - Ronnie arrives, Secret Santa exchange, Tim receives threatening card from Ronnie, turns pale
-**19:40** - Pauline arrives uninvited, Alex takes her to stairwell, Tim eavesdrops on AI/USB conversation, Fiona sees Tim lurking
+**19:40** - Pauline arrives uninvited, Alex takes her to stairwell, Tim eavesdrops on secret formula/USB conversation, Fiona sees Tim lurking
 **19:55** - Alex and Pauline return, Alex gives Pauline office keys
-**20:05** - Pauline goes to office for USB, Tim follows and takes paperweight
-**20:15** - Tim returns to party with hidden paperweight
+**20:05** - Pauline goes to office for USB, Tim follows and takes a heavy bookend from Alex's table
+**20:15** - Tim returns to party with hidden bookend
 **20:30** - Alex invites everyone to apartment for 21:00, Pauline offers to drive Alex, they leave, Fiona follows, Tim secretly follows
-**20:45** - Pauline drops Alex at building, Tim parks illegally, follows Alex inside, attacks him with bookholder, steals USB, escapes
-**20:55** - Fiona arrives, sees Tim's blue Honda illegally parked, enters apartment (empty), calls Alex
+**20:45** - Pauline drops Alex at building, Tim parks illegally, follows Alex inside, hits him in the back of his head with bookholder, steals USB, escapes
+**20:55** - Fiona arrives, sees Tim's blue Honda illegally parked, enters apartment (seems empty), calls Alex
 **21:00** - Pauline arrives after parking, argues with Fiona
 **21:05** - Tim arrives (pretending first arrival)
 **21:10** - Ronnie arrives, notes Tim's car illegally parked
@@ -58,23 +58,24 @@ You have several actors at your disposal (use these keys): "tim", "pauline", "fi
 - Tim was eavesdropping on Alex and Pauline (19:40)
 - Tim's reaction to Secret Santa gift (19:15)
 - Blue Honda was illegally parked when she arrived (20:55)
-- Alex has "lucky" blue guitar USB
+- Alex has a collection of funny USB-drives, one of the drives is shaped as a toy plane
 - Alex came into money recently (suspicious)
 - Alex's thesis due December 24th
 - Pauline and Alex have some connection
 
 **Pauline Knows:**
-- Full details of AI trading business
-- USB contains academic version of model
+- Full details of the secret formula trading business
+- Alex told her to take a plane-shaped USB-drive in his office
+- USB contains Alex's thesis, or maybe a paper -- some academic stuff explaining and proving the formula she is using for trading
 - She gave USB back to Alex in car (20:30)
 - Argued with Alex about publication
 - Saw blue Honda while parking (21:00)
-- Alex's thesis deadline December 24th
+- Alex's thesis deadline is December 24th
 
 **Tim Knows:**
-- Has stolen USB in his pocket (encrypted, useless to him)
-- Alex and Pauline have AI trading system (overheard at 19:40)
-- Killed Alex at 20:45
+- Has stolen USB in his pocket (he hasn't had a chance to open it and see the formula)
+- Alex and Pauline have a secret trading formula (overheard at 19:40)
+- Attacked Alex at 20:45
 - His car is illegally parked
 - Owes money to Ronnie
 
