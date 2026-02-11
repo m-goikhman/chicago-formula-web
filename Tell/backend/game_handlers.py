@@ -6,7 +6,7 @@ import logging
 import json
 import time
 import random
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 
 import bootstrap  # noqa: F401
@@ -19,6 +19,88 @@ from ai_services import ask_for_dialogue
 import pytz
 
 logger = logging.getLogger(__name__)
+
+EP2_DEFAULT_LOCATION = "default_ep2"
+EP2_LOCATION_ACTIONS = {
+    "go_default_ep2": "default_ep2",
+    "go_university_ep2": "university_ep2",
+    "go_hospital_ep2": "hospital_ep2",
+}
+
+
+def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
+    """Get current location key for a stage, when configured."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    locations = stage_config.get("locations", {})
+    if not locations:
+        return None
+
+    stage_locations = state.get("stage_locations", {})
+    return (
+        stage_locations.get(str(stage_number))
+        or stage_locations.get(stage_number)
+        or stage_config.get("default_location")
+    )
+
+
+def set_stage_location(state: Dict, stage_number: int, location_key: str) -> None:
+    """Persist stage location in game state."""
+    stage_locations = state.get("stage_locations", {})
+    stage_locations[str(stage_number)] = location_key
+    state["stage_locations"] = stage_locations
+
+
+def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
+    """Resolve active character set for a stage and location."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    locations = stage_config.get("locations", {})
+    if not locations:
+        return stage_config.get("characters", [])
+
+    location_key = get_stage_location(state, stage_number)
+    location_config = locations.get(location_key, {})
+    location_characters = location_config.get("characters")
+    if isinstance(location_characters, list):
+        return location_characters
+
+    return stage_config.get("characters", [])
+
+
+def _extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
+    """
+    Parse optional [buttons] section.
+    Button format: "Button text|action_key" (one button per line).
+    """
+    lines = content.splitlines()
+    marker_index = -1
+
+    for index, line in enumerate(lines):
+        if line.strip().lower() == "[buttons]":
+            marker_index = index
+            break
+
+    if marker_index < 0:
+        return content, []
+
+    body_lines = lines[:marker_index]
+    while body_lines and body_lines[-1].strip() in ("", "---"):
+        body_lines.pop()
+
+    buttons: List[Dict[str, str]] = []
+    for raw in lines[marker_index + 1:]:
+        line = raw.strip()
+        if not line:
+            continue
+        text, sep, action = line.partition("|")
+        if not sep:
+            continue
+        text = text.strip()
+        action = action.strip()
+        if text and action:
+            buttons.append({"text": text, "action": action})
+
+    cleaned_content = "\n".join(body_lines).strip()
+    return cleaned_content, buttons
 
 
 def generate_message_id() -> int:
@@ -79,7 +161,8 @@ def initialize_game_state(participant_code: str) -> Dict:
         "stage_unlock_dates": stage_unlock_dates,
         "stage_progress": stage_progress,
         "global_knowledge": [],  # List of dicts: {"stage": int, "information": str, "source": str, "importance": str}
-        "episode_messages": {}  # stage_num -> list of message dicts shown in chat for that episode
+        "episode_messages": {},  # stage_num -> list of message dicts shown in chat for that episode
+        "stage_locations": {"2": EP2_DEFAULT_LOCATION},
     }
 
 
@@ -139,6 +222,14 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     
     if "episode_messages" not in state:
         state["episode_messages"] = {}
+
+    if "stage_locations" not in state:
+        state["stage_locations"] = {"2": EP2_DEFAULT_LOCATION}
+    else:
+        stage_locations = state.get("stage_locations", {})
+        if not stage_locations.get("2") and not stage_locations.get(2):
+            stage_locations["2"] = EP2_DEFAULT_LOCATION
+            state["stage_locations"] = stage_locations
     
     return state
 
@@ -654,7 +745,8 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
         return messages
     
     entry = _normalize_intro_step(intro_files[step], step, len(intro_files))
-    content = _load_intro_file_safe(entry["file"], episode)
+    raw_content = _load_intro_file_safe(entry["file"], episode)
+    content, parsed_buttons = _extract_buttons_from_text(raw_content)
     
     log_role = entry.get("character", "narrator") if entry["type"] == "character" else "narrator"
     log_message(0, log_role, content, participant_code)
@@ -664,6 +756,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
         char_key = entry.get("character", "nina")
         save_message_to_cache(message_id, content, char_key)
         char_data = CHARACTER_DATA.get(char_key, {})
+        buttons = parsed_buttons or [{"text": entry["button"], "action": "case_intro_next"}]
         msg = {
             "type": "character",
             "character": char_key,
@@ -672,18 +765,19 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
             "content": content,
             "message_id": message_id,
             "show_explain": True,
-            "buttons": [{"text": entry["button"], "action": "case_intro_next"}]
+            "buttons": buttons
         }
         if entry.get("image"):
             msg["image"] = entry["image"]
     else:
         save_message_to_cache(message_id, content)
+        buttons = parsed_buttons or [{"text": entry["button"], "action": "case_intro_next"}]
         msg = {
             "type": "system",
             "content": content,
             "message_id": message_id,
             "show_explain": True,
-            "buttons": [{"text": entry["button"], "action": "case_intro_next"}]
+            "buttons": buttons
         }
         if entry.get("image"):
             msg["image"] = entry["image"]
@@ -704,6 +798,41 @@ async def start_investigation(participant_code: str) -> List[Dict]:
     await game_state_manager.save_game_state(participant_code, state)
     
     return await handle_main_menu(participant_code)
+
+
+async def handle_location_transition(participant_code: str, action: str) -> List[Dict]:
+    """Handle transitions between episode 2 locations."""
+    state = GAME_STATE.get(participant_code)
+
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    target_location = EP2_LOCATION_ACTIONS.get(action)
+    if not target_location:
+        return [{"type": "error", "content": "Unknown location action."}]
+
+    stage_number = state.get("current_stage", 1)
+    if stage_number != 2:
+        return [{"type": "error", "content": "This action is available only in episode 2."}]
+
+    locations = STAGE_CONFIG.get(2, {}).get("locations", {})
+    if target_location not in locations:
+        return [{"type": "error", "content": "Location is not configured."}]
+
+    set_stage_location(state, 2, target_location)
+    state["mode"] = "public"
+    state["current_character"] = None
+    state["onboarding_step"] = "investigation_started"
+
+    await game_state_manager.save_game_state(participant_code, state)
+
+    location_name = locations.get(target_location, {}).get("name", target_location)
+    transition_text = f"You arrived at: {location_name}."
+    log_message(0, "system", transition_text, participant_code)
+
+    messages = [{"type": "system", "content": transition_text}]
+    messages.extend(await handle_main_menu(participant_code))
+    return messages
 
 
 async def handle_main_menu(participant_code: str) -> List[Dict]:
@@ -741,8 +870,7 @@ async def handle_menu_talk(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
     
     current_stage = state.get("current_stage", 1)
-    stage_config = STAGE_CONFIG.get(current_stage, {})
-    character_keys = stage_config.get("characters", [])
+    character_keys = get_characters_for_stage(state, current_stage)
     
     buttons = [{"text": "💬 Talk to Everyone (Public)", "action": "mode_public"}]
     
@@ -780,6 +908,11 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     
     if character_key not in CHARACTER_DATA:
         return [{"type": "error", "content": "Invalid character."}]
+
+    current_stage = state.get("current_stage", 1)
+    available_characters = set(get_characters_for_stage(state, current_stage))
+    if character_key not in available_characters:
+        return [{"type": "error", "content": "Character is not available in this location."}]
     
     # Set mode to private
     state["mode"] = "private"
@@ -791,10 +924,11 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     # Get current language level
     current_language_level = state.get("current_language_level", "B1")
     current_stage = state.get("current_stage", 1)
+    current_location = get_stage_location(state, current_stage)
     
     # Generate narrator transition
     try:
-        narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage)
+        narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage, current_location)
         description_text = await ask_for_dialogue(
             participant_code, 
             f"Describe the detective taking {char_name} aside for a private talk.",
@@ -856,14 +990,15 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     char_data = CHARACTER_DATA[char_key]
     current_language_level = state.get("current_language_level", "B1")
     current_stage = state.get("current_stage", 1)
-    stage_characters = STAGE_CONFIG.get(current_stage, {}).get("characters", [])
+    current_location = get_stage_location(state, current_stage)
+    stage_characters = get_characters_for_stage(state, current_stage)
     
     # Check if this is first interrogation (for current episode's characters)
     if char_key in stage_characters and char_key not in state.get("suspects_interrogated", set()):
         state.setdefault("suspects_interrogated", set()).add(char_key)
         # Note: Accuse unlock logic would go here
     
-    system_prompt = combine_character_prompt(char_key, current_language_level, current_stage)
+    system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
     
     # Create context trigger
     topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
@@ -943,7 +1078,8 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
     
     # Load Nina's prompt (episode-aware path; she doesn't need language level adjustments as she's a mentor)
     current_stage = state.get("current_stage", 1)
-    system_prompt = load_system_prompt(get_prompt_path(char_key, current_stage))
+    current_location = get_stage_location(state, current_stage)
+    system_prompt = load_system_prompt(get_prompt_path(char_key, current_stage, current_location))
     
     # Create context trigger for mentor guidance
     context_trigger = f"The detective is asking you for help: '{message_text}'. Provide supportive guidance and hints to help them progress in their investigation."
@@ -1013,18 +1149,21 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
+    current_stage = state.get("current_stage", 1)
+    current_location = get_stage_location(state, current_stage)
+    stage_characters = set(get_characters_for_stage(state, current_stage))
+
     # First, check for direct character addressing
     from predefined_responses import extract_character_from_message_strict
     
     character_key = extract_character_from_message_strict(message_text)
-    if character_key and character_key in CHARACTER_DATA:
+    if character_key and character_key in CHARACTER_DATA and character_key in stage_characters:
         # Handle direct character addressing
         char_data = CHARACTER_DATA[character_key]
         
         # Get current language level and episode for prompt resolution
         current_language_level = state.get("current_language_level", "B1")
-        current_stage = state.get("current_stage", 1)
-        system_prompt = combine_character_prompt(character_key, current_language_level, current_stage)
+        system_prompt = combine_character_prompt(character_key, current_language_level, current_stage, current_location)
         
         # Create context trigger
         topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
@@ -1145,7 +1284,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 # Get current language level and episode for prompt resolution
                 current_language_level = state.get("current_language_level", "B1")
                 current_stage = state.get("current_stage", 1)
-                system_prompt = combine_character_prompt(char_key, current_language_level, current_stage)
+                current_location = get_stage_location(state, current_stage)
+                system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
                 
                 try:
                     reply_text = await ask_for_dialogue(

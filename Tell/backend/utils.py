@@ -71,17 +71,30 @@ def clear_prompt_cache(filepath: str = None):
         print("Cleared all prompt cache")
 
 
-def get_prompt_path(character_key: str, episode: int) -> str:
+def get_prompt_path(character_key: str, episode: int, location: Optional[str] = None) -> str:
     """
     Resolve prompt file path by episode.
     If a prompt lives in prompts/ (root), it is shared for all episodes.
-    Otherwise the prompt is episode-specific: use prompts/ep{episode}/.
+    Otherwise the prompt is episode-specific:
+    - prompts/ep{episode}/{location}/ when location is provided and file exists
+    - prompts/ep{episode}/ as fallback
     """
     basename = f"prompt_{character_key}.md"
     root_path = f"prompts/{basename}"
     if os.path.exists(os.path.join(_BASE_DIR, root_path)):
         return root_path
-    return f"prompts/ep{episode}/{basename}"
+
+    if location:
+        location_path = f"prompts/ep{episode}/{location}/{basename}"
+        if os.path.exists(os.path.join(_BASE_DIR, location_path)):
+            return location_path
+
+    episode_path = f"prompts/ep{episode}/{basename}"
+    if os.path.exists(os.path.join(_BASE_DIR, episode_path)):
+        return episode_path
+
+    # Keep deterministic fallback path even when file is not present.
+    return episode_path
 
 
 def get_game_text_path(basename: str, episode: int) -> str:
@@ -92,7 +105,7 @@ def get_game_text_path(basename: str, episode: int) -> str:
     return f"game_texts/ep{episode}/{basename}"
 
 
-def combine_character_prompt(character_name: str, language_level: str = "B1", episode: int = 1) -> str:
+def combine_character_prompt(character_name: str, language_level: str = "B1", episode: int = 1, location: Optional[str] = None) -> str:
     """
     Combines a character's specific prompt with language learning requirements for the specified level.
     Only applies to game characters and narrator, not to tutor.
@@ -113,7 +126,7 @@ def combine_character_prompt(character_name: str, language_level: str = "B1", ep
 
     try:
         # Load character-specific prompt (episode-aware path)
-        character_prompt_path = get_prompt_path(character_name, episode)
+        character_prompt_path = get_prompt_path(character_name, episode, location)
         character_prompt = load_system_prompt(character_prompt_path)
 
         # Only combine with language requirements for game characters and narrator
@@ -133,7 +146,7 @@ def combine_character_prompt(character_name: str, language_level: str = "B1", ep
     except Exception as e:
         print(f"ERROR: Failed to combine prompt for character {character_name} with level {language_level}: {e}")
         # Fallback to just the character prompt if language requirements can't be loaded
-        return load_system_prompt(get_prompt_path(character_name, episode))
+        return load_system_prompt(get_prompt_path(character_name, episode, location))
 
 def load_system_prompt(filepath: str) -> str:
     """Loads the system prompt text from a file using an absolute path with caching."""

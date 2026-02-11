@@ -1,1 +1,8 @@
-Good news — we have a suspect in custody. The police made an arrest last night. But the case isn't closed yet. The Captain wants you to dig deeper. There's something about this 'formula' that doesn't add up. Head to the university and see what you can find out about Alex Martin's work. Talk to his colleagues. Check his office if you can get access. I'll be here if you need me.
+They arrested Tim Kane last night. Officially, that's the end of it.
+But we have that flash drive now, and I want to know what's on it. Someone hit a man over the head for this thing.
+Come on, I'll go with you. We could start at the university — find someone who knows Alex's work — or go straight to the hospital, he woke up this morning. Up to you.
+
+---
+[buttons]
+Go to the university|go_university_ep2
+Go to the hospital|go_hospital_ep2

@@ -40,9 +40,24 @@ STAGE_CONFIG = {
         ]
     },
     2: {
-        "name": "The University",
+        "name": "Episode 2",
         "clues_count": 0,  # To be configured when content is created
-        "characters": ["susan", "james"],
+        "characters": ["susan", "james"],  # Fallback for stages without location config
+        "default_location": "default_ep2",
+        "locations": {
+            "default_ep2": {
+                "name": "Episode 2 - Start",
+                "characters": ["susan", "james"]
+            },
+            "university_ep2": {
+                "name": "University",
+                "characters": ["susan", "james"]
+            },
+            "hospital_ep2": {
+                "name": "Hospital",
+                "characters": ["susan", "james"]
+            }
+        },
         "intro_files": [
             {"file": "case_intro_1.txt", "button": "🔍 Game Menu"}
         ],

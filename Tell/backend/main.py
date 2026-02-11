@@ -179,6 +179,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_language_confirmation,
         handle_case_intro,
         start_investigation,
+        handle_location_transition,
         handle_main_menu,
         handle_menu_talk,
         handle_character_talk,
@@ -200,6 +201,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_language_confirmation(participant_code)
     elif request.action.startswith("case_intro_"):
         messages = await handle_case_intro(participant_code, request.action)
+    elif request.action in ["go_default_ep2", "go_university_ep2", "go_hospital_ep2"]:
+        messages = await handle_location_transition(participant_code, request.action)
     elif request.action == "start_investigation":
         messages = await start_investigation(participant_code)
     elif request.action == "show_main_menu":
@@ -435,7 +438,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     participant_code = current_user["participant_code"]
     logger.info(f"Getting available stages for participant: {participant_code}")
     
-    from game_handlers import get_available_stages, GAME_STATE
+    from game_handlers import get_available_stages, GAME_STATE, get_characters_for_stage, get_stage_location
     from config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
     # Ensure state is loaded
@@ -460,7 +463,14 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         stage_config = STAGE_CONFIG.get(stage_num, {})
         progress = stage_progress.get(stage_num, {})
         is_available = stage_num in available_stages if not is_test_mode else True
-        character_keys = stage_config.get("characters", [])
+        if stage_num == current_stage:
+            character_keys = get_characters_for_stage(GAME_STATE.get(participant_code, {}), stage_num)
+            current_location = get_stage_location(GAME_STATE.get(participant_code, {}), stage_num)
+        else:
+            default_location = stage_config.get("default_location")
+            location_cfg = stage_config.get("locations", {}).get(default_location, {})
+            character_keys = location_cfg.get("characters", stage_config.get("characters", []))
+            current_location = default_location
         characters = [
             {"key": k, "full_name": CHARACTER_DATA[k]["full_name"], "image": CHARACTER_DATA.get(k, {}).get("image")}
             for k in character_keys if k in CHARACTER_DATA
@@ -472,6 +482,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             "current": stage_num == current_stage,
             "completed": stage_num in stages_completed,
             "status": progress.get("completion_status", "not_started"),
+            "location": current_location,
             "characters": characters
         })
     

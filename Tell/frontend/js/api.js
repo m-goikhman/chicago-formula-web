@@ -222,6 +222,7 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
         // Show Nina floating button when investigation starts (last intro step sends case_intro_next, backend returns menu)
         const investigationJustStarted = (
             action === 'start_investigation' ||
+            action.startsWith('go_') ||
             (action === 'case_intro_next' && data.messages && data.messages.some(m => m.type === 'menu'))
         );
         if (investigationJustStarted) {
@@ -229,6 +230,11 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
             if (ninaButton) {
                 ninaButton.style.display = 'flex';
             }
+        }
+
+        // Location transitions can change available characters inside the same episode
+        if (action.startsWith('go_') && typeof loadEpisodeSelector === 'function') {
+            await loadEpisodeSelector();
         }
 
         // Tutorial: show when investigation has just started
