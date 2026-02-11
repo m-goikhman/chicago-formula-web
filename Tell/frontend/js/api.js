@@ -3,6 +3,10 @@ const apiClient = window.apiClient;
 if (!apiClient) {
     throw new Error('apiClient must be loaded before Tell API module');
 }
+
+function shouldShowNinaFloatingButton() {
+    return (window.currentStageNumber || 1) === 1;
+}
 async function login() {
     const code = document.getElementById('participantCode').value;
     const errorDiv = document.getElementById('loginError');
@@ -225,7 +229,7 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
             action.startsWith('go_') ||
             (action === 'case_intro_next' && data.messages && data.messages.some(m => m.type === 'menu'))
         );
-        if (investigationJustStarted) {
+        if (investigationJustStarted && shouldShowNinaFloatingButton()) {
             const ninaButton = document.getElementById('ninaFloatingButton');
             if (ninaButton) {
                 ninaButton.style.display = 'flex';
@@ -497,7 +501,7 @@ async function restoreSession() {
             
             // Show Nina floating button if investigation has started (character messages or menu visible)
             const ninaButton = document.getElementById('ninaFloatingButton');
-            if (ninaButton && navigationBar && navigationBar.style.display !== 'none') {
+            if (ninaButton && navigationBar && navigationBar.style.display !== 'none' && shouldShowNinaFloatingButton()) {
                 const chatArea = document.getElementById('chatArea');
                 if (chatArea) {
                     const hasCharacterMessages = chatArea.querySelectorAll('.message.character').length > 0;
@@ -711,12 +715,18 @@ async function loadEpisodeSelector() {
         const stagesInfo = data.stages_info || [];
         const currentStage = data.current_stage || 1;
         const availableStages = data.available_stages || [1];
+        window.currentStageNumber = currentStage;
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
         window.currentStageCharacters = currentStageInfo?.characters || [];
         window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
         if (window.populateCharactersDrawer) window.populateCharactersDrawer();
+
+        const ninaButton = document.getElementById('ninaFloatingButton');
+        if (ninaButton) {
+            ninaButton.style.display = shouldShowNinaFloatingButton() ? 'flex' : 'none';
+        }
         
         const episodeDisplay = document.getElementById('episodeDisplay');
         const episodeSelector = document.getElementById('episodeSelector');

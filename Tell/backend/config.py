@@ -47,15 +47,15 @@ STAGE_CONFIG = {
         "locations": {
             "default_ep2": {
                 "name": "Episode 2 - Start",
-                "characters": ["susan", "james"]
+                "characters": ["nina", "susan", "james"]
             },
             "university_ep2": {
                 "name": "University",
-                "characters": ["susan", "james"]
+                "characters": ["nina", "susan", "james"]
             },
             "hospital_ep2": {
                 "name": "Hospital",
-                "characters": ["susan", "james"]
+                "characters": ["nina", "susan", "james"]
             }
         },
         "intro_files": [

@@ -79,15 +79,32 @@ def get_prompt_path(character_key: str, episode: int, location: Optional[str] = 
     - prompts/ep{episode}/{location}/ when location is provided and file exists
     - prompts/ep{episode}/ as fallback
     """
+    if location:
+        basename = f"prompt_{character_key}.md"
+        location_candidates = [location]
+        if "_ep" in location:
+            location_candidates.append(location.split("_ep", 1)[0])
+
+        location_paths = [
+            f"prompts/ep{episode}/{location}/{basename}",
+            f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}_{location}.md",
+        ]
+        for location_name in location_candidates:
+            location_paths.append(
+                f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}_{location_name}.md"
+            )
+            location_paths.append(
+                f"prompts/ep{episode}/{location}/prompt_{character_key}_{location_name}.md"
+            )
+
+        for location_path in location_paths:
+            if os.path.exists(os.path.join(_BASE_DIR, location_path)):
+                return location_path
+
     basename = f"prompt_{character_key}.md"
     root_path = f"prompts/{basename}"
     if os.path.exists(os.path.join(_BASE_DIR, root_path)):
         return root_path
-
-    if location:
-        location_path = f"prompts/ep{episode}/{location}/{basename}"
-        if os.path.exists(os.path.join(_BASE_DIR, location_path)):
-            return location_path
 
     episode_path = f"prompts/ep{episode}/{basename}"
     if os.path.exists(os.path.join(_BASE_DIR, episode_path)):
