@@ -1,6 +1,7 @@
 import os
 import datetime
 import json
+import re
 from typing import Optional
 from google.cloud import storage
 from config import GCS_BUCKET_NAME
@@ -57,6 +58,28 @@ def log_message(user_id: int, role: str, content: str, participant_code: str = N
     except Exception as e:
         print(f"[ERROR] Failed to write log to Cloud Storage for user {user_id}: {e}")
 
+
+def clear_chat_history_log(user_id: int, participant_code: str = None) -> bool:
+    """Delete a user's chat history log from Google Cloud Storage."""
+    bucket = _get_bucket()
+    if not bucket:
+        print("WARNING: GCS_BUCKET_NAME is not set or invalid. Cannot clear chat history log.")
+        return False
+
+    try:
+        if participant_code:
+            blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
+        else:
+            blob_name = f"user_logs/chat_history_{user_id}.txt"
+
+        blob = bucket.blob(blob_name)
+        if blob.exists():
+            blob.delete()
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to clear chat history log for user {user_id}: {e}")
+        return False
+
 # Cache for system prompts to avoid repeated file I/O
 _prompt_cache = {}
 
@@ -82,11 +105,15 @@ def get_prompt_path(character_key: str, episode: int, location: Optional[str] = 
     if location:
         basename = f"prompt_{character_key}.md"
         location_candidates = [location]
-        if "_ep" in location:
-            location_candidates.append(location.split("_ep", 1)[0])
+        # Support aliases like "default_ep2" -> "default" so
+        # prompt_nina_ep2_default.md is resolved for default scene.
+        location_without_episode_suffix = re.sub(r"_ep\d+$", "", location)
+        if location_without_episode_suffix and location_without_episode_suffix != location:
+            location_candidates.append(location_without_episode_suffix)
 
         location_paths = [
             f"prompts/ep{episode}/{location}/{basename}",
+            f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}.md",
             f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}_{location}.md",
         ]
         for location_name in location_candidates:

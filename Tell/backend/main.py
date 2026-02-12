@@ -17,7 +17,7 @@ import bootstrap  # noqa: F401
 from shared.backend.auth import validate_session_token, login_participant
 from shared.backend.progress_manager import progress_manager  # used in some endpoints
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
-from utils import log_message
+from utils import log_message, clear_chat_history_log
 from game_state_manager import game_state_manager
 
 # Configure logging
@@ -64,6 +64,11 @@ class LoginResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     participant_code: str
+
+
+class ResetGameResponse(BaseModel):
+    success: bool
+    message: str
 
 
 class MessageRequest(BaseModel):
@@ -158,6 +163,32 @@ async def start_game(current_user=Depends(get_current_user)):
     messages = await start_game_handler(participant_code)
     
     return {"messages": messages, "participant_code": participant_code}
+
+
+@app.post("/api/game/reset", response_model=ResetGameResponse)
+async def reset_game(current_user=Depends(get_current_user)):
+    """Reset all game/chat history for TEST participant."""
+    participant_code = current_user["participant_code"]
+
+    if participant_code.upper() != "TEST":
+        raise HTTPException(status_code=403, detail="Reset is available only for TEST participant")
+
+    logger.info("Reset requested for TEST participant")
+
+    # Clear in-memory state
+    GAME_STATE.pop(participant_code, None)
+
+    # Clear persisted game state and progress
+    await game_state_manager.delete_game_state(participant_code)
+    progress_manager.clear_user_progress(0, participant_code)
+
+    # Clear persisted chat history log
+    clear_chat_history_log(0, participant_code)
+
+    return ResetGameResponse(
+        success=True,
+        message="All message history and progress were cleared. You can start from the beginning."
+    )
 
 
 class ActionRequest(BaseModel):

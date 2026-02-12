@@ -132,18 +132,18 @@ function populateCharactersDrawer() {
     
     // Use current episode's characters from API, or fallback to ep1 list for first paint / restore
     const stageChars = window.currentStageCharacters || [];
-    const list = [
-        { name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null }
-    ].concat(
-        stageChars.length > 0
-            ? stageChars.map(c => ({ name: c.full_name, status: 'Private Chat', action: `talk_${c.key}`, image: c.image }))
-            : [
-                { name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'ep1/tim.png' },
-                { name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ep1/ronnie.png' },
-                { name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'ep1/fiona.png' },
-                { name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'ep1/pauline.png' }
-            ]
-    );
+    const privateCharacters = stageChars.length > 0
+        ? stageChars.map(c => ({ name: c.full_name, status: 'Private Chat', action: `talk_${c.key}`, image: c.image }))
+        : [
+            { name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'ep1/tim.png' },
+            { name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ep1/ronnie.png' },
+            { name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'ep1/fiona.png' },
+            { name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'ep1/pauline.png' }
+        ];
+    const list = (privateCharacters.length > 1
+        ? [{ name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null }]
+        : []
+    ).concat(privateCharacters);
 
     charactersList.innerHTML = '';
     list.forEach(char => {

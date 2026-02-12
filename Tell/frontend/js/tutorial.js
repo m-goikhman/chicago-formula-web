@@ -36,8 +36,8 @@ function initTutorial() {
     tutorialSteps = [
         {
             selector: '#navigationBar .nav-button:first-child',
-            title: '👥 Suspects',
-            text: 'Here you can open the suspects panel. Click this button to talk to individual characters privately.',
+            title: '👥 Who\'s here',
+            text: 'Here you can open the Who\'s here panel. Click this button to talk to individual characters privately.',
             position: 'bottom',
             highlightPadding: 10
         },

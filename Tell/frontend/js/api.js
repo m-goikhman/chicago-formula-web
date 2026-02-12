@@ -7,6 +7,13 @@ if (!apiClient) {
 function shouldShowNinaFloatingButton() {
     return (window.currentStageNumber || 1) === 1;
 }
+
+function updateResetHistoryMenuVisibility() {
+    const resetMenuItem = document.getElementById('resetHistoryMenuItem');
+    if (!resetMenuItem) return;
+    resetMenuItem.style.display = (participantCode || '').toUpperCase() === 'TEST' ? 'block' : 'none';
+}
+
 async function login() {
     const code = document.getElementById('participantCode').value;
     const errorDiv = document.getElementById('loginError');
@@ -38,6 +45,7 @@ async function login() {
             // Hide login, show game
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('gameScreen').classList.add('active');
+            updateResetHistoryMenuVisibility();
             
             // Show navigation bar
             const navigationBar = document.getElementById('navigationBar');
@@ -128,6 +136,45 @@ async function loadGame() {
 
 async function handleAction(action, closeDrawersOnSuccess = true) {
     console.log('Handling action:', action);
+
+    if (action === 'reset_all_history') {
+        const confirmed = window.confirm(
+            'This will delete all message history and progress across all episodes for TEST. Continue?'
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            const { response, data } = await apiClient.postJson('/api/game/reset', {}, {
+                token: sessionToken
+            });
+
+            if (!response.ok) {
+                const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to reset history';
+                addMessage('error', 'Error', errorMessage);
+                return;
+            }
+
+            const chatArea = document.getElementById('chatArea');
+            if (chatArea) {
+                chatArea.innerHTML = '';
+            }
+            window.inputAreaShown = false;
+            const inputArea = document.getElementById('inputArea');
+            if (inputArea) {
+                inputArea.style.display = 'none';
+            }
+
+            await loadEpisodeSelector();
+            await loadGame();
+            return;
+        } catch (error) {
+            console.error('Error resetting history:', error);
+            addMessage('error', 'Error', 'Failed to reset history');
+            return;
+        }
+    }
     
     // Special handling for language level adjustments - hide text and show spinner inside message
     let loadingMsg = null;
@@ -394,6 +441,7 @@ function logout() {
     sessionToken = '';
     participantCode = '';
     currentCharacter = null;
+    updateResetHistoryMenuVisibility();
     
     // Hide game screen, show login screen
     document.getElementById('gameScreen').classList.remove('active');
@@ -471,6 +519,7 @@ async function restoreSession() {
             // Token is valid, restore UI
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('gameScreen').classList.add('active');
+            updateResetHistoryMenuVisibility();
             
             // Show navigation bar
             const navigationBar = document.getElementById('navigationBar');

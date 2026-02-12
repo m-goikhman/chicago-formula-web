@@ -6,6 +6,7 @@ import logging
 import json
 import time
 import random
+import os
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 
@@ -21,6 +22,7 @@ import pytz
 logger = logging.getLogger(__name__)
 
 EP2_DEFAULT_LOCATION = "default_ep2"
+EP2_SCRIPTED_LOCATIONS = {"university_ep2", "hospital_ep2"}
 EP2_LOCATION_ACTIONS = {
     "go_default_ep2": "default_ep2",
     "go_university_ep2": "university_ep2",
@@ -64,6 +66,350 @@ def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
         return location_characters
 
     return stage_config.get("characters", [])
+
+
+def get_private_dialogue_opener(state: Dict, stage_number: int, character_key: str) -> Optional[str]:
+    """Get optional configured opening line for private dialogue."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    location_key = get_stage_location(state, stage_number)
+    location_cfg = stage_config.get("locations", {}).get(location_key, {})
+
+    location_openers = location_cfg.get("private_dialogue_openers", {})
+    if isinstance(location_openers, dict):
+        opener = location_openers.get(character_key)
+        if opener:
+            return opener
+
+    stage_openers = stage_config.get("private_dialogue_openers", {})
+    if isinstance(stage_openers, dict):
+        return stage_openers.get(character_key)
+
+    return None
+
+
+def get_clues_count_for_stage(stage_number: int) -> int:
+    """Get number of clues configured for a specific stage."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    stage_clues_count = stage_config.get("clues_count")
+    if isinstance(stage_clues_count, int) and stage_clues_count > 0:
+        return stage_clues_count
+    # Backward compatibility fallback for legacy configs.
+    return TOTAL_CLUES
+
+
+def _contains_any(text: str, keywords: List[str]) -> bool:
+    lowered = (text or "").lower()
+    return any(keyword in lowered for keyword in keywords)
+
+
+def _is_university_analysis_request(text: str) -> bool:
+    return _contains_any(
+        text,
+        [
+            "analy",
+            "look at the drive",
+            "look at this drive",
+            "look at what's on",
+            "check the drive",
+            "usb",
+            "formula",
+            "files",
+            "inspect",
+            "decode",
+        ],
+    )
+
+
+def _is_formula_nonsense_signal(text: str) -> bool:
+    return _contains_any(
+        text,
+        [
+            "nonsense",
+            "not a formula",
+            "fake",
+            "meaningless",
+            "garbage",
+            "random",
+            "doesn't make sense",
+            "not real",
+        ],
+    )
+
+
+def _mentions_formula_confrontation(text: str) -> bool:
+    return _contains_any(
+        text,
+        [
+            "formula",
+            "drive",
+            "usb",
+            "files",
+            "nonsense",
+            "expert",
+            "james",
+            "analysis",
+        ],
+    )
+
+
+def _mentions_plane_plain_story(text: str) -> bool:
+    return _contains_any(
+        text,
+        [
+            "plane",
+            "plain",
+            "mix-up",
+            "mixed up",
+            "another drive",
+            "wrong drive",
+        ],
+    )
+
+
+def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
+    if location == "university_ep2":
+        if cue == "nudge_before_analysis":
+            return (
+                f"The detective asked: '{user_message}'. James has not yet analyzed the drive. "
+                "Give a brief nudge to ask James to check the USB contents now."
+            )
+        if cue == "after_verdict":
+            return (
+                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
+                "He just signaled the formula/files are nonsense. React briefly and point to going to Alex next."
+            )
+        if cue == "after_verdict_alex_first":
+            return (
+                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
+                "The team visited Alex before university. React to the contradiction and suggest checking Alex's story."
+            )
+        if cue == "wrap_university":
+            return (
+                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
+                "James already gave his verdict and this conversation is dragging. Briefly suggest moving to Alex."
+            )
+
+    if location == "hospital_ep2":
+        if cue == "nudge_expert_before_university":
+            return (
+                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
+                "This hospital visit happened before university analysis. Give a brief nudge to have the USB checked by an expert."
+            )
+        if cue == "hint_confront_formula":
+            return (
+                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
+                "University already said the formula is nonsense, but detective is not confronting Alex yet. "
+                "Give a short hint on how to bring up James's analysis."
+            )
+        if cue == "seed_doubt":
+            return (
+                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
+                "Alex just gave the plane/plain-style explanation. Add a very short line that plants mild doubt."
+            )
+        if cue == "wrap_hospital":
+            return (
+                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
+                "Hospital exchange is complete. Briefly signal that it's time to wrap up and move on."
+            )
+
+    return (
+        f"The detective asked: '{user_message}'. Another character replied: '{other_reply}'. "
+        "Provide a short, useful follow-up."
+    )
+
+
+def _get_ep2_director_state(state: Dict) -> Dict:
+    ep2_state = state.setdefault("ep2_director", {})
+    ep2_state.setdefault("visited_locations", [])
+    ep2_state.setdefault("university_turns", 0)
+    ep2_state.setdefault("hospital_turns", 0)
+    ep2_state.setdefault("university_analysis_done", False)
+    ep2_state.setdefault("hospital_preuni_nudge_done", False)
+    ep2_state.setdefault("university_nudge_done", False)
+    ep2_state.setdefault("university_post_verdict_nina_done", False)
+    ep2_state.setdefault("university_wrap_done", False)
+    ep2_state.setdefault("hospital_confront_hint_done", False)
+    ep2_state.setdefault("hospital_doubt_seed_done", False)
+    ep2_state.setdefault("hospital_wrap_done", False)
+    ep2_state.setdefault("hospital_post_verdict_turns_without_confront", 0)
+    return ep2_state
+
+
+async def _handle_ep2_scripted_public_message(
+    participant_code: str,
+    message_text: str,
+    state: Dict,
+    current_stage: int,
+    current_location: str,
+    stage_characters: Set[str],
+) -> List[Dict]:
+    """Episode 2 lightweight scripted director for university/hospital scenes."""
+    messages: List[Dict] = []
+    ep2_state = _get_ep2_director_state(state)
+
+    visited_locations = ep2_state.get("visited_locations", [])
+    if current_location not in visited_locations:
+        visited_locations.append(current_location)
+        ep2_state["visited_locations"] = visited_locations
+
+    # Default speaker in these scenes: non-Nina character.
+    non_nina_candidates = [char for char in stage_characters if char != "nina" and char in CHARACTER_DATA]
+    active_character_key = non_nina_candidates[0] if non_nina_candidates else "nina"
+    active_char_data = CHARACTER_DATA[active_character_key]
+    current_language_level = state.get("current_language_level", "B1")
+
+    log_message(0, "user", message_text, participant_code)
+
+    system_prompt = combine_character_prompt(active_character_key, current_language_level, current_stage, current_location)
+    trigger = (
+        f"The detective asks in a public exchange: '{message_text}'. "
+        "Respond naturally as your character and move the investigation forward."
+    )
+
+    try:
+        other_reply = await ask_for_dialogue(
+            participant_code,
+            trigger,
+            system_prompt,
+            active_character_key,
+            participant_code,
+        )
+    except Exception as exc:
+        logger.error(f"Failed to get scripted EP2 reply from '{active_character_key}': {exc}")
+        other_reply = None
+
+    if not other_reply:
+        other_reply = "[Character is thinking...]"
+
+    other_message_id = generate_message_id()
+    save_message_to_cache(other_message_id, other_reply, active_character_key)
+    log_message(0, f"character_{active_character_key}", other_reply, participant_code)
+    messages.append(
+        {
+            "type": "character",
+            "character": active_character_key,
+            "character_name": active_char_data["full_name"],
+            "character_image": active_char_data.get("image"),
+            "content": other_reply,
+            "message_id": other_message_id,
+            "show_explain": bool(other_reply and other_reply != "[Character is thinking...]"),
+        }
+    )
+
+    # Decide if Nina should interject in this turn based on EP2 prompt conditions.
+    nina_cue: Optional[str] = None
+    hospital_visited = "hospital_ep2" in ep2_state.get("visited_locations", [])
+    university_visited = "university_ep2" in ep2_state.get("visited_locations", [])
+    analysis_done = ep2_state.get("university_analysis_done", False)
+
+    if current_location == "university_ep2":
+        ep2_state["university_turns"] = int(ep2_state.get("university_turns", 0)) + 1
+
+        if not analysis_done and _is_university_analysis_request(message_text):
+            ep2_state["university_analysis_done"] = True
+            analysis_done = True
+
+        if not analysis_done and _is_formula_nonsense_signal(other_reply):
+            ep2_state["university_analysis_done"] = True
+            analysis_done = True
+
+        if not analysis_done:
+            if ep2_state["university_turns"] >= 2 and not ep2_state.get("university_nudge_done", False):
+                ep2_state["university_nudge_done"] = True
+                nina_cue = "nudge_before_analysis"
+        else:
+            if not ep2_state.get("university_post_verdict_nina_done", False):
+                ep2_state["university_post_verdict_nina_done"] = True
+                nina_cue = "after_verdict_alex_first" if hospital_visited else "after_verdict"
+            else:
+                if not ep2_state.get("university_wrap_done", False) and ep2_state["university_turns"] >= 4:
+                    ep2_state["university_wrap_done"] = True
+                    nina_cue = "wrap_university"
+
+    elif current_location == "hospital_ep2":
+        ep2_state["hospital_turns"] = int(ep2_state.get("hospital_turns", 0)) + 1
+
+        if not analysis_done:
+            if ep2_state["hospital_turns"] >= 3 and not ep2_state.get("hospital_preuni_nudge_done", False):
+                ep2_state["hospital_preuni_nudge_done"] = True
+                nina_cue = "nudge_expert_before_university"
+        else:
+            if _mentions_formula_confrontation(message_text):
+                ep2_state["hospital_post_verdict_turns_without_confront"] = 0
+            else:
+                ep2_state["hospital_post_verdict_turns_without_confront"] = int(
+                    ep2_state.get("hospital_post_verdict_turns_without_confront", 0)
+                ) + 1
+                if (
+                    ep2_state["hospital_post_verdict_turns_without_confront"] >= 2
+                    and not ep2_state.get("hospital_confront_hint_done", False)
+                ):
+                    ep2_state["hospital_confront_hint_done"] = True
+                    nina_cue = "hint_confront_formula"
+
+        if not ep2_state.get("hospital_doubt_seed_done", False) and _mentions_plane_plain_story(other_reply):
+            ep2_state["hospital_doubt_seed_done"] = True
+            nina_cue = "seed_doubt"
+
+        if (
+            not ep2_state.get("hospital_wrap_done", False)
+            and ep2_state["hospital_turns"] >= 5
+            and (
+                ep2_state.get("hospital_doubt_seed_done", False)
+                or ep2_state.get("hospital_preuni_nudge_done", False)
+                or university_visited
+            )
+        ):
+            ep2_state["hospital_wrap_done"] = True
+            nina_cue = nina_cue or "wrap_hospital"
+
+    if nina_cue and "nina" in stage_characters and "nina" in CHARACTER_DATA:
+        nina_prompt = load_system_prompt(get_prompt_path("nina", current_stage, current_location))
+        nina_trigger = _build_ep2_nina_trigger(current_location, nina_cue, message_text, other_reply)
+        try:
+            nina_reply = await ask_for_dialogue(
+                participant_code,
+                nina_trigger,
+                nina_prompt,
+                "nina",
+                participant_code,
+            )
+        except Exception as exc:
+            logger.error(f"Failed to get scripted EP2 Nina interjection: {exc}")
+            nina_reply = None
+
+        if nina_reply:
+            nina_data = CHARACTER_DATA["nina"]
+            nina_message_id = generate_message_id()
+            save_message_to_cache(nina_message_id, nina_reply, "nina")
+            log_message(0, "character_nina", nina_reply, participant_code)
+            messages.append(
+                {
+                    "type": "character",
+                    "character": "nina",
+                    "character_name": nina_data["full_name"],
+                    "character_image": nina_data.get("image"),
+                    "content": nina_reply,
+                    "message_id": nina_message_id,
+                    "show_explain": True,
+                }
+            )
+
+    return messages
+
+
+def resolve_clue_text_path(clue_id: str, episode: int) -> str:
+    """Resolve clue text path with support for both `Clue` and `clue` naming."""
+    candidates = [
+        get_game_text_path(f"Clue{clue_id}.txt", episode),
+        get_game_text_path(f"clue{clue_id}.txt", episode),
+    ]
+    for candidate in candidates:
+        absolute_candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate)
+        if os.path.exists(absolute_candidate):
+            return candidate
+    # Keep deterministic fallback for logging/error handling.
+    return candidates[0]
 
 
 def _extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
@@ -871,8 +1217,10 @@ async def handle_menu_talk(participant_code: str) -> List[Dict]:
     
     current_stage = state.get("current_stage", 1)
     character_keys = get_characters_for_stage(state, current_stage)
-    
-    buttons = [{"text": "💬 Talk to Everyone (Public)", "action": "mode_public"}]
+
+    buttons = []
+    if len(character_keys) > 1:
+        buttons.append({"text": "💬 Talk to Everyone (Public)", "action": "mode_public"})
     
     for key in character_keys:
         if key in CHARACTER_DATA:
@@ -965,6 +1313,21 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
             "character_name": "Narrator",
             "content": fallback_text,
             "message_id": message_id,
+            "show_explain": True
+        })
+
+    opener_text = get_private_dialogue_opener(state, current_stage, character_key)
+    if opener_text:
+        opener_message_id = generate_message_id()
+        save_message_to_cache(opener_message_id, opener_text, character_key)
+        log_message(0, f"character_{character_key}", opener_text, participant_code)
+        messages.append({
+            "type": "character",
+            "character": character_key,
+            "character_name": char_data["full_name"],
+            "character_image": char_data.get("image"),
+            "content": opener_text,
+            "message_id": opener_message_id,
             "show_explain": True
         })
     
@@ -1152,6 +1515,19 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
     stage_characters = set(get_characters_for_stage(state, current_stage))
+
+    if current_stage == 2 and current_location == EP2_DEFAULT_LOCATION:
+        return await handle_nina_message(participant_code, message_text)
+
+    if current_stage == 2 and current_location in EP2_SCRIPTED_LOCATIONS:
+        return await _handle_ep2_scripted_public_message(
+            participant_code,
+            message_text,
+            state,
+            current_stage,
+            current_location,
+            stage_characters,
+        )
 
     # First, check for direct character addressing
     from predefined_responses import extract_character_from_message_strict
@@ -1377,8 +1753,11 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
+    current_stage = state.get("current_stage", 1)
+    clues_count = get_clues_count_for_stage(current_stage)
+
     buttons = []
-    for i in range(1, TOTAL_CLUES + 1):
+    for i in range(1, clues_count + 1):
         clue_id = str(i)
         buttons.append({
             "text": f"🔍 Clue {i}",
@@ -1410,8 +1789,17 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
         return [{"type": "error", "content": "Game not initialized."}]
     
     episode = state.get("current_stage", 1)
+    clues_count = get_clues_count_for_stage(episode)
+    try:
+        clue_number = int(clue_id)
+    except (TypeError, ValueError):
+        return [{"type": "error", "content": "Invalid clue id."}]
+
+    if clue_number < 1 or clue_number > clues_count:
+        return [{"type": "error", "content": "This clue is not available in the current episode."}]
+
     # Load clue text (episode-specific)
-    clue_filepath = get_game_text_path(f"Clue{clue_id}.txt", episode)
+    clue_filepath = resolve_clue_text_path(clue_id, episode)
     try:
         clue_text = load_system_prompt(clue_filepath)
     except Exception as e:
@@ -1428,7 +1816,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
         "type": "clue",
         "clue_id": clue_id,
         "content": clue_text,
-        "image": f"ep1/clue{clue_id}.png"
+        "image": f"ep{episode}/clue{clue_id}.png"
     })
     
     # Save state

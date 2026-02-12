@@ -57,6 +57,10 @@
                 <div class="horizontal-menu-item-name">Help</div>
                 <div class="horizontal-menu-item-description">How to play</div>
             </div>
+            <div class="horizontal-menu-item" id="resetHistoryMenuItem" onclick="handleMenuAction('reset_all_history')" style="display: none;">
+                <div class="horizontal-menu-item-name">Reset All History</div>
+                <div class="horizontal-menu-item-description">TEST only: clear all episodes and restart</div>
+            </div>
             <div class="horizontal-menu-item" onclick="logout()">
                 <div class="horizontal-menu-item-name">Log Out</div>
                 <div class="horizontal-menu-item-description">Sign out and return to login</div>
@@ -84,13 +88,13 @@
         <div id="gameScreen" class="game-screen">
             <!-- Navigation buttons -->
             <div class="navigation-bar" id="navigationBar" style="display: none;">
-                <button class="nav-button" onclick="toggleLeftDrawer()">Suspects</button>
+                <button class="nav-button" onclick="toggleLeftDrawer()">Who's here</button>
                 <button class="nav-button right" onclick="toggleRightDrawer()">Case Materials</button>
             </div>
             <!-- Left Drawer - Characters -->
             <div id="leftDrawer" class="drawer left-drawer">
                 <div class="drawer-header">
-                    <h3>👥 Suspects</h3>
+                    <h3>👥 Who's here</h3>
                     <button class="close-drawer" onclick="closeLeftDrawer()">✕</button>
                 </div>
                 <div class="drawer-content" id="charactersList">
@@ -161,7 +165,7 @@
                         <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-avatar">
                         <div>
                             <h3>Sergeant Nina Réyes</h3>
-                            <p>Your mentor and guide</p>
+                            <p>Sergeant, Chicago PD</p>
                         </div>
                     </div>
                     <button class="nina-chat-close" onclick="closeNinaChat()">✕</button>

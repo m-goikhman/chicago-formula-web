@@ -40,22 +40,25 @@ STAGE_CONFIG = {
         ]
     },
     2: {
-        "name": "Episode 2",
-        "clues_count": 0,  # To be configured when content is created
-        "characters": ["susan", "james"],  # Fallback for stages without location config
+        "name": "The Formula",
+        "clues_count": 1,
+        "characters": ["nina"],  # Fallback for stages without location config
         "default_location": "default_ep2",
         "locations": {
             "default_ep2": {
                 "name": "Episode 2 - Start",
-                "characters": ["nina", "susan", "james"]
+                "characters": ["nina"],
+                "private_dialogue_openers": {
+                    "nina": "Sure, what's up?"
+                }
             },
             "university_ep2": {
                 "name": "University",
-                "characters": ["nina", "susan", "james"]
+                "characters": ["nina", "james"]
             },
             "hospital_ep2": {
                 "name": "Hospital",
-                "characters": ["nina", "susan", "james"]
+                "characters": ["nina", "alex"]
             }
         },
         "intro_files": [
@@ -97,7 +100,8 @@ CHARACTER_DATA = {
     "director": {"prompt_file": "prompts/ep1/prompt_director.md", "full_name": "Game Director", "image": None},
     "lexicographer": {"prompt_file": "prompts/prompt_lexicographer.md", "full_name": "Lexicographer", "image": None},
     "susan": {"prompt_file": "prompts/ep2/prompt_susan.md", "full_name": "Susan Nakamura", "image": "ep2/susan.png"},
-    "james": {"prompt_file": "prompts/ep2/prompt_james.md", "full_name": "James Thornton", "image": "ep2/james.jpg"},
+    "james": {"prompt_file": "prompts/ep2/prompt_james.md", "full_name": "James Thornton", "image": "ep2/james.png"},
+    "alex": {"prompt_file": "prompts/ep2/hospital_ep2/prompt_alex.md", "full_name": "Alex Martin", "image": "ep2/alex.png"},
 }
 
 # --- Global State Variables ---

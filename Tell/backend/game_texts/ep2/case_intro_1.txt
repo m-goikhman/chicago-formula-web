@@ -6,3 +6,4 @@ Come on, I'll go with you. We could start at the university — find someone who
 [buttons]
 Go to the university|go_university_ep2
 Go to the hospital|go_hospital_ep2
+Hold on, Nina|talk_nina
