@@ -771,6 +771,7 @@ async function loadEpisodeSelector() {
         window.currentStageCharacters = currentStageInfo?.characters || [];
         window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
         if (window.populateCharactersDrawer) window.populateCharactersDrawer();
+        if (window.populateCaseMaterialsDrawer) window.populateCaseMaterialsDrawer();
 
         const ninaButton = document.getElementById('ninaFloatingButton');
         if (ninaButton) {

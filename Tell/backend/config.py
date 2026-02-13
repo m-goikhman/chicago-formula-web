@@ -49,7 +49,7 @@ STAGE_CONFIG = {
                 "name": "Episode 2 - Start",
                 "characters": ["nina"],
                 "private_dialogue_openers": {
-                    "nina": "Sure, what's up?"
+                    "nina": "dialogue_openers/default_ep2/nina.txt"
                 }
             },
             "university_ep2": {

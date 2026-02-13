@@ -76,7 +76,7 @@ function backToClueList() {
     overlay.classList.add('active');
 }
 
-function showClueDetail(clueId, content, imageUrl) {
+function showClueDetail(clueId, content, imageUrl, clueButtons = [], buttonNote = '') {
     // Hide the list drawer
     const listDrawer = document.getElementById('rightDrawer');
     listDrawer.classList.remove('open');
@@ -96,6 +96,28 @@ function showClueDetail(clueId, content, imageUrl) {
     html += `<div class="clue-detail-text">${renderMarkdown(content)}</div>`;
     
     contentDiv.innerHTML = html;
+
+    if (Array.isArray(clueButtons) && clueButtons.length > 0) {
+        const buttonRow = document.createElement('div');
+        buttonRow.className = 'button-row';
+
+        clueButtons.forEach(btn => {
+            const button = document.createElement('button');
+            button.textContent = btn.text;
+            button.onclick = () => handleAction(btn.action);
+            buttonRow.appendChild(button);
+        });
+
+        contentDiv.appendChild(buttonRow);
+
+        if (buttonNote) {
+            const noteDiv = document.createElement('div');
+            noteDiv.className = 'button-note';
+            noteDiv.textContent = buttonNote;
+            contentDiv.appendChild(noteDiv);
+        }
+    }
+
     detailDrawer.style.display = 'flex';
     detailDrawer.classList.add('open');
     
@@ -185,12 +207,15 @@ function populateCharactersDrawer() {
 // Populate case materials drawer
 function populateCaseMaterialsDrawer() {
     const materialsList = document.getElementById('caseMaterialsList');
-    const materials = [
-        { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-        { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-        { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
-        { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
-    ];
+    const currentStage = window.currentStageNumber || 1;
+    const materials = currentStage === 2
+        ? [{ emoji: '🔍', name: 'the formula', action: 'examine_clue_1' }]
+        : [
+            { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
+            { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
+            { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
+            { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
+        ];
 
     materialsList.innerHTML = '';
     materials.forEach(item => {

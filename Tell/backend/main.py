@@ -217,6 +217,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_mode_public,
         handle_menu_evidence,
         handle_clue_examination,
+        handle_share_usb_with_james,
         handle_language_menu_difficulty,
         handle_difficulty_set,
         handle_language_menu_progress,
@@ -251,6 +252,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     elif request.action.startswith("examine_clue_"):
         clue_id = request.action.split("_", 2)[2]
         messages = await handle_clue_examination(participant_code, clue_id)
+    elif request.action == "share_usb_with_james":
+        messages = await handle_share_usb_with_james(participant_code)
     elif request.action == "language_menu_difficulty":
         messages = await handle_language_menu_difficulty(participant_code)
     elif request.action.startswith("difficulty_set_"):

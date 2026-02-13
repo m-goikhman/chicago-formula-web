@@ -7,6 +7,7 @@ import json
 import time
 import random
 import os
+import re
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 
@@ -28,6 +29,11 @@ EP2_LOCATION_ACTIONS = {
     "go_university_ep2": "university_ep2",
     "go_hospital_ep2": "hospital_ep2",
 }
+EP2_USB_SHARE_ACTION = "share_usb_with_james"
+EP2_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
+EP2_USB_SHARE_BUTTON_NOTE = "(you need to let James know what's on the drive)"
+EP2_JAMES_USB_QUESTION = "What's on the drive, and how can I help?"
+EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -74,17 +80,65 @@ def get_private_dialogue_opener(state: Dict, stage_number: int, character_key: s
     location_key = get_stage_location(state, stage_number)
     location_cfg = stage_config.get("locations", {}).get(location_key, {})
 
+    def _resolve_opener_value(value: Optional[str]) -> Optional[str]:
+        if not isinstance(value, str):
+            return None
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+
+        # File-based opener in game_texts/ep{stage}/...
+        opener_from_file = _load_game_text_optional(raw_value, stage_number)
+        if opener_from_file:
+            return opener_from_file
+
+        # Backward compatibility: allow literal inline text in config.
+        if raw_value.endswith(".txt") or "/" in raw_value:
+            logger.warning(
+                f"Private dialogue opener file not found for '{character_key}' in ep{stage_number}: {raw_value}"
+            )
+            return None
+        return raw_value
+
     location_openers = location_cfg.get("private_dialogue_openers", {})
     if isinstance(location_openers, dict):
-        opener = location_openers.get(character_key)
+        opener = _resolve_opener_value(location_openers.get(character_key))
         if opener:
             return opener
 
     stage_openers = stage_config.get("private_dialogue_openers", {})
     if isinstance(stage_openers, dict):
-        return stage_openers.get(character_key)
+        opener = _resolve_opener_value(stage_openers.get(character_key))
+        if opener:
+            return opener
 
-    return None
+    # Convention-based fallback:
+    # game_texts/ep{N}/dialogue_openers/{location_key}/{character_key}.txt
+    if location_key:
+        opener = _load_game_text_optional(f"dialogue_openers/{location_key}/{character_key}.txt", stage_number)
+        if opener:
+            return opener
+
+    # Global episode fallback:
+    # game_texts/ep{N}/dialogue_openers/{character_key}.txt
+    return _load_game_text_optional(f"dialogue_openers/{character_key}.txt", stage_number)
+
+
+def _load_game_text_optional(filename: str, episode: int) -> Optional[str]:
+    """Load optional game text file from game_texts/ep{episode}; return None if missing."""
+    path = get_game_text_path(filename, episode)
+    absolute_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+
+    if not os.path.exists(absolute_path):
+        return None
+
+    try:
+        with open(absolute_path, "r", encoding="utf-8-sig") as file:
+            content = file.read().strip()
+            return content or None
+    except (FileNotFoundError, OSError, IOError) as exc:
+        logger.warning(f"Failed to read optional game text file '{path}': {exc}")
+        return None
 
 
 def get_clues_count_for_stage(stage_number: int) -> int:
@@ -121,19 +175,40 @@ def _is_university_analysis_request(text: str) -> bool:
 
 
 def _is_formula_nonsense_signal(text: str) -> bool:
-    return _contains_any(
-        text,
-        [
-            "nonsense",
-            "not a formula",
-            "fake",
-            "meaningless",
-            "garbage",
-            "random",
-            "doesn't make sense",
-            "not real",
-        ],
-    )
+    lowered = (text or "").lower()
+    negative_markers = [
+        "nonsense",
+        "not a formula",
+        "fake",
+        "meaningless",
+        "garbage",
+        "random",
+        "doesn't make sense",
+        "does not make sense",
+        "not real",
+        "gibberish",
+        "invalid",
+        "can't be",
+        "cannot be",
+        "wrong",
+        "not consistent",
+        "doesn't check out",
+        "does not check out",
+        "made up",
+        "nonsensical",
+    ]
+    formula_markers = [
+        "formula",
+        "equation",
+        "model",
+        "files",
+        "drive",
+        "usb",
+        "data",
+    ]
+    has_negative = any(marker in lowered for marker in negative_markers)
+    has_formula_context = any(marker in lowered for marker in formula_markers)
+    return has_negative or (has_negative and has_formula_context)
 
 
 def _mentions_formula_confrontation(text: str) -> bool:
@@ -164,6 +239,35 @@ def _mentions_plane_plain_story(text: str) -> bool:
             "wrong drive",
         ],
     )
+
+
+def _is_english_usb_explanation(text: str) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+
+    words = re.findall(r"[a-zA-Z]+", lowered)
+    if len(words) < 5:
+        return False
+
+    cyrillic_chars = re.findall(r"[а-яё]", lowered, flags=re.IGNORECASE)
+    if len(cyrillic_chars) >= 3:
+        return False
+
+    explanation_markers = [
+        "drive",
+        "usb",
+        "flash",
+        "file",
+        "files",
+        "formula",
+        "equation",
+        "model",
+        "data",
+        "greek",
+        "symbols",
+    ]
+    return any(marker in lowered for marker in explanation_markers)
 
 
 def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
@@ -232,6 +336,8 @@ def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state.setdefault("hospital_doubt_seed_done", False)
     ep2_state.setdefault("hospital_wrap_done", False)
     ep2_state.setdefault("hospital_post_verdict_turns_without_confront", 0)
+    ep2_state.setdefault("usb_handover_requested", False)
+    ep2_state.setdefault("usb_context_explained", False)
     return ep2_state
 
 
@@ -252,6 +358,38 @@ async def _handle_ep2_scripted_public_message(
         visited_locations.append(current_location)
         ep2_state["visited_locations"] = visited_locations
 
+    force_usb_analysis_prompt = False
+    if (
+        current_location == "university_ep2"
+        and ep2_state.get("usb_handover_requested", False)
+        and not ep2_state.get("usb_context_explained", False)
+        and not ep2_state.get("university_analysis_done", False)
+    ):
+        if not _is_english_usb_explanation(message_text):
+            log_message(0, "user", message_text, participant_code)
+            if "nina" in stage_characters and "nina" in CHARACTER_DATA:
+                nina_data = CHARACTER_DATA["nina"]
+                message_id = generate_message_id()
+                save_message_to_cache(message_id, EP2_USB_EXPLANATION_FALLBACK, "nina")
+                log_message(0, "character_nina", EP2_USB_EXPLANATION_FALLBACK, participant_code)
+                messages.append(
+                    {
+                        "type": "character",
+                        "character": "nina",
+                        "character_name": nina_data["full_name"],
+                        "character_image": nina_data.get("image"),
+                        "content": EP2_USB_EXPLANATION_FALLBACK,
+                        "message_id": message_id,
+                        "show_explain": True,
+                    }
+                )
+            else:
+                messages.append({"type": "system", "content": EP2_USB_EXPLANATION_FALLBACK})
+            return messages
+
+        ep2_state["usb_context_explained"] = True
+        force_usb_analysis_prompt = True
+
     # Default speaker in these scenes: non-Nina character.
     non_nina_candidates = [char for char in stage_characters if char != "nina" and char in CHARACTER_DATA]
     active_character_key = non_nina_candidates[0] if non_nina_candidates else "nina"
@@ -261,10 +399,16 @@ async def _handle_ep2_scripted_public_message(
     log_message(0, "user", message_text, participant_code)
 
     system_prompt = combine_character_prompt(active_character_key, current_language_level, current_stage, current_location)
-    trigger = (
-        f"The detective asks in a public exchange: '{message_text}'. "
-        "Respond naturally as your character and move the investigation forward."
-    )
+    if force_usb_analysis_prompt and active_character_key == "james":
+        trigger = (
+            f"The detective just explained the USB contents: '{message_text}'. "
+            "Respond as James with a brief expert assessment of whether the formula/files look valid or nonsense."
+        )
+    else:
+        trigger = (
+            f"The detective asks in a public exchange: '{message_text}'. "
+            "Respond naturally as your character and move the investigation forward."
+        )
 
     try:
         other_reply = await ask_for_dialogue(
@@ -304,14 +448,17 @@ async def _handle_ep2_scripted_public_message(
 
     if current_location == "university_ep2":
         ep2_state["university_turns"] = int(ep2_state.get("university_turns", 0)) + 1
+        analysis_became_done_this_turn = False
 
         if not analysis_done and _is_university_analysis_request(message_text):
             ep2_state["university_analysis_done"] = True
             analysis_done = True
+            analysis_became_done_this_turn = True
 
         if not analysis_done and _is_formula_nonsense_signal(other_reply):
             ep2_state["university_analysis_done"] = True
             analysis_done = True
+            analysis_became_done_this_turn = True
 
         if not analysis_done:
             if ep2_state["university_turns"] >= 2 and not ep2_state.get("university_nudge_done", False):
@@ -319,8 +466,13 @@ async def _handle_ep2_scripted_public_message(
                 nina_cue = "nudge_before_analysis"
         else:
             if not ep2_state.get("university_post_verdict_nina_done", False):
-                ep2_state["university_post_verdict_nina_done"] = True
-                nina_cue = "after_verdict_alex_first" if hospital_visited else "after_verdict"
+                # Fire the post-verdict cue once analysis happened and James gave a substantive assessment.
+                if analysis_became_done_this_turn or _contains_any(
+                    other_reply,
+                    ["formula", "equation", "model", "files", "drive", "usb", "nonsense", "invalid", "gibberish"],
+                ):
+                    ep2_state["university_post_verdict_nina_done"] = True
+                    nina_cue = "after_verdict_alex_first" if hospital_visited else "after_verdict"
             else:
                 if not ep2_state.get("university_wrap_done", False) and ep2_state["university_turns"] >= 4:
                     ep2_state["university_wrap_done"] = True
@@ -394,6 +546,40 @@ async def _handle_ep2_scripted_public_message(
                     "show_explain": True,
                 }
             )
+
+            # In EP2 university scene, if Nina asks James a question, let James answer her.
+            if current_location == "university_ep2" and active_character_key == "james" and "?" in nina_reply:
+                james_followup_trigger = (
+                    f"Nina just said: '{nina_reply}'. "
+                    "If she asked you a direct or implied question, answer it briefly and clearly as James."
+                )
+                try:
+                    james_followup = await ask_for_dialogue(
+                        participant_code,
+                        james_followup_trigger,
+                        system_prompt,
+                        "james",
+                        participant_code,
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to get James follow-up to Nina question: {exc}")
+                    james_followup = None
+
+                if james_followup:
+                    james_followup_message_id = generate_message_id()
+                    save_message_to_cache(james_followup_message_id, james_followup, "james")
+                    log_message(0, "character_james", james_followup, participant_code)
+                    messages.append(
+                        {
+                            "type": "character",
+                            "character": "james",
+                            "character_name": active_char_data["full_name"],
+                            "character_image": active_char_data.get("image"),
+                            "content": james_followup,
+                            "message_id": james_followup_message_id,
+                            "show_explain": True,
+                        }
+                    )
 
     return messages
 
@@ -1178,6 +1364,15 @@ async def handle_location_transition(participant_code: str, action: str) -> List
 
     messages = [{"type": "system", "content": transition_text}]
     messages.extend(await handle_main_menu(participant_code))
+    if target_location == "university_ep2":
+        messages.append(
+            {
+                "type": "system",
+                "content": "If you are ready, hand James the USB so he can inspect the files.",
+                "buttons": [{"text": EP2_USB_SHARE_BUTTON_TEXT, "action": EP2_USB_SHARE_ACTION}],
+                "button_note": EP2_USB_SHARE_BUTTON_NOTE,
+            }
+        )
     return messages
 
 
@@ -1812,12 +2007,19 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
     # Log clue examination
     log_message(0, "clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
     
-    messages.append({
+    clue_message = {
         "type": "clue",
         "clue_id": clue_id,
         "content": clue_text,
         "image": f"ep{episode}/clue{clue_id}.png"
-    })
+    }
+
+    current_location = get_stage_location(state, episode)
+    if episode == 2 and clue_id == "1" and current_location == "university_ep2":
+        clue_message["buttons"] = [{"text": EP2_USB_SHARE_BUTTON_TEXT, "action": EP2_USB_SHARE_ACTION}]
+        clue_message["button_note"] = EP2_USB_SHARE_BUTTON_NOTE
+
+    messages.append(clue_message)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -1997,6 +2199,47 @@ async def handle_language_menu_back(participant_code: str) -> List[Dict]:
     # Just close the menu by returning empty messages
     # Frontend will handle closing the dropdown
     return []
+
+
+async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
+    """Start USB handover flow in EP2 university and require player explanation."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if state.get("current_stage", 1) != 2:
+        return [{"type": "error", "content": "This action is available only in episode 2."}]
+
+    current_location = get_stage_location(state, 2)
+    if current_location != "university_ep2":
+        return [{"type": "error", "content": "You can show the USB to James only at the university."}]
+
+    ep2_state = _get_ep2_director_state(state)
+    ep2_state["usb_handover_requested"] = True
+    ep2_state["usb_context_explained"] = False
+
+    # Force public exchange for this mini-flow so the scripted EP2 gate handles the next player message.
+    state["mode"] = "public"
+    state["current_character"] = None
+
+    james_data = CHARACTER_DATA.get("james", {"full_name": "James"})
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, EP2_JAMES_USB_QUESTION, "james")
+    log_message(0, "character_james", EP2_JAMES_USB_QUESTION, participant_code)
+
+    await game_state_manager.save_game_state(participant_code, state)
+
+    return [
+        {
+            "type": "character",
+            "character": "james",
+            "character_name": james_data["full_name"],
+            "character_image": james_data.get("image"),
+            "content": EP2_JAMES_USB_QUESTION,
+            "message_id": message_id,
+            "show_explain": True,
+        }
+    ]
 
 
 async def analyze_and_log_user_text(participant_code: str, text: str):

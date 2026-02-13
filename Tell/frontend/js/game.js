@@ -22,7 +22,7 @@ function checkAndShowInputArea(messageContent, msgObj) {
 function displayMessage(msg) {
     // Handle clue messages specially - show in detail drawer
     if (msg.type === 'clue') {
-        showClueDetail(msg.clue_id, msg.content, msg.image);
+        showClueDetail(msg.clue_id, msg.content, msg.image, msg.buttons || [], msg.button_note || '');
         return null; // Don't add to chat
     }
     
@@ -94,6 +94,12 @@ function displayMessage(msg) {
         const messageContent = messageDiv.querySelector('.message-content');
         if (messageContent) {
             messageContent.appendChild(buttonRow);
+            if (msg.button_note) {
+                const buttonNote = document.createElement('div');
+                buttonNote.className = 'button-note';
+                buttonNote.textContent = msg.button_note;
+                messageContent.appendChild(buttonNote);
+            }
         }
     }
     
