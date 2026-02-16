@@ -151,6 +151,26 @@ def get_clues_count_for_stage(stage_number: int) -> int:
     return TOTAL_CLUES
 
 
+def get_clue_name_for_stage(stage_number: int, clue_id: str) -> str:
+    """Return human-friendly clue name for stage and clue id."""
+    try:
+        clue_index = int(clue_id) - 1
+    except (TypeError, ValueError):
+        return f"Clue {clue_id}"
+
+    if clue_index < 0:
+        return f"Clue {clue_id}"
+
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    clue_names = stage_config.get("clue_names")
+    if isinstance(clue_names, list) and clue_index < len(clue_names):
+        clue_name = clue_names[clue_index]
+        if isinstance(clue_name, str) and clue_name.strip():
+            return clue_name.strip()
+
+    return f"Clue {clue_id}"
+
+
 def _contains_any(text: str, keywords: List[str]) -> bool:
     lowered = (text or "").lower()
     return any(keyword in lowered for keyword in keywords)
@@ -1462,54 +1482,54 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     state["current_character"] = character_key
     
     char_data = CHARACTER_DATA[character_key]
-    char_name = char_data["full_name"]
-    
-    # Get current language level
-    current_language_level = state.get("current_language_level", "B1")
     current_stage = state.get("current_stage", 1)
-    current_location = get_stage_location(state, current_stage)
     
-    # Generate narrator transition
-    try:
-        narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage, current_location)
-        description_text = await ask_for_dialogue(
-            participant_code, 
-            f"Describe the detective taking {char_name} aside for a private talk.",
-            narrator_prompt, 
-            "narrator",
-            participant_code
-        )
-        
-        # Log narrator message
-        log_message(0, "narrator", description_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, description_text, "narrator")
-        messages.append({
-            "type": "character",
-            "character": "narrator",
-            "character_name": "Narrator",
-            "content": description_text,
-            "message_id": message_id,
-            "show_explain": True
-        })
-    except Exception as e:
-        logger.error(f"Failed to generate narrator transition: {e}")
-        fallback_text = f"You take {char_name} aside for a private conversation."
-        
-        # Log narrator message
-        log_message(0, "narrator", fallback_text, participant_code)
-        
-        message_id = generate_message_id()
-        save_message_to_cache(message_id, fallback_text, "narrator")
-        messages.append({
-            "type": "character",
-            "character": "narrator",
-            "character_name": "Narrator",
-            "content": fallback_text,
-            "message_id": message_id,
-            "show_explain": True
-        })
+    # Episode 2 uses direct character openers without narrator transitions.
+    if current_stage != 2:
+        char_name = char_data["full_name"]
+        current_language_level = state.get("current_language_level", "B1")
+        current_location = get_stage_location(state, current_stage)
+        # Generate narrator transition
+        try:
+            narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage, current_location)
+            description_text = await ask_for_dialogue(
+                participant_code,
+                f"Describe the detective taking {char_name} aside for a private talk.",
+                narrator_prompt,
+                "narrator",
+                participant_code
+            )
+
+            # Log narrator message
+            log_message(0, "narrator", description_text, participant_code)
+
+            message_id = generate_message_id()
+            save_message_to_cache(message_id, description_text, "narrator")
+            messages.append({
+                "type": "character",
+                "character": "narrator",
+                "character_name": "Narrator",
+                "content": description_text,
+                "message_id": message_id,
+                "show_explain": True
+            })
+        except Exception as e:
+            logger.error(f"Failed to generate narrator transition: {e}")
+            fallback_text = f"You take {char_name} aside for a private conversation."
+
+            # Log narrator message
+            log_message(0, "narrator", fallback_text, participant_code)
+
+            message_id = generate_message_id()
+            save_message_to_cache(message_id, fallback_text, "narrator")
+            messages.append({
+                "type": "character",
+                "character": "narrator",
+                "character_name": "Narrator",
+                "content": fallback_text,
+                "message_id": message_id,
+                "show_explain": True
+            })
 
     opener_text = get_private_dialogue_opener(state, current_stage, character_key)
     if opener_text:
@@ -1954,8 +1974,9 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     buttons = []
     for i in range(1, clues_count + 1):
         clue_id = str(i)
+        clue_name = get_clue_name_for_stage(current_stage, clue_id)
         buttons.append({
-            "text": f"🔍 Clue {i}",
+            "text": f"🔍 {clue_name}",
             "action": f"examine_clue_{clue_id}"
         })
     
@@ -1975,7 +1996,7 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     return messages
 
 
-async def handle_clue_examination(participant_code: str, clue_id: str) -> List[Dict]:
+async def handle_clue_examination(participant_code: str, clue_id: str, forced_stage: Optional[int] = None) -> List[Dict]:
     """Handle examination of a specific clue."""
     messages = []
     state = GAME_STATE.get(participant_code)
@@ -1983,7 +2004,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
-    episode = state.get("current_stage", 1)
+    episode = forced_stage if isinstance(forced_stage, int) and forced_stage > 0 else state.get("current_stage", 1)
     clues_count = get_clues_count_for_stage(episode)
     try:
         clue_number = int(clue_id)
@@ -2010,6 +2031,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str) -> List[D
     clue_message = {
         "type": "clue",
         "clue_id": clue_id,
+        "clue_name": get_clue_name_for_stage(episode, clue_id),
         "content": clue_text,
         "image": f"ep{episode}/clue{clue_id}.png"
     }

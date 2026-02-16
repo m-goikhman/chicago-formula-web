@@ -76,7 +76,7 @@ function backToClueList() {
     overlay.classList.add('active');
 }
 
-function showClueDetail(clueId, content, imageUrl, clueButtons = [], buttonNote = '') {
+function showClueDetail(clueId, content, imageUrl, clueButtons = [], buttonNote = '', clueName = '') {
     // Hide the list drawer
     const listDrawer = document.getElementById('rightDrawer');
     listDrawer.classList.remove('open');
@@ -86,7 +86,8 @@ function showClueDetail(clueId, content, imageUrl, clueButtons = [], buttonNote 
     const title = document.getElementById('detailTitle');
     const contentDiv = document.getElementById('clueDetailContent');
     
-    title.textContent = `🔍 Clue ${clueId}`;
+    const resolvedClueName = (clueName || '').trim() || `Clue ${clueId}`;
+    title.textContent = `🔍 ${resolvedClueName}`;
     
     let html = '';
     const clueImageUrl = buildImageUrl(imageUrl);
@@ -209,7 +210,7 @@ function populateCaseMaterialsDrawer() {
     const materialsList = document.getElementById('caseMaterialsList');
     const currentStage = window.currentStageNumber || 1;
     const materials = currentStage === 2
-        ? [{ emoji: '🔍', name: 'the formula', action: 'examine_clue_1' }]
+        ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep2_clue_1' }]
         : [
             { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
             { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
@@ -232,6 +233,69 @@ function populateCaseMaterialsDrawer() {
         };
         materialsList.appendChild(material);
     });
+}
+
+function renderLocationSwitcher(stageInfo) {
+    const switcher = document.getElementById('locationSwitcher');
+    if (!switcher) return;
+
+    const stageNumber = stageInfo?.stage || window.currentStageNumber || 1;
+    const locations = Array.isArray(stageInfo?.locations) ? stageInfo.locations : [];
+    const visibleLocations = locations.filter(loc => loc?.switcher_visible !== false && !!loc?.action);
+
+    if (stageNumber <= 1 || visibleLocations.length <= 1) {
+        switcher.style.display = 'none';
+        switcher.innerHTML = '';
+        return;
+    }
+
+    switcher.innerHTML = '';
+    visibleLocations.forEach((location, index) => {
+        const tab = document.createElement('div');
+        tab.className = `location-switcher-tab${location.current ? ' active' : ''}`;
+        tab.setAttribute('role', 'button');
+        tab.setAttribute('tabindex', location.current ? '-1' : '0');
+        tab.setAttribute('aria-pressed', location.current ? 'true' : 'false');
+        tab.setAttribute('aria-label', `Switch to ${location.name}`);
+
+        const bg = document.createElement('div');
+        bg.className = 'location-switcher-bg';
+        const textureUrl = buildImageUrl(location.texture_image);
+        if (textureUrl) {
+            bg.style.backgroundImage = `url('${textureUrl}')`;
+        } else {
+            bg.classList.add('fallback');
+        }
+
+        const label = document.createElement('div');
+        label.className = 'location-switcher-label';
+        label.textContent = location.name || 'Location';
+
+        tab.appendChild(bg);
+        tab.appendChild(label);
+
+        const activateLocation = () => {
+            if (location.current || !location.action) return;
+            handleAction(location.action);
+        };
+        tab.onclick = activateLocation;
+        tab.onkeydown = (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                activateLocation();
+            }
+        };
+
+        switcher.appendChild(tab);
+
+        if (index < visibleLocations.length - 1) {
+            const divider = document.createElement('div');
+            divider.className = 'location-switcher-divider';
+            switcher.appendChild(divider);
+        }
+    });
+
+    switcher.style.display = 'flex';
 }
 
 // Horizontal Menu functions
@@ -284,6 +348,7 @@ window.closeAllDrawers = closeAllDrawers;
 window.checkAndCloseOverlay = checkAndCloseOverlay;
 window.populateCharactersDrawer = populateCharactersDrawer;
 window.populateCaseMaterialsDrawer = populateCaseMaterialsDrawer;
+window.renderLocationSwitcher = renderLocationSwitcher;
 window.toggleHorizontalMenu = toggleHorizontalMenu;
 window.handleMenuAction = handleMenuAction;
 window.openImageModal = openImageModal;

@@ -22,7 +22,14 @@ function checkAndShowInputArea(messageContent, msgObj) {
 function displayMessage(msg) {
     // Handle clue messages specially - show in detail drawer
     if (msg.type === 'clue') {
-        showClueDetail(msg.clue_id, msg.content, msg.image, msg.buttons || [], msg.button_note || '');
+        showClueDetail(
+            msg.clue_id,
+            msg.content,
+            msg.image,
+            msg.buttons || [],
+            msg.button_note || '',
+            msg.clue_name || ''
+        );
         return null; // Don't add to chat
     }
     

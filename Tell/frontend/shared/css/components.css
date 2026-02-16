@@ -594,7 +594,8 @@
         .nina-floating-button {
             position: fixed;
             right: 18px;
-            bottom: 18px;
+            top: calc(env(safe-area-inset-top, 0px) + 96px);
+            bottom: auto;
             width: 56px;
             height: 56px;
             padding: 0;
@@ -628,7 +629,8 @@
         @media (max-width: 480px) {
             .nina-floating-button {
                 right: 14px;
-                bottom: 14px;
+                top: calc(env(safe-area-inset-top, 0px) + 78px);
+                bottom: auto;
                 width: 52px;
                 height: 52px;
             }

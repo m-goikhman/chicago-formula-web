@@ -254,8 +254,8 @@
         /* Horizontal dropdown menu */
         .horizontal-menu {
             background: white;
-            border-bottom: 1px solid rgba(26, 85, 99, 0.1);
-            box-shadow: 0 4px 12px rgba(26, 85, 99, 0.08);
+            border-bottom: none;
+            box-shadow: none;
             display: flex;
             justify-content: center;
             gap: 0;
@@ -282,6 +282,8 @@
         }
 
         .horizontal-menu.active {
+            border-bottom: 1px solid rgba(26, 85, 99, 0.1);
+            box-shadow: 0 4px 12px rgba(26, 85, 99, 0.08);
             max-height: 80px;
             opacity: 1;
             padding: 18px 30px;
@@ -337,6 +339,105 @@
             color: #5a6a72;
             text-align: center;
             line-height: 1.3;
+        }
+
+        /* Location switcher (episodes 2+) */
+        .location-switcher {
+            display: flex;
+            height: 54px;
+            flex-shrink: 0;
+            overflow: hidden;
+            border-bottom: 1px solid rgba(26, 85, 99, 0.08);
+            background: #111;
+        }
+
+        .location-switcher-tab {
+            flex: 1;
+            position: relative;
+            cursor: pointer;
+            overflow: hidden;
+            transition: flex 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+        }
+
+        .location-switcher-tab.active {
+            flex: 2;
+            cursor: default;
+        }
+
+        .location-switcher-bg {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            transition: filter 0.4s ease, opacity 0.4s ease;
+        }
+
+        .location-switcher-bg.fallback {
+            background:
+                radial-gradient(circle at 80% 35%, rgba(212, 175, 100, 0.35), transparent 45%),
+                linear-gradient(110deg, #1b4f5d 0%, #143a45 52%, #0f2c34 100%);
+        }
+
+        .location-switcher-tab:not(.active) .location-switcher-bg {
+            filter: grayscale(0.45) brightness(0.46);
+        }
+
+        .location-switcher-tab.active .location-switcher-bg {
+            filter: brightness(0.72);
+        }
+
+        .location-switcher-tab:hover:not(.active) .location-switcher-bg {
+            filter: grayscale(0.25) brightness(0.54);
+        }
+
+        .location-switcher-label {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Crimson Text', serif;
+            font-weight: 600;
+            font-size: 0.95em;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: white;
+            text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7), 0 0 20px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s;
+        }
+
+        .location-switcher-tab.active .location-switcher-label {
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .location-switcher-tab:not(.active) .location-switcher-label {
+            opacity: 0.75;
+        }
+
+        .location-switcher-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 12%;
+            right: 12%;
+            height: 2.5px;
+            background: #d4af64;
+            border-radius: 2px 2px 0 0;
+            z-index: 3;
+        }
+
+        .location-switcher-divider {
+            width: 1px;
+            background: rgba(255, 255, 255, 0.2);
+            z-index: 3;
+            flex-shrink: 0;
+        }
+
+        .location-switcher-tab:focus-visible {
+            box-shadow: inset 0 0 0 2px rgba(212, 175, 100, 0.75);
         }
 
         /* Navigation buttons below menu */
@@ -763,11 +864,12 @@
             .horizontal-menu {
                 flex-wrap: wrap;
                 justify-content: stretch;
-                padding: 12px 15px;
+                padding: 0;
             }
 
             .horizontal-menu.active {
                 max-height: 200px;
+                padding: 12px 15px;
             }
 
             .horizontal-menu-item {
@@ -788,6 +890,15 @@
             .navigation-bar {
                 padding: 8px 15px;
                 min-height: auto;
+            }
+
+            .location-switcher {
+                height: 46px;
+            }
+
+            .location-switcher-label {
+                font-size: 0.85em;
+                letter-spacing: 1.2px;
             }
 
             .nav-button {
@@ -816,6 +927,15 @@
 
             .navigation-bar {
                 padding: 6px 12px;
+            }
+
+            .location-switcher {
+                height: 42px;
+            }
+
+            .location-switcher-label {
+                font-size: 0.78em;
+                letter-spacing: 1px;
             }
 
             .nav-button {

@@ -20,6 +20,7 @@ It's 8th of January, three weeks after Alex Martin was attacked in his apartment
 ### Background
 
 * You've been a postdoc here for two years, working with Professor Nakamura
+* It's the end of the Christmas break, you're already in the office because you need to work but prof. Nakamura and everyone else is still on vacation. Prof. Nakamura won't be here until January, 12th.
 
 ### About Alex Martin
 

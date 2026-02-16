@@ -24,6 +24,12 @@ STAGE_CONFIG = {
     1: {
         "name": "The Party",
         "clues_count": 4,
+        "clue_names": [
+            "Med Report & Personal Items",
+            "The Weapon",
+            "The Note",
+            "The Apartment",
+        ],
         "characters": ["tim", "pauline", "fiona", "ronnie"],
         "intro_files": [
             {"file": "atmospheric_start.txt", "type": "system", "image": "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg", "button": "Accept the Call"},
@@ -42,23 +48,30 @@ STAGE_CONFIG = {
     2: {
         "name": "The Formula",
         "clues_count": 1,
+        "clue_names": ["the formula"],
         "characters": ["nina"],  # Fallback for stages without location config
         "default_location": "default_ep2",
         "locations": {
             "default_ep2": {
                 "name": "Episode 2 - Start",
                 "characters": ["nina"],
+                "action": "go_default_ep2",
+                "show_in_switcher": False,
                 "private_dialogue_openers": {
                     "nina": "dialogue_openers/default_ep2/nina.txt"
                 }
             },
             "university_ep2": {
                 "name": "University",
-                "characters": ["nina", "james"]
+                "characters": ["nina", "james"],
+                "action": "go_university_ep2",
+                "texture_image": "ep2/university_texture.png"
             },
             "hospital_ep2": {
                 "name": "Hospital",
-                "characters": ["nina", "alex"]
+                "characters": ["nina", "alex"],
+                "action": "go_hospital_ep2",
+                "texture_image": "ep2/hospital_texture.png"
             }
         },
         "intro_files": [

@@ -249,6 +249,9 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_mode_public(participant_code)
     elif request.action == "menu_evidence":
         messages = await handle_menu_evidence(participant_code)
+    elif request.action.startswith("examine_ep2_clue_"):
+        clue_id = request.action.split("_", 3)[3]
+        messages = await handle_clue_examination(participant_code, clue_id, forced_stage=2)
     elif request.action.startswith("examine_clue_"):
         clue_id = request.action.split("_", 2)[2]
         messages = await handle_clue_examination(participant_code, clue_id)
@@ -505,6 +508,16 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             location_cfg = stage_config.get("locations", {}).get(default_location, {})
             character_keys = location_cfg.get("characters", stage_config.get("characters", []))
             current_location = default_location
+        locations_info = []
+        for location_key, location_cfg in stage_config.get("locations", {}).items():
+            locations_info.append({
+                "key": location_key,
+                "name": location_cfg.get("name", location_key),
+                "action": location_cfg.get("action"),
+                "texture_image": location_cfg.get("texture_image"),
+                "switcher_visible": location_cfg.get("show_in_switcher", True),
+                "current": location_key == current_location,
+            })
         characters = [
             {"key": k, "full_name": CHARACTER_DATA[k]["full_name"], "image": CHARACTER_DATA.get(k, {}).get("image")}
             for k in character_keys if k in CHARACTER_DATA
@@ -517,7 +530,8 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             "completed": stage_num in stages_completed,
             "status": progress.get("completion_status", "not_started"),
             "location": current_location,
-            "characters": characters
+            "characters": characters,
+            "locations": locations_info,
         })
     
     return {

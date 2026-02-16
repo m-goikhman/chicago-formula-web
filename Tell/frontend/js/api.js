@@ -8,6 +8,91 @@ function shouldShowNinaFloatingButton() {
     return (window.currentStageNumber || 1) === 1;
 }
 
+function isUnauthorizedResponse(response) {
+    return response && response.status === 401;
+}
+
+function getAuthErrorMessage(data) {
+    if (!data) return '';
+    return String(data.detail || data.error || data.message || '').toLowerCase();
+}
+
+function isExpiredTokenError(response, data) {
+    if (!isUnauthorizedResponse(response)) return false;
+    const message = getAuthErrorMessage(data);
+    return message.includes('invalid or expired token') || message.includes('expired token') || message.includes('invalid token');
+}
+
+async function silentReauthenticate() {
+    const code = participantCode || localStorage.getItem('participantCode');
+    if (!code) {
+        return false;
+    }
+
+    try {
+        const { response, data } = await apiClient.postJson('/api/auth/login', {
+            participant_code: code
+        });
+
+        if (!response.ok || !data || !data.token) {
+            return false;
+        }
+
+        sessionToken = data.token;
+        participantCode = data.participant_code || code.toUpperCase();
+        localStorage.setItem('sessionToken', sessionToken);
+        localStorage.setItem('participantCode', participantCode);
+        return true;
+    } catch (error) {
+        console.error('Silent re-authentication failed:', error);
+        return false;
+    }
+}
+
+function forceReloginWithMessage() {
+    const rememberedCode = participantCode || localStorage.getItem('participantCode') || '';
+    logout();
+
+    const participantCodeInput = document.getElementById('participantCode');
+    if (participantCodeInput && rememberedCode) {
+        participantCodeInput.value = rememberedCode;
+    }
+
+    const errorDiv = document.getElementById('loginError');
+    if (errorDiv) {
+        errorDiv.textContent = 'Your session expired after inactivity. Please continue by logging in again.';
+    }
+}
+
+async function callWithAutoReauth(requestFn) {
+    let result = await requestFn();
+    if (!isExpiredTokenError(result.response, result.data)) {
+        return result;
+    }
+
+    const refreshed = await silentReauthenticate();
+    if (!refreshed) {
+        forceReloginWithMessage();
+        return {
+            response: result.response,
+            data: result.data,
+            authFailureHandled: true
+        };
+    }
+
+    result = await requestFn();
+    if (isExpiredTokenError(result.response, result.data)) {
+        forceReloginWithMessage();
+        return {
+            response: result.response,
+            data: result.data,
+            authFailureHandled: true
+        };
+    }
+
+    return result;
+}
+
 function updateResetHistoryMenuVisibility() {
     const resetMenuItem = document.getElementById('resetHistoryMenuItem');
     if (!resetMenuItem) return;
@@ -102,11 +187,15 @@ async function loadGame() {
         console.log('API URL:', API_URL);
         
         // Load game normally - tutorial will be triggered after specific message
-        const { response, data } = await apiClient.get('/api/game/start', {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.get('/api/game/start', {
             token: sessionToken
-        });
+        }));
 
         console.log('Response status:', response.status, response.statusText);
+        if (authFailureHandled) {
+            removeLoadingMessage();
+            return;
+        }
 
         if (!response.ok) {
             const errorText = (data && (data.detail || data.error || data.message)) || response.statusText || 'Unknown error';
@@ -146,9 +235,13 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
         }
 
         try {
-            const { response, data } = await apiClient.postJson('/api/game/reset', {}, {
+            const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/reset', {}, {
                 token: sessionToken
-            });
+            }));
+
+            if (authFailureHandled) {
+                return;
+            }
 
             if (!response.ok) {
                 const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to reset history';
@@ -215,10 +308,29 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
     }
     
     try {
-        const { response, data } = await apiClient.postJson('/api/game/action', { action: action }, {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/action', { action: action }, {
             token: sessionToken
-        });
+        }));
         console.log('Action response:', data);
+        if (authFailureHandled) {
+            if (isLanguageAdjustment && oldIntroMessage) {
+                const messageText = oldIntroMessage.querySelector('.message-text');
+                const buttonRow = oldIntroMessage.querySelector('.button-row');
+                const loadingContainer = oldIntroMessage.querySelector('.loading-spinner-container');
+                if (messageText) messageText.style.display = '';
+                if (buttonRow) buttonRow.style.display = '';
+                if (loadingContainer && loadingContainer.parentNode) {
+                    loadingContainer.parentNode.removeChild(loadingContainer);
+                }
+            } else if (loadingMsg) {
+                if (loadingMsg.remove) {
+                    loadingMsg.remove();
+                } else if (loadingMsg.parentNode) {
+                    loadingMsg.parentNode.removeChild(loadingMsg);
+                }
+            }
+            return;
+        }
 
         if (!response.ok) {
             if (isLanguageAdjustment && oldIntroMessage) {
@@ -379,9 +491,14 @@ async function sendMessage() {
     }
 
     try {
-        const { response, data } = await apiClient.postJson('/api/game/message', { text }, {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/message', { text }, {
             token: sessionToken
-        });
+        }));
+
+        if (authFailureHandled) {
+            if (typingMsg) typingMsg.remove();
+            return;
+        }
 
         if (!response.ok) {
             const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to send message';
@@ -405,13 +522,17 @@ async function sendMessage() {
 
 async function explainWord(wordOrPhrase, originalText) {
     try {
-        const { response, data } = await apiClient.postJson('/api/game/explain', {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/explain', {
             action: 'word',
             word: wordOrPhrase,
             original_text: originalText
         }, {
             token: sessionToken
-        });
+        }));
+
+        if (authFailureHandled) {
+            return;
+        }
 
         if (!response.ok) {
             const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to get explanation';
@@ -511,9 +632,9 @@ async function restoreSession() {
         sessionToken = savedToken;
         participantCode = savedCode;
         
-        const { response, data } = await apiClient.get('/api/game/start', {
+        const { response, data } = await callWithAutoReauth(() => apiClient.get('/api/game/start', {
             token: sessionToken
-        });
+        }));
         
         if (response.ok) {
             // Token is valid, restore UI
@@ -635,12 +756,15 @@ async function sendNinaMessage() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
     try {
-        const { response, data } = await apiClient.postJson('/api/game/nina', { text }, {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/nina', { text }, {
             token: sessionToken
-        });
+        }));
         
         // Remove typing indicator
         typingDiv.remove();
+        if (authFailureHandled) {
+            return;
+        }
         
         if (!response.ok) {
             const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to send message';
@@ -752,9 +876,13 @@ document.addEventListener('DOMContentLoaded', function() {
 // Episode selector functions
 async function loadEpisodeSelector() {
     try {
-        const { response, data } = await apiClient.get('/api/game/stages', {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.get('/api/game/stages', {
             token: sessionToken
-        });
+        }));
+        
+        if (authFailureHandled) {
+            return;
+        }
         
         if (!response.ok) {
             console.error('Failed to load stages');
@@ -769,9 +897,13 @@ async function loadEpisodeSelector() {
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
         window.currentStageCharacters = currentStageInfo?.characters || [];
+        window.currentStageLocations = currentStageInfo?.locations || [];
         window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
         if (window.populateCharactersDrawer) window.populateCharactersDrawer();
         if (window.populateCaseMaterialsDrawer) window.populateCaseMaterialsDrawer();
+        if (window.renderLocationSwitcher) {
+            window.renderLocationSwitcher(currentStageInfo || { stage: currentStage, locations: [] });
+        }
 
         const ninaButton = document.getElementById('ninaFloatingButton');
         if (ninaButton) {
@@ -868,11 +1000,15 @@ async function loadEpisodeSelector() {
 
 async function switchEpisode(stageNumber) {
     try {
-        const { response, data } = await apiClient.postJson('/api/game/stage/switch', {
+        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/stage/switch', {
             stage_number: stageNumber
         }, {
             token: sessionToken
-        });
+        }));
+
+        if (authFailureHandled) {
+            return;
+        }
         
         if (!response.ok) {
             alert('Failed to switch episode. Please try again.');
