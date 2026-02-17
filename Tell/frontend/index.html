@@ -41,6 +41,9 @@
                     </div>
                 </div>
             </div>
+            <button id="ninaFloatingButton" class="nina-floating-button" onclick="openNinaChat()" title="Ask Nina for help" aria-label="Ask Nina for help" style="display: none;">
+                <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-avatar">
+            </button>
         </div>
 
         <!-- Horizontal dropdown menu -->
@@ -153,11 +156,6 @@
             <div id="tutorialOverlay" class="tutorial-overlay"></div>
             <div id="tutorialSpotlight" class="tutorial-spotlight"></div>
             <div id="tutorialTooltip" class="tutorial-tooltip" style="display: none;"></div>
-            
-            <!-- Floating Nina Button -->
-            <button id="ninaFloatingButton" class="nina-floating-button" onclick="openNinaChat()" title="Ask Nina for help" style="display: none;">
-                <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-avatar">
-            </button>
             
             <!-- Nina Chat Modal -->
             <div id="ninaChatModal" class="nina-chat-modal" style="display: none;">

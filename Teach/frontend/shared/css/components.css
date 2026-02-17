@@ -592,30 +592,47 @@
 
         /* Nina floating help button */
         .nina-floating-button {
-            position: fixed;
-            right: 18px;
-            top: calc(env(safe-area-inset-top, 0px) + 96px);
-            bottom: auto;
-            width: 56px;
-            height: 56px;
+            position: relative;
+            width: 42px;
+            height: 42px;
             padding: 0;
-            border-radius: 999px;
-            border: 2px solid rgba(212, 175, 100, 0.9);
-            background: white;
+            border-radius: 50%;
+            border: 2px solid rgba(212, 175, 100, 0.7);
+            background: none;
             display: none; /* JS toggles to flex */
             align-items: center;
             justify-content: center;
-            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-            z-index: 1500;
+            overflow: hidden;
+            cursor: pointer;
+            flex-shrink: 0;
+            margin-left: auto;
+            z-index: 1;
+            box-shadow: none;
+            transform: none;
+            transition: all 0.3s ease;
         }
 
         .nina-floating-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+            border-color: #d4af64;
+            transform: scale(1.08);
+            box-shadow: 0 0 16px rgba(212, 175, 100, 0.4);
         }
 
         .nina-floating-button:active {
-            transform: translateY(0);
+            transform: scale(1.02);
+        }
+
+        .nina-floating-button::after {
+            content: "";
+            position: absolute;
+            bottom: 1px;
+            right: 1px;
+            width: 10px;
+            height: 10px;
+            background: #4ade80;
+            border: 2px solid #1a5563;
+            border-radius: 50%;
+            z-index: 2;
         }
 
         .nina-avatar {
@@ -626,13 +643,19 @@
             display: block;
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 768px) {
             .nina-floating-button {
-                right: 14px;
-                top: calc(env(safe-area-inset-top, 0px) + 78px);
-                bottom: auto;
-                width: 52px;
-                height: 52px;
+                width: 36px;
+                height: 36px;
+                border-width: 1.5px;
+            }
+
+            .nina-floating-button::after {
+                width: 8px;
+                height: 8px;
+                bottom: 0;
+                right: 0;
+                border-width: 1.5px;
             }
         }
 
