@@ -669,14 +669,14 @@ async function restoreSession() {
             // Load game
             await loadGame();
             
-            // Show Nina floating button if investigation has started (character messages or menu visible)
+            // Show Nina floating button only if investigation has started.
+            // Intro in ep1 has character messages before start, so use menu as the signal.
             const ninaButton = document.getElementById('ninaFloatingButton');
             if (ninaButton && navigationBar && navigationBar.style.display !== 'none' && shouldShowNinaFloatingButton()) {
                 const chatArea = document.getElementById('chatArea');
                 if (chatArea) {
-                    const hasCharacterMessages = chatArea.querySelectorAll('.message.character').length > 0;
                     const hasMenuMessage = chatArea.querySelectorAll('.message.menu').length > 0;
-                    if (hasCharacterMessages || hasMenuMessage) {
+                    if (hasMenuMessage) {
                         ninaButton.style.display = 'flex';
                     }
                 }
@@ -907,7 +907,8 @@ async function loadEpisodeSelector() {
 
         const ninaButton = document.getElementById('ninaFloatingButton');
         if (ninaButton) {
-            ninaButton.style.display = shouldShowNinaFloatingButton() ? 'flex' : 'none';
+            // Keep hidden until investigation actually starts.
+            ninaButton.style.display = 'none';
         }
         
         const episodeDisplay = document.getElementById('episodeDisplay');

@@ -1113,6 +1113,7 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
         "type": "system",
         "content": welcome_text,
         "message_id": message_id,
+        "message_style": "tutor",
         "show_explain": True,
         "buttons": [
             {"text": "🎯 Find Your Language Level", "action": "onboarding_step5"}
@@ -1151,6 +1152,7 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
             "type": "system",
             "content": language_level_text,
             "message_id": message_id1,
+            "message_style": "tutor",
             "show_explain": True
         })
         
@@ -1291,6 +1293,7 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
         "type": "system",
         "content": confirmed_text,
         "message_id": message_id,
+        "message_style": "tutor",
         "show_explain": True,
         "buttons": [
             {"text": "Start Investigation!", "action": "case_intro_begin"}

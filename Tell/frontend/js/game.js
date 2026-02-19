@@ -68,14 +68,25 @@ function displayMessage(msg) {
         (typeof msg.character_name === 'string' && msg.character_name.toLowerCase().includes('tutor')) ||
         (typeof msg.type === 'string' && msg.type.toLowerCase() === 'language_tutor')
     );
+    const hasTutorStyle = (
+        typeof msg.message_style === 'string' &&
+        msg.message_style.toLowerCase() === 'tutor'
+    );
+    const isOnboardingWelcomeMessage = (
+        type === 'system' &&
+        buttons.some(btn => btn.action === 'onboarding_step5')
+    );
+
+    if (isTutorMessage || hasTutorStyle || isOnboardingWelcomeMessage) {
+        if (messageDiv) {
+            messageDiv.classList.add('tutor-message');
+        }
+    }
 
     if (isTutorMessage) {
         const hasHideButton = buttons.some(btn => btn.action === 'hide_message');
         if (!hasHideButton) {
             buttons.push({ text: 'Hide this message', action: 'hide_message' });
-        }
-        if (messageDiv) {
-            messageDiv.classList.add('tutor-message');
         }
     }
 

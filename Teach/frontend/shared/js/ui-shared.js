@@ -84,6 +84,9 @@
             img.src = clueImageUrl;
             img.alt = '';
             img.className = 'message-image';
+            if (typeof imageUrl === 'string' && imageUrl.includes('detective_guide')) {
+                img.classList.add('message-image--detective-guide');
+            }
             img.loading = 'lazy';
             img.onclick = () => {
                 if (typeof options.onImageClick === 'function') {
