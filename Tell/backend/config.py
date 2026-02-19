@@ -31,6 +31,19 @@ STAGE_CONFIG = {
             "The Apartment",
         ],
         "characters": ["tim", "pauline", "fiona", "ronnie"],
+        "default_location": "part1_ep1",
+        "locations": {
+            "part1_ep1": {
+                "name": "Party - Before Pauline",
+                "characters": ["tim", "ronnie", "fiona"],
+                "show_in_switcher": False,
+            },
+            "part2_ep1": {
+                "name": "Party - Pauline Arrives",
+                "characters": ["tim", "ronnie", "fiona", "pauline"],
+                "show_in_switcher": False,
+            },
+        },
         "intro_files": [
             {"file": "atmospheric_start.txt", "type": "system", "image": "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg", "button": "Accept the Call"},
             {"file": "case_intro_1_call.txt", "type": "character", "character": "nina", "button": "What happened?"},

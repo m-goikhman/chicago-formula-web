@@ -34,6 +34,10 @@ EP2_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
 EP2_USB_SHARE_BUTTON_NOTE = "(you need to let James know what's on the drive)"
 EP2_JAMES_USB_QUESTION = "What's on the drive, and how can I help?"
 EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
+EP1_PART1_LOCATION = "part1_ep1"
+EP1_PART2_LOCATION = "part2_ep1"
+EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
+EP1_PRIVATE_MIN_TURNS_ANY = 20
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -139,6 +143,66 @@ def _load_game_text_optional(filename: str, episode: int) -> Optional[str]:
     except (FileNotFoundError, OSError, IOError) as exc:
         logger.warning(f"Failed to read optional game text file '{path}': {exc}")
         return None
+
+
+def _normalize_character_set(value) -> Set[str]:
+    """Normalize persisted character collection to a set of keys."""
+    if isinstance(value, set):
+        return value
+    if isinstance(value, list):
+        return set(value)
+    if isinstance(value, tuple):
+        return set(value)
+    return set()
+
+
+def _update_ep1_private_progress(state: Dict, character_key: str) -> None:
+    """Track EP1 private-mode user turns and unique characters talked to."""
+    if state.get("current_stage", 1) != 1:
+        return
+
+    state["ep1_private_turns"] = int(state.get("ep1_private_turns", 0)) + 1
+    talked_characters = _normalize_character_set(state.get("ep1_private_characters", set()))
+    talked_characters.add(character_key)
+    state["ep1_private_characters"] = talked_characters
+
+
+def _should_unlock_ep1_part2(state: Dict) -> bool:
+    """Check if EP1 part 2 (Pauline appears) should be unlocked."""
+    if state.get("current_stage", 1) != 1:
+        return False
+    if state.get("ep1_phase2_unlocked", False):
+        return False
+    if get_stage_location(state, 1) == EP1_PART2_LOCATION:
+        return False
+
+    private_turns = int(state.get("ep1_private_turns", 0))
+    talked_characters = _normalize_character_set(state.get("ep1_private_characters", set()))
+    talked_count = len(talked_characters)
+
+    return (
+        private_turns >= EP1_PRIVATE_MIN_TURNS_ANY
+        or (private_turns >= EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS and talked_count >= 2)
+    )
+
+
+def _build_ep1_pauline_entrance_message(participant_code: str) -> Optional[Dict]:
+    """Create narrator entrance message when Pauline joins EP1."""
+    entrance_text = _load_game_text_optional("pauline_entrance.txt", 1)
+    if not entrance_text:
+        return None
+
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, entrance_text, "narrator")
+    log_message(0, "narrator", entrance_text, participant_code)
+    return {
+        "type": "character",
+        "character": "narrator",
+        "character_name": "Narrator",
+        "content": entrance_text,
+        "message_id": message_id,
+        "show_explain": True,
+    }
 
 
 def get_clues_count_for_stage(stage_number: int) -> int:
@@ -1570,6 +1634,8 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
     stage_characters = get_characters_for_stage(state, current_stage)
+
+    _update_ep1_private_progress(state, char_key)
     
     # Check if this is first interrogation (for current episode's characters)
     if char_key in stage_characters and char_key not in state.get("suspects_interrogated", set()):
@@ -1635,6 +1701,13 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
         })
     
     # Save state
+    if _should_unlock_ep1_part2(state):
+        set_stage_location(state, 1, EP1_PART2_LOCATION)
+        state["ep1_phase2_unlocked"] = True
+        entrance_message = _build_ep1_pauline_entrance_message(participant_code)
+        if entrance_message:
+            messages.append(entrance_message)
+
     await game_state_manager.save_game_state(participant_code, state)
     
     return messages
@@ -1843,6 +1916,18 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         if "predefined_used" not in state["topic_memory"]:
             state["topic_memory"]["predefined_used"] = []
     
+    filtered_scene = []
+    for scene_action in scene:
+        action_type = scene_action.get("action")
+        data = scene_action.get("data", {})
+        if action_type in ["character_reply", "character_reaction"]:
+            character_key = data.get("character_key")
+            if character_key not in stage_characters:
+                continue
+        filtered_scene.append(scene_action)
+
+    scene = filtered_scene
+
     if not scene:
         logger.warning(f"Participant {participant_code}: Director returned an empty scene")
         return [{"type": "system", "content": "The investigation continues..."}]
@@ -1869,7 +1954,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
             char_key = data.get("character_key")
             trigger_msg = data.get("trigger_message")
             
-            if char_key in CHARACTER_DATA and trigger_msg:
+            if char_key in CHARACTER_DATA and char_key in stage_characters and trigger_msg:
                 char_data = CHARACTER_DATA[char_key]
                 
                 # Get current language level and episode for prompt resolution
