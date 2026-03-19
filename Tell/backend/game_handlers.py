@@ -2114,19 +2114,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         action_type = scene_action.get("action")
         data = scene_action.get("data", {})
         
-        if action_type == "director_note":
-            # Director narrative/guidance message
-            message = data.get("message", "The investigation continues...")
-            
-            # Log director note
-            log_message(0, "director_note", message, participant_code)
-            
-            messages.append({
-                "type": "system",
-                "content": message
-            })
-            
-        elif action_type in ["character_reply", "character_reaction"]:
+        if action_type in ["character_reply", "character_reaction"]:
             char_key = data.get("character_key")
             trigger_msg = data.get("trigger_message")
             

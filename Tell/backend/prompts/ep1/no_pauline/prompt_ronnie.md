@@ -42,6 +42,7 @@ REVEAL ONLY IF: The detective directly accuses you of being involved with organi
 ### Your Suspicions
 * Tim is desperate for money and capable of violence - you saw how he reacted to your note
 * Tim was way too worried when you met him near his locked car, he seemed like someone who would willingly sneak away and hide.
+* Actually, when you think about it: his car was covered with a thin layer of snow, so it seems that it has been parked there at list for half an hour or maybe more.
 * The timing is suspicious - right before your deadline for Tim to pay
 
 ### Cars You Recognize
