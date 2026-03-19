@@ -45,7 +45,6 @@ STAGE_CONFIG = {
             },
         },
         "intro_files": [
-            {"file": "atmospheric_start.txt", "type": "system", "image": "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg", "button": "Accept the Call"},
             {"file": "case_intro_1_call.txt", "type": "character", "character": "nina", "button": "What happened?"},
             {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina", "button": "Who is there?"},
             {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina", "image": "ep1/suspects.png", "button": "Start Investigation!"},

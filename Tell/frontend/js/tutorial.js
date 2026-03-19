@@ -36,14 +36,14 @@ function initTutorial() {
     tutorialSteps = [
         {
             selector: '#navigationBar .nav-button:first-child',
-            title: '👥 Who\'s here',
+            title: 'Who\'s here',
             text: 'Here you can open the Who\'s here panel. Click this button to talk to individual characters privately.',
             position: 'bottom',
             highlightPadding: 10
         },
         {
             selector: '#navigationBar .nav-button:nth-child(2)',
-            title: '📄 Case Materials',
+            title: 'Case Materials',
             text: 'This button opens the case materials drawer where you can examine clues and evidence.',
             position: 'bottom',
             highlightPadding: 10
@@ -97,13 +97,24 @@ function showTutorialStep(stepIndex) {
         setTimeout(() => showTutorialStep(stepIndex + 1), 300);
         return;
     }
+
+    const elementRect = element.getBoundingClientRect();
+    if (
+        element.offsetParent === null ||
+        elementRect.width === 0 ||
+        elementRect.height === 0
+    ) {
+        // Hidden element (e.g. nav buttons before first menu selection), skip safely
+        setTimeout(() => showTutorialStep(stepIndex + 1), 300);
+        return;
+    }
     
     // Show overlay
     const overlay = document.getElementById('tutorialOverlay');
     overlay.classList.add('active');
     
     // Get element position
-    const rect = element.getBoundingClientRect();
+    const rect = elementRect;
     const padding = step.highlightPadding || 10;
     
     // Create spotlight

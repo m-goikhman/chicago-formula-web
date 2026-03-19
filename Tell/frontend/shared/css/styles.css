@@ -630,6 +630,28 @@
             border-bottom-left-radius: 4px;
         }
 
+        /* Narrator lines: plain italic text without chat bubble or sender label */
+        .message.narrator-message {
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        .message.narrator-message .message-content {
+            max-width: min(72ch, 100%);
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .message.narrator-message .message-text {
+            font-style: italic;
+            color: #4c5560;
+            line-height: 1.7;
+            text-align: center;
+        }
+
         .message.tutor-message {
             flex-direction: column;
             align-items: stretch;

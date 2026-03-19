@@ -38,6 +38,8 @@ EP1_PART1_LOCATION = "part1_ep1"
 EP1_PART2_LOCATION = "part2_ep1"
 EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
 EP1_PRIVATE_MIN_TURNS_ANY = 20
+TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
+EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -192,17 +194,15 @@ def _build_ep1_pauline_entrance_message(participant_code: str) -> Optional[Dict]
     if not entrance_text:
         return None
 
-    message_id = generate_message_id()
-    save_message_to_cache(message_id, entrance_text, "narrator")
-    log_message(0, "narrator", entrance_text, participant_code)
-    return {
-        "type": "character",
-        "character": "narrator",
-        "character_name": "Narrator",
-        "content": entrance_text,
-        "message_id": message_id,
-        "show_explain": True,
-    }
+    sender_key, content_without_sender = _extract_sender_from_text(entrance_text)
+    text, buttons = _extract_buttons_from_text(content_without_sender)
+    if not text:
+        return None
+
+    message = _build_character_message_for_sender(participant_code, text, sender_key or "narrator")
+    if buttons:
+        message["buttons"] = buttons
+    return message
 
 
 def get_clues_count_for_stage(stage_number: int) -> int:
@@ -719,6 +719,177 @@ def _extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]
     return cleaned_content, buttons
 
 
+def _resolve_character_sender_key(raw_sender: str) -> Optional[str]:
+    """Resolve sender key from metadata (key or full character name)."""
+    if not isinstance(raw_sender, str):
+        return None
+
+    normalized = raw_sender.strip().lower()
+    if not normalized:
+        return None
+
+    if normalized == "narrator":
+        return "narrator"
+
+    if normalized in CHARACTER_DATA:
+        return normalized
+
+    for key, data in CHARACTER_DATA.items():
+        full_name = str(data.get("full_name", "")).strip().lower()
+        if full_name and full_name == normalized:
+            return key
+
+    return None
+
+
+def _extract_sender_from_text(content: str) -> Tuple[Optional[str], str]:
+    """
+    Parse optional sender metadata from the beginning of a file.
+    Supported first non-empty line formats:
+    - [from: james]
+    - [character: James Clark]
+    - [sender: narrator]
+    """
+    lines = content.splitlines()
+    first_nonempty_index = None
+    for index, line in enumerate(lines):
+        if line.strip():
+            first_nonempty_index = index
+            break
+
+    if first_nonempty_index is None:
+        return None, content
+
+    first_line = lines[first_nonempty_index].strip()
+    sender_match = re.match(r"^\[(from|character|sender)\s*:\s*([^\]]+)\]\s*$", first_line, flags=re.IGNORECASE)
+    if not sender_match:
+        return None, content
+
+    sender_key = _resolve_character_sender_key(sender_match.group(2))
+    body_lines = lines[:first_nonempty_index] + lines[first_nonempty_index + 1:]
+    return sender_key, "\n".join(body_lines).strip()
+
+
+def resolve_action_text_from_game_texts(action: str, episode: int) -> Optional[Tuple[str, List[Dict[str, str]], str]]:
+    """
+    Resolve button action as a game_texts file and return parsed message payload.
+    Supports paths with/without `.txt`, e.g.:
+    - "dialogue_openers/university_ep2/james.txt"
+    - "dialogue_openers/university_ep2/james"
+    """
+    if not isinstance(action, str):
+        return None
+
+    normalized = action.strip().replace("\\", "/")
+    if not normalized:
+        return None
+
+    # Basic path traversal / absolute-path guard.
+    if normalized.startswith("/") or normalized.startswith("../") or "/../" in f"/{normalized}/":
+        return None
+
+    if not normalized.endswith(".txt"):
+        normalized = f"{normalized}.txt"
+
+    file_content = _load_game_text_optional(normalized, episode)
+    if not file_content:
+        return None
+
+    sender_key, content_without_sender = _extract_sender_from_text(file_content)
+    text, buttons = _extract_buttons_from_text(content_without_sender)
+    if not text:
+        return None
+    return text, buttons, (sender_key or "narrator")
+
+
+def _build_character_message_for_sender(participant_code: str, text: str, sender_key: str) -> Dict:
+    """Create a character message from sender metadata and log it."""
+    message_id = generate_message_id()
+    resolved_sender = sender_key if sender_key in CHARACTER_DATA or sender_key == "narrator" else "narrator"
+    log_role = "narrator" if resolved_sender == "narrator" else f"character_{resolved_sender}"
+    log_message(0, log_role, text, participant_code)
+
+    if resolved_sender == "narrator":
+        save_message_to_cache(message_id, text, "narrator")
+        return {
+            "type": "character",
+            "character": "narrator",
+            "character_name": "Narrator",
+            "content": text,
+            "message_id": message_id,
+            "show_explain": True,
+        }
+
+    char_data = CHARACTER_DATA.get(resolved_sender, {})
+    save_message_to_cache(message_id, text, resolved_sender)
+    return {
+        "type": "character",
+        "character": resolved_sender,
+        "character_name": char_data.get("full_name", resolved_sender.capitalize()),
+        "character_image": char_data.get("image"),
+        "content": text,
+        "message_id": message_id,
+        "show_explain": True,
+    }
+
+
+async def handle_game_text_action(participant_code: str, action: str) -> List[Dict]:
+    """Show a message loaded directly from game_texts via action path."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    normalized_action = (action or "").strip().replace("\\", "/").lower()
+    if state.get("current_stage", 1) == 1 and normalized_action in EP1_PART2_TRIGGER_ACTIONS:
+        # Enter EP1 phase 2 exactly when Pauline appears at the doorway.
+        set_stage_location(state, 1, EP1_PART2_LOCATION)
+        state["ep1_phase2_unlocked"] = True
+
+    episode = state.get("current_stage", 1)
+    payload = resolve_action_text_from_game_texts(action, episode)
+    if not payload:
+        return []
+
+    text, buttons, sender_key = payload
+    message = _build_character_message_for_sender(participant_code, text, sender_key)
+    if buttons:
+        message["buttons"] = buttons
+    return [message]
+
+
+async def handle_test_chat_command(participant_code: str, message_text: str) -> Optional[List[Dict]]:
+    """Handle hidden test-only chat commands. Return None when not a command."""
+    normalized = (message_text or "").strip().lower()
+    if normalized not in TEST_EP1_PAULINE_COMMANDS:
+        return None
+
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if participant_code.upper() != "TEST":
+        return [{"type": "system", "content": "This command is available only for TEST mode."}]
+
+    if state.get("current_stage", 1) != 1:
+        return [{"type": "system", "content": "Switch to Episode 1 first, then run /pauline."}]
+
+    # Mark EP1 phase 2 as unlocked and switch location so Pauline becomes available.
+    set_stage_location(state, 1, EP1_PART2_LOCATION)
+    state["ep1_phase2_unlocked"] = True
+
+    messages: List[Dict] = []
+    entrance_message = _build_ep1_pauline_entrance_message(participant_code)
+    if entrance_message:
+        messages.append(entrance_message)
+    else:
+        messages.append(
+            {"type": "system", "content": "Pauline is now available in Episode 1."}
+        )
+
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
 def generate_message_id() -> int:
     """Generate a unique message ID for web version."""
     return int(time.time() * 1000000) + random.randint(0, 1000)
@@ -1170,6 +1341,7 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
             "message_id": message_id2,
             "show_explain": True,
             "typewriter_style": True,
+            "image": "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg",
             "buttons": [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
@@ -1253,14 +1425,16 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     
     message_id = generate_message_id()
     save_message_to_cache(message_id, intro_text)
-    messages.append({
+    intro_message = {
         "type": "system",
         "content": intro_text,
         "message_id": message_id,
         "show_explain": True,
         "typewriter_style": True,
         "buttons": buttons
-    })
+    }
+    intro_message["image"] = "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg"
+    messages.append(intro_message)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -1480,9 +1654,8 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
         "type": "menu",
         "content": menu_text,
         "buttons": [
-            {"text": "💬 Talk to Someone", "action": "menu_talk"},
-            {"text": "🔍 Examine Evidence", "action": "menu_evidence"},
-            {"text": "✍️ Learning Menu", "action": "menu_learning"}
+            {"text": "Talk to Someone", "action": "menu_talk"},
+            {"text": "Examine Evidence", "action": "menu_evidence"}
         ]
     })
     
@@ -1600,18 +1773,13 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
 
     opener_text = get_private_dialogue_opener(state, current_stage, character_key)
     if opener_text:
-        opener_message_id = generate_message_id()
-        save_message_to_cache(opener_message_id, opener_text, character_key)
-        log_message(0, f"character_{character_key}", opener_text, participant_code)
-        messages.append({
-            "type": "character",
-            "character": character_key,
-            "character_name": char_data["full_name"],
-            "character_image": char_data.get("image"),
-            "content": opener_text,
-            "message_id": opener_message_id,
-            "show_explain": True
-        })
+        sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
+        opener_text, opener_buttons = _extract_buttons_from_text(opener_without_sender)
+        if opener_text and opener_text.strip():
+            opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
+            if opener_buttons:
+                opener_message["buttons"] = opener_buttons
+            messages.append(opener_message)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -1893,7 +2061,12 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     
     # No direct addressing, use director logic
     topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
-    context_for_director = f"Player asks everyone. Topic Memory: {json.dumps(topic_memory)}"
+    active_characters_context = ", ".join(sorted(stage_characters)) if stage_characters else "none"
+    context_for_director = (
+        f"Player asks everyone. "
+        f"Active characters on stage: [{active_characters_context}]. "
+        f"Topic Memory: {json.dumps(topic_memory)}"
+    )
     
     # Log user message
     log_message(0, "user", message_text, participant_code)

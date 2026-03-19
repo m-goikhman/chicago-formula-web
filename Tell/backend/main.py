@@ -221,7 +221,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_language_menu_difficulty,
         handle_difficulty_set,
         handle_language_menu_progress,
-        handle_language_menu_back
+        handle_language_menu_back,
+        handle_game_text_action,
     )
     
     # Route actions to appropriate handlers
@@ -267,7 +268,10 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     elif request.action == "language_menu_back":
         messages = await handle_language_menu_back(participant_code)
     else:
-        messages = [{"type": "error", "content": "Unknown action"}]
+        # Fallback: treat unknown action as a game_texts file path and show it as an in-game message.
+        messages = await handle_game_text_action(participant_code, request.action)
+        if not messages:
+            messages = [{"type": "error", "content": "Unknown action"}]
     
     # Append messages to current episode's chat history so they are restored when returning to this episode
     if messages:
@@ -289,10 +293,29 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     logger.info(f"Message from {participant_code}: {request.text}")
     
     from config import GAME_STATE
-    from game_handlers import handle_private_message, handle_public_message, handle_nina_message, analyze_and_log_user_text
+    from game_handlers import (
+        handle_private_message,
+        handle_public_message,
+        handle_nina_message,
+        analyze_and_log_user_text,
+        handle_test_chat_command,
+    )
     
     state = GAME_STATE.get(participant_code, {})
     mode = state.get("mode", "public")
+
+    # Hidden test-only chat command(s), e.g. /pauline to jump to Pauline appearance in EP1.
+    command_messages = await handle_test_chat_command(participant_code, request.text)
+    if command_messages is not None:
+        if command_messages:
+            state = GAME_STATE.get(participant_code)
+            if state is not None:
+                episode = state.get("current_stage", 1)
+                episode_messages = state.get("episode_messages", {})
+                episode_messages.setdefault(str(episode), []).extend(command_messages)
+                state["episode_messages"] = episode_messages
+                await game_state_manager.save_game_state(participant_code, state)
+        return {"messages": command_messages}
     
     # Automatically analyze user's text for grammar errors (background task)
     # Don't await to avoid blocking the response

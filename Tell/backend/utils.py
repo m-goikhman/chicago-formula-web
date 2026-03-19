@@ -105,23 +105,36 @@ def get_prompt_path(character_key: str, episode: int, location: Optional[str] = 
     if location:
         basename = f"prompt_{character_key}.md"
         location_candidates = [location]
+
+        # Episode 1 uses dedicated prompt folders by phase:
+        # - part1_ep1 -> no_pauline
+        # - part2_ep1 -> pauline (with fallback to no_pauline below)
+        ep1_location_aliases = {
+            "part1_ep1": ["no_pauline"],
+            "part2_ep1": ["pauline", "no_pauline"],
+            # Backward compatibility for legacy saved stage_locations values.
+            "pauline": ["pauline", "no_pauline"],
+            "no_pauline": ["no_pauline"],
+        }
+        for alias in ep1_location_aliases.get(location, []):
+            if alias not in location_candidates:
+                location_candidates.append(alias)
+
         # Support aliases like "default_ep2" -> "default" so
         # prompt_nina_ep2_default.md is resolved for default scene.
         location_without_episode_suffix = re.sub(r"_ep\d+$", "", location)
         if location_without_episode_suffix and location_without_episode_suffix != location:
             location_candidates.append(location_without_episode_suffix)
 
-        location_paths = [
-            f"prompts/ep{episode}/{location}/{basename}",
-            f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}.md",
-            f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}_{location}.md",
-        ]
+        location_paths = []
         for location_name in location_candidates:
+            location_paths.append(f"prompts/ep{episode}/{location_name}/{basename}")
+            location_paths.append(f"prompts/ep{episode}/{location_name}/prompt_{character_key}_ep{episode}.md")
             location_paths.append(
-                f"prompts/ep{episode}/{location}/prompt_{character_key}_ep{episode}_{location_name}.md"
+                f"prompts/ep{episode}/{location_name}/prompt_{character_key}_ep{episode}_{location_name}.md"
             )
             location_paths.append(
-                f"prompts/ep{episode}/{location}/prompt_{character_key}_{location_name}.md"
+                f"prompts/ep{episode}/{location_name}/prompt_{character_key}_{location_name}.md"
             )
 
         for location_path in location_paths:

@@ -53,13 +53,16 @@
 
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${type}`;
+        if (options.messageClass) {
+            messageDiv.classList.add(options.messageClass);
+        }
 
         if (typewriterStyle) {
             messageDiv.classList.add('typewriter-intro');
         }
 
         const avatarUrl = buildImageUrl(senderAvatar);
-        if (avatarUrl && type !== 'user') {
+        if (avatarUrl && type !== 'user' && !options.hideAvatar) {
             const avatar = document.createElement('img');
             avatar.src = avatarUrl;
             avatar.alt = sender;
@@ -73,7 +76,7 @@
 
         const renderedContent = typewriterStyle ? renderTypewriterText(content) : renderMarkdown(content);
         contentWrapper.innerHTML = `
-            <div class="message-sender">${sender}</div>
+            ${options.hideSender ? '' : `<div class="message-sender">${sender}</div>`}
             <div class="message-text">${renderedContent}</div>
         `;
 

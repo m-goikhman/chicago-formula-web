@@ -28,6 +28,18 @@ function toggleLeftDrawer() {
     }
 }
 
+function openLeftDrawer() {
+    const drawer = document.getElementById('leftDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+
+    if (!drawer) return;
+    closeAllDrawers();
+    drawer.classList.add('open');
+    if (overlay) {
+        overlay.classList.add('active');
+    }
+}
+
 function closeLeftDrawer() {
     const drawer = document.getElementById('leftDrawer');
     drawer.classList.remove('open');
@@ -43,6 +55,18 @@ function toggleRightDrawer() {
     } else {
         closeAllDrawers();
         drawer.classList.add('open');
+        overlay.classList.add('active');
+    }
+}
+
+function openRightDrawer() {
+    const drawer = document.getElementById('rightDrawer');
+    const overlay = document.getElementById('drawerOverlay');
+
+    if (!drawer) return;
+    closeAllDrawers();
+    drawer.classList.add('open');
+    if (overlay) {
         overlay.classList.add('active');
     }
 }
@@ -338,8 +362,10 @@ function closeImageModal() {
 
 // Export to window
 window.toggleLeftDrawer = toggleLeftDrawer;
+window.openLeftDrawer = openLeftDrawer;
 window.closeLeftDrawer = closeLeftDrawer;
 window.toggleRightDrawer = toggleRightDrawer;
+window.openRightDrawer = openRightDrawer;
 window.closeRightDrawer = closeRightDrawer;
 window.closeRightDrawerDetail = closeRightDrawerDetail;
 window.backToClueList = backToClueList;

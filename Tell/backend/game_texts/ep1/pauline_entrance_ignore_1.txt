@@ -1,0 +1,4 @@
+The intercom keeps buzzing. Everyone looks at you.
+[buttons]
+Ok, I'll answer it|pauline_entrance_accept.txt
+I'm not answering it|pauline_entrance_ignore_2.txt

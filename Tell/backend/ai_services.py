@@ -116,6 +116,38 @@ def _get_fallback_response(character_key: str = None) -> str:
         return f"I need a moment to think about that properly."
     return "I'm having trouble processing that request right now."
 
+
+def _parse_director_json_payload(response_text: str) -> dict:
+    """Parse director JSON with tolerance for fenced code blocks or wrappers."""
+    candidate = response_text.strip()
+
+    # Fast path: already clean JSON
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    # Common pattern: ```json ... ```
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", candidate, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        fenced_json = fence_match.group(1).strip()
+        parsed = json.loads(fenced_json)
+        if isinstance(parsed, dict):
+            return parsed
+
+    # Last resort: first JSON object in text
+    first_brace = candidate.find("{")
+    last_brace = candidate.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        sliced = candidate[first_brace:last_brace + 1].strip()
+        parsed = json.loads(sliced)
+        if isinstance(parsed, dict):
+            return parsed
+
+    raise json.JSONDecodeError("Director response does not contain a valid JSON object", candidate, 0)
+
 def clear_user_conversation_history(user_id, participant_code: str = None):
     """Clears conversation history for a user (optionally for current episode only), useful when corruption is detected."""
     if participant_code:
@@ -453,10 +485,25 @@ async def ask_director(user_id: int, context_text: str, message: str) -> dict:
         traceback.print_exc()
         # Continue to AI director as fallback
     
-    # Fallback to AI Director (episode-aware path)
+    # Fallback to AI Director (episode + location-aware path)
     state = GAME_STATE.get(user_id, {})
     episode = state.get("current_stage", 1)
-    director_prompt = load_system_prompt(get_prompt_path("director", episode))
+    location = None
+    try:
+        from config import STAGE_CONFIG
+        stage_config = STAGE_CONFIG.get(episode, {})
+        if stage_config.get("locations"):
+            stage_locations = state.get("stage_locations", {})
+            location = (
+                stage_locations.get(str(episode))
+                or stage_locations.get(episode)
+                or stage_config.get("default_location")
+            )
+    except Exception:
+        # Keep robust fallback behavior if stage config cannot be resolved.
+        location = None
+
+    director_prompt = load_system_prompt(get_prompt_path("director", episode, location))
     full_context_for_director = f"Context: \"{context_text}\"\nMessage: \"{message}\""
     director_messages = [{"role": "system", "content": director_prompt}, {"role": "user", "content": full_context_for_director}]
     try:
@@ -475,9 +522,9 @@ async def ask_director(user_id: int, context_text: str, message: str) -> dict:
             log_message(user_id, "director_validation_failed", f"Corrupted director response: {response_text[:200]}...", None)
             return {"scene": []}
         
-        # Try to parse the JSON response
+        # Try to parse the JSON response (with tolerant extraction)
         try:
-            director_decision = json.loads(validated_response)
+            director_decision = _parse_director_json_payload(validated_response)
             print(f"DEBUG: Director parsed JSON for user {user_id}: {director_decision}")
             
             # Validate the response structure

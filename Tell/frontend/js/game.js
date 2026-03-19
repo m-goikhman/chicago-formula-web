@@ -57,7 +57,25 @@ function displayMessage(msg) {
         }
     }
     
-    const messageDiv = addMessage(type, sender, msg.content, msg.image, senderAvatar, msg.typewriter_style);
+    const isNarratorMessage = (
+        type === 'character' &&
+        (
+            (typeof msg.character === 'string' && msg.character.toLowerCase() === 'narrator') ||
+            (typeof msg.character_name === 'string' && msg.character_name.toLowerCase().trim() === 'narrator')
+        )
+    );
+
+    const messageDiv = addMessage(
+        type,
+        sender,
+        msg.content,
+        msg.image,
+        senderAvatar,
+        msg.typewriter_style,
+        isNarratorMessage
+            ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
+            : {}
+    );
     
     // Check if we need to show input area and tutorial
     checkAndShowInputArea(msg.content, msg);

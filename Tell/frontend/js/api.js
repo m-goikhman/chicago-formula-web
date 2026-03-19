@@ -93,10 +93,87 @@ async function callWithAutoReauth(requestFn) {
     return result;
 }
 
+function hasGameNotInitializedError(response, data) {
+    if (!response || !response.ok || !data || !Array.isArray(data.messages)) {
+        return false;
+    }
+
+    return data.messages.some((message) => {
+        if (!message || message.type !== 'error') {
+            return false;
+        }
+        const content = String(message.content || '').toLowerCase();
+        return content.includes('game not initialized');
+    });
+}
+
+async function ensureGameInitialized() {
+    const { response, authFailureHandled } = await callWithAutoReauth(() => apiClient.get('/api/game/start', {
+        token: sessionToken
+    }));
+
+    if (authFailureHandled) {
+        return false;
+    }
+
+    return Boolean(response && response.ok);
+}
+
+async function callWithSessionRecovery(requestFn) {
+    let result = await callWithAutoReauth(requestFn);
+    if (result.authFailureHandled) {
+        return result;
+    }
+
+    if (!hasGameNotInitializedError(result.response, result.data)) {
+        return result;
+    }
+
+    const initialized = await ensureGameInitialized();
+    if (!initialized) {
+        forceReloginWithMessage();
+        return {
+            response: result.response,
+            data: result.data,
+            authFailureHandled: true
+        };
+    }
+
+    result = await callWithAutoReauth(requestFn);
+    return result;
+}
+
 function updateResetHistoryMenuVisibility() {
     const resetMenuItem = document.getElementById('resetHistoryMenuItem');
     if (!resetMenuItem) return;
     resetMenuItem.style.display = (participantCode || '').toUpperCase() === 'TEST' ? 'block' : 'none';
+}
+
+function getNavigationUnlockedStorageKey() {
+    const code = (participantCode || '').trim().toUpperCase();
+    return code ? `navigation_unlocked_${code}` : '';
+}
+
+function isNavigationUnlocked() {
+    const storageKey = getNavigationUnlockedStorageKey();
+    if (!storageKey) return false;
+    return localStorage.getItem(storageKey) === 'true';
+}
+
+function setNavigationUnlocked(unlocked) {
+    const storageKey = getNavigationUnlockedStorageKey();
+    if (!storageKey) return;
+    if (unlocked) {
+        localStorage.setItem(storageKey, 'true');
+    } else {
+        localStorage.removeItem(storageKey);
+    }
+}
+
+function updateNavigationBarVisibility() {
+    const navigationBar = document.getElementById('navigationBar');
+    if (!navigationBar) return;
+    navigationBar.style.display = isNavigationUnlocked() ? 'flex' : 'none';
 }
 
 async function login() {
@@ -132,11 +209,8 @@ async function login() {
             document.getElementById('gameScreen').classList.add('active');
             updateResetHistoryMenuVisibility();
             
-            // Show navigation bar
-            const navigationBar = document.getElementById('navigationBar');
-            if (navigationBar) {
-                navigationBar.style.display = 'flex';
-            }
+            // Show navigation only after first main-menu choice
+            updateNavigationBarVisibility();
             
             // Show Nina floating button after investigation starts
             // It will be shown when investigation actually begins
@@ -225,6 +299,30 @@ async function loadGame() {
 
 async function handleAction(action, closeDrawersOnSuccess = true) {
     console.log('Handling action:', action);
+    const normalizedAction = String(action || '').trim().toLowerCase();
+
+    // Open side drawers directly from chat menu without backend roundtrip.
+    if (action === 'menu_talk') {
+        setNavigationUnlocked(true);
+        updateNavigationBarVisibility();
+        if (typeof window.openLeftDrawer === 'function') {
+            window.openLeftDrawer();
+        } else if (typeof window.toggleLeftDrawer === 'function') {
+            window.toggleLeftDrawer();
+        }
+        return;
+    }
+
+    if (action === 'menu_evidence') {
+        setNavigationUnlocked(true);
+        updateNavigationBarVisibility();
+        if (typeof window.openRightDrawer === 'function') {
+            window.openRightDrawer();
+        } else if (typeof window.toggleRightDrawer === 'function') {
+            window.toggleRightDrawer();
+        }
+        return;
+    }
 
     if (action === 'reset_all_history') {
         const confirmed = window.confirm(
@@ -308,7 +406,7 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
     }
     
     try {
-        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/action', { action: action }, {
+        const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/action', { action: action }, {
             token: sessionToken
         }));
         console.log('Action response:', data);
@@ -395,8 +493,12 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
             }
         }
 
-        // Location transitions can change available characters inside the same episode
-        if (action.startsWith('go_') && typeof loadEpisodeSelector === 'function') {
+        // Some actions can change available characters inside the same episode.
+        // Refresh stage info so "Who's here" is immediately in sync.
+        if (
+            (action.startsWith('go_') || normalizedAction === 'pauline_entrance_doorway' || normalizedAction === 'pauline_entrance_doorway.txt')
+            && typeof loadEpisodeSelector === 'function'
+        ) {
             await loadEpisodeSelector();
         }
 
@@ -491,7 +593,7 @@ async function sendMessage() {
     }
 
     try {
-        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/message', { text }, {
+        const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/message', { text }, {
             token: sessionToken
         }));
 
@@ -522,7 +624,7 @@ async function sendMessage() {
 
 async function explainWord(wordOrPhrase, originalText) {
     try {
-        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/explain', {
+        const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/explain', {
             action: 'word',
             word: wordOrPhrase,
             original_text: originalText
@@ -554,9 +656,14 @@ async function explainWord(wordOrPhrase, originalText) {
 
 // Logout function
 function logout() {
+    const previousParticipantCode = participantCode;
+
     // Clear localStorage
     localStorage.removeItem('sessionToken');
     localStorage.removeItem('participantCode');
+    if (previousParticipantCode) {
+        localStorage.removeItem(`navigation_unlocked_${previousParticipantCode.toUpperCase()}`);
+    }
     
     // Clear session variables
     sessionToken = '';
@@ -642,11 +749,8 @@ async function restoreSession() {
             document.getElementById('gameScreen').classList.add('active');
             updateResetHistoryMenuVisibility();
             
-            // Show navigation bar
-            const navigationBar = document.getElementById('navigationBar');
-            if (navigationBar) {
-                navigationBar.style.display = 'flex';
-            }
+            // Show navigation only after first main-menu choice
+            updateNavigationBarVisibility();
             
             // Populate drawers
             if (window.populateCharactersDrawer) {
@@ -672,6 +776,7 @@ async function restoreSession() {
             // Show Nina floating button only if investigation has started.
             // Intro in ep1 has character messages before start, so use menu as the signal.
             const ninaButton = document.getElementById('ninaFloatingButton');
+            const navigationBar = document.getElementById('navigationBar');
             if (ninaButton && navigationBar && navigationBar.style.display !== 'none' && shouldShowNinaFloatingButton()) {
                 const chatArea = document.getElementById('chatArea');
                 if (chatArea) {
@@ -756,7 +861,7 @@ async function sendNinaMessage() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     
     try {
-        const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/nina', { text }, {
+        const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/nina', { text }, {
             token: sessionToken
         }));
         
