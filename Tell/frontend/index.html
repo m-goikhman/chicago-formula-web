@@ -177,6 +177,25 @@
                     <button id="ninaChatSendBtn" onclick="sendNinaMessage()">Send</button>
                 </div>
             </div>
+
+            <!-- Character Profile Overlay -->
+            <div id="characterProfileOverlay" class="character-profile-overlay" onclick="closeCharacterProfile()">
+                <div class="character-profile-card" onclick="event.stopPropagation()">
+                    <div class="character-profile-header">
+                        <button class="character-profile-back" onclick="closeCharacterProfile()" aria-label="Back">←</button>
+                        <h3>Character</h3>
+                    </div>
+                    <div class="character-profile-body">
+                        <img id="characterProfileAvatar" class="character-profile-avatar" src="" alt="" />
+                        <div id="characterProfileName" class="character-profile-name"></div>
+                        <div id="characterProfileStatus" class="character-profile-status"></div>
+                    </div>
+                    <div class="character-profile-actions">
+                        <button id="characterProfilePrivateBtn" class="character-profile-action primary">talk in private</button>
+                        <button id="characterProfileCommonBtn" class="character-profile-action secondary">address in common chat</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
     <!-- JavaScript modules -->

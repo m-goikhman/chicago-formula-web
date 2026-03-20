@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import bootstrap  # noqa: F401
 
 from utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
-from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG
+from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
 from game_state_manager import game_state_manager
 from shared.backend.progress_manager import progress_manager
 from ai_services import ask_for_dialogue
@@ -40,6 +40,69 @@ EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
 EP1_PRIVATE_MIN_TURNS_ANY = 20
 TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
 EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
+
+
+def _is_test_participant(participant_code: str) -> bool:
+    return isinstance(participant_code, str) and participant_code.upper() == "TEST"
+
+
+def _is_debug_mode_enabled(state: Dict, participant_code: str) -> bool:
+    """Enable verbose director diagnostics only for TEST participant."""
+    return _is_test_participant(participant_code) and bool(state.get("debug_mode", False))
+
+
+def _append_debug_message(messages: List[Dict], content: str) -> None:
+    """Append a debug-only system message to chat response payload."""
+    messages.append(
+        {
+            "type": "system",
+            "content": f"[DEBUG] {content}",
+            "message_style": "debug",
+            "show_explain": False,
+        }
+    )
+
+
+def _truncate_for_debug(value: str, max_len: int = 700) -> str:
+    text = (value or "").strip()
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}... [truncated, total={len(text)} chars]"
+
+
+def _build_private_input_debug_snapshot(
+    participant_code: str,
+    state: Dict,
+    char_key: str,
+    system_prompt: str,
+    context_trigger: str,
+) -> str:
+    """Build a concise preview of what goes into private dialogue call."""
+    episode = state.get("current_stage", 1)
+    history_key = f"{participant_code}:{episode}"
+    history = user_histories.get(history_key, [])
+    history_tail = history[-10:]
+
+    history_lines: List[str] = []
+    if not history_tail:
+        history_lines.append("- (empty)")
+    else:
+        for msg in history_tail:
+            role = msg.get("role", "unknown")
+            content = _truncate_for_debug(str(msg.get("content", "")), 220)
+            history_lines.append(f"- {role}: {content}")
+
+    prompt_preview = _truncate_for_debug(system_prompt, 700)
+    trigger_preview = _truncate_for_debug(context_trigger, 500)
+    history_block = "\n".join(history_lines)
+    return (
+        f"Private input snapshot for '{char_key}'\n"
+        f"History key: {history_key}\n"
+        f"History messages used (up to last 10): {len(history_tail)}\n"
+        f"Context trigger: {trigger_preview}\n"
+        f"System prompt preview:\n{prompt_preview}\n"
+        f"History preview:\n{history_block}"
+    )
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -860,15 +923,27 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
 async def handle_test_chat_command(participant_code: str, message_text: str) -> Optional[List[Dict]]:
     """Handle hidden test-only chat commands. Return None when not a command."""
     normalized = (message_text or "").strip().lower()
-    if normalized not in TEST_EP1_PAULINE_COMMANDS:
+    is_debug_command = normalized.startswith("/debug")
+    if normalized not in TEST_EP1_PAULINE_COMMANDS and not is_debug_command:
         return None
 
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if participant_code.upper() != "TEST":
+    if not _is_test_participant(participant_code):
         return [{"type": "system", "content": "This command is available only for TEST mode."}]
+
+    if is_debug_command:
+        command_parts = normalized.split()
+        if len(command_parts) != 2 or command_parts[1] not in {"on", "off"}:
+            return [{"type": "system", "content": "Usage: /debug on or /debug off"}]
+
+        debug_enabled = command_parts[1] == "on"
+        state["debug_mode"] = debug_enabled
+        await game_state_manager.save_game_state(participant_code, state)
+        status_text = "enabled" if debug_enabled else "disabled"
+        return [{"type": "system", "content": f"Debug mode {status_text} for TEST."}]
 
     if state.get("current_stage", 1) != 1:
         return [{"type": "system", "content": "Switch to Episode 1 first, then run /pauline."}]
@@ -939,6 +1014,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
         "participant_code": participant_code,
+        "debug_mode": False,
         "waiting_for_participant_code": False,
         "onboarding_step": "consent",
         "current_language_level": "B1",  # Default level
@@ -1009,6 +1085,9 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     
     if "episode_messages" not in state:
         state["episode_messages"] = {}
+
+    if "debug_mode" not in state:
+        state["debug_mode"] = False
 
     if "stage_locations" not in state:
         state["stage_locations"] = {"2": EP2_DEFAULT_LOCATION}
@@ -1821,9 +1900,20 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     context_trigger += " Respond as your character."
     
     logger.info(f"Participant {participant_code}: Direct character conversation with '{char_key}'")
+    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
     
     # Log user message
     log_message(0, "user", message_text, participant_code)
+
+    if debug_mode_enabled:
+        debug_snapshot = _build_private_input_debug_snapshot(
+            participant_code=participant_code,
+            state=state,
+            char_key=char_key,
+            system_prompt=system_prompt,
+            context_trigger=context_trigger,
+        )
+        _append_debug_message(messages, debug_snapshot)
     
     try:
         reply_text = await ask_for_dialogue(
@@ -2062,6 +2152,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     # No direct addressing, use director logic
     topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
     active_characters_context = ", ".join(sorted(stage_characters)) if stage_characters else "none"
+    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
     context_for_director = (
         f"Player asks everyone. "
         f"Active characters on stage: [{active_characters_context}]. "
@@ -2080,6 +2171,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     
     director_decision = await ask_director(participant_code, context_for_director, message_text)
     logger.info(f"Participant {participant_code}: Director decision received")
+    if debug_mode_enabled:
+        _append_debug_message(messages, f"Director decision JSON: {json.dumps(director_decision, ensure_ascii=False)}")
     
     scene = director_decision.get("scene", [])
     new_topic = director_decision.get("new_topic", topic_memory["topic"])
@@ -2106,7 +2199,10 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
 
     if not scene:
         logger.warning(f"Participant {participant_code}: Director returned an empty scene")
-        return [{"type": "system", "content": "The investigation continues..."}]
+        if debug_mode_enabled:
+            _append_debug_message(messages, "Director returned an empty scene after filtering.")
+        messages.append({"type": "system", "content": "The investigation continues..."})
+        return messages
     
     # Execute scene actions
     logger.info(f"Participant {participant_code}: Executing scene with {len(scene)} actions")
@@ -2119,6 +2215,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
             trigger_msg = data.get("trigger_message")
             
             if char_key in CHARACTER_DATA and char_key in stage_characters and trigger_msg:
+                if debug_mode_enabled:
+                    _append_debug_message(messages, f"Director -> {char_key}: {trigger_msg}")
                 char_data = CHARACTER_DATA[char_key]
                 
                 # Get current language level and episode for prompt resolution

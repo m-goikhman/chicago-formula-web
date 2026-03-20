@@ -65,6 +65,17 @@ function displayMessage(msg) {
         )
     );
 
+    const messageOptions = isNarratorMessage
+        ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
+        : {};
+
+    if (type === 'character' && senderAvatar && typeof window.openCharacterProfile === 'function') {
+        messageOptions.onAvatarClick = () => window.openCharacterProfile({
+            name: sender,
+            image: senderAvatar
+        });
+    }
+
     const messageDiv = addMessage(
         type,
         sender,
@@ -72,9 +83,7 @@ function displayMessage(msg) {
         msg.image,
         senderAvatar,
         msg.typewriter_style,
-        isNarratorMessage
-            ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
-            : {}
+        messageOptions
     );
     
     // Check if we need to show input area and tutorial

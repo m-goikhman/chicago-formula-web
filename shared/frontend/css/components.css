@@ -78,6 +78,21 @@
             max-width: 180px;
         }
 
+        .message-avatar.clickable {
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .message-avatar.clickable:hover {
+            transform: scale(1.06);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .message-avatar.clickable:focus-visible {
+            outline: 3px solid rgba(0, 151, 178, 0.5);
+            outline-offset: 2px;
+        }
+
         .message-content-wrapper {
             display: flex;
             flex-direction: column;
@@ -822,5 +837,137 @@
         .nina-chat-message.user .nina-chat-message-content {
             background: #0097b2;
             color: white;
+        }
+
+        /* Character profile overlay (opened from message avatar) */
+        .character-profile-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1700;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+            padding: 16px;
+        }
+
+        .character-profile-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .character-profile-card {
+            width: min(420px, 100%);
+            background: white;
+            border-radius: 18px;
+            box-shadow: 0 25px 70px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+
+        .character-profile-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 16px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .character-profile-header h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #2f3a40;
+        }
+
+        .character-profile-back {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            border-radius: 10px;
+            border: none;
+            box-shadow: none;
+            transform: none;
+            background: transparent;
+            color: #1a5563;
+            font-size: 22px;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .character-profile-back:hover {
+            background: rgba(0, 0, 0, 0.06);
+            box-shadow: none;
+            transform: none;
+        }
+
+        .character-profile-body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 24px 18px 10px;
+        }
+
+        .character-profile-avatar {
+            width: 112px;
+            height: 112px;
+            border-radius: 999px;
+            object-fit: cover;
+            border: 3px solid rgba(0, 151, 178, 0.2);
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.15);
+        }
+
+        .character-profile-name {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2a31;
+            text-align: center;
+        }
+
+        .character-profile-status {
+            font-size: 13px;
+            color: #5a6a72;
+            text-align: center;
+        }
+
+        .character-profile-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 16px;
+        }
+
+        .character-profile-action {
+            width: 100%;
+            border-radius: 12px;
+            padding: 13px 16px;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: none;
+        }
+
+        .character-profile-action.primary {
+            background: #0097b2;
+            color: #fff;
+        }
+
+        .character-profile-action.secondary {
+            background: #f5f7f8;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            color: #1a5563;
+        }
+
+        .character-profile-action.secondary:hover {
+            background: #e9eef1;
+        }
+
+        .character-profile-action:disabled {
+            background: #e2e7ea;
+            color: #8c99a3;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
         }
     

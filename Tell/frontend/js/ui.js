@@ -360,6 +360,82 @@ function closeImageModal() {
     document.body.style.overflow = '';
 }
 
+function resolveCharacterProfileData(character) {
+    const characterStatuses = {
+        tim: 'PhD candidate. Finance. Options pricing.',
+        ronnie: 'MBA. Investor. Family man.',
+        fiona: 'MS Biology @ UChicago.',
+        pauline: 'Independent consultant. Turning good ideas into better returns.',
+        susan: 'Ask dumb questions. That is how you find the interesting ones.',
+        james: 'Postdoc, Finance Department, University of Chicago',
+        alex: 'The best ideas take time.'
+    };
+    const fallbackName = (character?.name || '').trim() || 'Character';
+    const fallbackImage = character?.image || null;
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const matchedStageCharacter = stageCharacters.find((stageCharacter) => {
+        const fullName = (stageCharacter?.full_name || '').trim().toLowerCase();
+        return fullName && fullName === fallbackName.toLowerCase();
+    });
+    const characterKey = matchedStageCharacter?.key || null;
+    return {
+        name: matchedStageCharacter?.full_name || fallbackName,
+        image: matchedStageCharacter?.image || fallbackImage,
+        privateAction: characterKey ? `talk_${characterKey}` : null,
+        status: characterStatuses[characterKey] || 'Chat participant'
+    };
+}
+
+function openCharacterProfile(character = {}) {
+    const overlay = document.getElementById('characterProfileOverlay');
+    const avatar = document.getElementById('characterProfileAvatar');
+    const name = document.getElementById('characterProfileName');
+    const status = document.getElementById('characterProfileStatus');
+    const actions = document.querySelector('.character-profile-actions');
+    const privateButton = document.getElementById('characterProfilePrivateBtn');
+    const commonButton = document.getElementById('characterProfileCommonBtn');
+    if (!overlay || !avatar || !name || !status || !actions || !privateButton || !commonButton) {
+        return;
+    }
+
+    const profileData = resolveCharacterProfileData(character);
+    const profileImageUrl = buildImageUrl(profileData.image);
+    avatar.src = profileImageUrl || '';
+    avatar.alt = profileData.name;
+    avatar.style.display = profileImageUrl ? 'block' : 'none';
+    name.textContent = profileData.name;
+    status.textContent = profileData.status;
+    const isAlreadyInPrivateWithCharacter = Boolean(
+        currentCharacter &&
+        typeof currentCharacter.name === 'string' &&
+        currentCharacter.name.trim().toLowerCase() === profileData.name.trim().toLowerCase()
+    );
+    actions.style.display = isAlreadyInPrivateWithCharacter ? 'none' : 'flex';
+
+    const isMobile = window.innerWidth <= 767;
+    privateButton.disabled = !profileData.privateAction;
+    privateButton.onclick = async () => {
+        if (!profileData.privateAction) return;
+        closeCharacterProfile();
+        await handleAction(profileData.privateAction, !isMobile);
+    };
+
+    commonButton.onclick = async () => {
+        closeCharacterProfile();
+        await handleAction('mode_public', !isMobile);
+    };
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeCharacterProfile() {
+    const overlay = document.getElementById('characterProfileOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
 // Export to window
 window.toggleLeftDrawer = toggleLeftDrawer;
 window.openLeftDrawer = openLeftDrawer;
@@ -379,6 +455,8 @@ window.toggleHorizontalMenu = toggleHorizontalMenu;
 window.handleMenuAction = handleMenuAction;
 window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
+window.openCharacterProfile = openCharacterProfile;
+window.closeCharacterProfile = closeCharacterProfile;
 window.addMessage = addMessage;
 window.showTypingIndicator = showTypingIndicator;
 window.escapeHtml = escapeHtml;

@@ -68,6 +68,19 @@
             avatar.alt = sender;
             avatar.className = 'message-avatar';
             avatar.loading = 'lazy';
+            if (typeof options.onAvatarClick === 'function') {
+                avatar.classList.add('clickable');
+                avatar.setAttribute('role', 'button');
+                avatar.setAttribute('tabindex', '0');
+                avatar.setAttribute('aria-label', `Open ${sender} profile`);
+                avatar.onclick = () => options.onAvatarClick();
+                avatar.onkeydown = (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        options.onAvatarClick();
+                    }
+                };
+            }
             messageDiv.appendChild(avatar);
         }
 
