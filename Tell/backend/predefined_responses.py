@@ -9,6 +9,7 @@ from predefined.engine import (
     detect_topic_from_keywords,
     extract_character_from_message,
     extract_character_from_message_strict,
+    resolve_character_from_singular_you,
     try_predefined_response,
 )
 from predefined.registry import PREDEFINED_PROFILE_REGISTRY
@@ -18,5 +19,6 @@ __all__ = [
     "detect_topic_from_keywords",
     "extract_character_from_message",
     "extract_character_from_message_strict",
+    "resolve_character_from_singular_you",
     "try_predefined_response",
 ]

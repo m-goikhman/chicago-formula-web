@@ -220,6 +220,7 @@ function populateCharactersDrawer() {
             } else {
                 currentCharacter = { name: char.name, image: char.image };
             }
+            updatePrivateModeControls();
             
             const isMobile = window.innerWidth <= 767;
             if (isMobile) closeLeftDrawer();
@@ -227,6 +228,57 @@ function populateCharactersDrawer() {
         };
         charactersList.appendChild(item);
     });
+
+    updatePrivateModeControls();
+}
+
+function setActiveCharacterDrawerItem(characterName = null) {
+    const drawerItems = document.querySelectorAll('#charactersList .drawer-item');
+    if (!drawerItems.length) return;
+
+    drawerItems.forEach((item) => item.classList.remove('active'));
+
+    const normalizedTarget = (characterName || '').trim().toLowerCase();
+    const targetItem = Array.from(drawerItems).find((item) => {
+        const itemName = (item.querySelector('.name')?.textContent || '').trim().toLowerCase();
+        if (normalizedTarget) {
+            return itemName === normalizedTarget;
+        }
+        return itemName === 'everyone';
+    });
+
+    if (targetItem) {
+        targetItem.classList.add('active');
+    }
+}
+
+function updatePrivateModeControls() {
+    const privateModeControls = document.getElementById('privateModeControls');
+    if (!privateModeControls) return;
+    const inputArea = document.getElementById('inputArea');
+    const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
+    const activeDrawerName = (
+        document.querySelector('#charactersList .drawer-item.active .name')?.textContent || ''
+    ).trim().toLowerCase();
+    const activeCharacterName = (currentCharacter?.name || '').trim().toLowerCase();
+    const isPrivateModeActive = Boolean(
+        activeCharacterName &&
+        activeDrawerName &&
+        activeDrawerName !== 'everyone' &&
+        activeDrawerName === activeCharacterName
+    );
+
+    privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
+}
+
+async function backToCommonDialogue() {
+    if (!currentCharacter) return;
+    currentCharacter = null;
+    setActiveCharacterDrawerItem(null);
+    updatePrivateModeControls();
+
+    const isMobile = window.innerWidth <= 767;
+    await handleAction('mode_public', !isMobile);
 }
 
 // Populate case materials drawer
@@ -457,6 +509,9 @@ window.openImageModal = openImageModal;
 window.closeImageModal = closeImageModal;
 window.openCharacterProfile = openCharacterProfile;
 window.closeCharacterProfile = closeCharacterProfile;
+window.setActiveCharacterDrawerItem = setActiveCharacterDrawerItem;
+window.updatePrivateModeControls = updatePrivateModeControls;
+window.backToCommonDialogue = backToCommonDialogue;
 window.addMessage = addMessage;
 window.showTypingIndicator = showTypingIndicator;
 window.escapeHtml = escapeHtml;

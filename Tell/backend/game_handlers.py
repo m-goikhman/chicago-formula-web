@@ -1003,6 +1003,7 @@ def initialize_game_state(participant_code: str) -> Dict:
     return {
         "mode": "public",
         "current_character": None,
+        "last_public_responder": None,
         "waiting_for_word": False,
         "accused_character": None,
         "accusation_attempts": 0,
@@ -1096,6 +1097,9 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         if not stage_locations.get("2") and not stage_locations.get(2):
             stage_locations["2"] = EP2_DEFAULT_LOCATION
             state["stage_locations"] = stage_locations
+
+    if "last_public_responder" not in state:
+        state["last_public_responder"] = None
     
     return state
 
@@ -2017,6 +2021,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
     stage_characters = set(get_characters_for_stage(state, current_stage))
+    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
 
     if current_stage == 2 and current_location == EP2_DEFAULT_LOCATION:
         return await handle_nina_message(participant_code, message_text)
@@ -2032,9 +2037,31 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         )
 
     # First, check for direct character addressing
-    from predefined_responses import extract_character_from_message_strict
+    from predefined_responses import (
+        extract_character_from_message_strict,
+        resolve_character_from_singular_you,
+    )
     
     character_key = extract_character_from_message_strict(message_text)
+    implied_character_key = None
+    if not character_key:
+        implied_character_key = resolve_character_from_singular_you(
+            message_text,
+            state.get("last_public_responder"),
+        )
+        if implied_character_key in stage_characters:
+            character_key = implied_character_key
+            if debug_mode_enabled:
+                _append_debug_message(
+                    messages,
+                    f"Resolved singular 'you' to '{character_key}' from last_public_responder.",
+                )
+        elif implied_character_key and debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Singular 'you' pointed to '{implied_character_key}', but character is not active in this location.",
+            )
+
     if character_key and character_key in CHARACTER_DATA and character_key in stage_characters:
         # Handle direct character addressing
         char_data = CHARACTER_DATA[character_key]
@@ -2066,6 +2093,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 
                 # Log character response
                 log_message(f"character_{character_key}", reply_text, participant_code)
+                state["last_public_responder"] = character_key
                 
                 messages.append({
                     "type": "character",
@@ -2105,7 +2133,6 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     # No direct addressing, use director logic
     topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
     active_characters_context = ", ".join(sorted(stage_characters)) if stage_characters else "none"
-    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
     context_for_director = (
         f"Player asks everyone. "
         f"Active characters on stage: [{active_characters_context}]. "
@@ -2205,6 +2232,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                         
                         # Mark character as having spoken on this topic
                         state["topic_memory"]["spoken"].append(char_key)
+                        state["last_public_responder"] = char_key
                     else:
                         logger.error(f"Character '{char_key}' generated empty reply")
                         messages.append({

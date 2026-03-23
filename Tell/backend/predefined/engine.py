@@ -1,6 +1,7 @@
 """Shared predefined response engine."""
 
 import random
+import re
 from typing import Any, Dict, List, Optional, Set
 
 from config import GAME_STATE
@@ -67,6 +68,35 @@ def extract_character_from_message_strict(message: str) -> Optional[str]:
                     if remaining_text.startswith(q_word + " ") or remaining_text.startswith(q_word + ","):
                         return char_key
     return None
+
+
+def resolve_character_from_singular_you(message: str, last_responder: Optional[str]) -> Optional[str]:
+    """Resolve bare singular 'you' to the previously speaking character."""
+    if not last_responder:
+        return None
+
+    message_lower = (message or "").lower().strip()
+    if not message_lower:
+        return None
+
+    # Do not force a single target for likely group/plural references.
+    ambiguous_plural_patterns = [
+        r"\byou\s+guys\b",
+        r"\byou\s+all\b",
+        r"\ball\s+of\s+you\b",
+        r"\bany\s+of\s+you\b",
+        r"\bwhich\s+of\s+you\b",
+        r"\bone\s+of\s+you\b",
+        r"\bboth\s+of\s+you\b",
+        r"\brest\s+of\s+you\b",
+    ]
+    if any(re.search(pattern, message_lower) for pattern in ambiguous_plural_patterns):
+        return None
+
+    if not re.search(r"\byou\b", message_lower):
+        return None
+
+    return last_responder
 
 
 def _get_characters_who_can_respond(topic_data: Dict[str, Any], topic_memory: Dict, active_characters: Set[str]) -> List[str]:

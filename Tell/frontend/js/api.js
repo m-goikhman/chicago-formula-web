@@ -176,6 +176,38 @@ function updateNavigationBarVisibility() {
     navigationBar.style.display = isNavigationUnlocked() ? 'flex' : 'none';
 }
 
+function resolveCharacterFromTalkAction(action) {
+    const actionText = String(action || '').trim().toLowerCase();
+    if (!actionText.startsWith('talk_')) {
+        return null;
+    }
+
+    const characterKey = actionText.slice(5);
+    if (!characterKey) {
+        return null;
+    }
+
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const matched = stageCharacters.find((character) => (character?.key || '').toLowerCase() === characterKey);
+    if (!matched) {
+        return null;
+    }
+
+    return {
+        name: matched.full_name,
+        image: matched.image || null
+    };
+}
+
+function syncDialogueModeUI() {
+    if (typeof window.setActiveCharacterDrawerItem === 'function') {
+        window.setActiveCharacterDrawerItem(currentCharacter ? currentCharacter.name : null);
+    }
+    if (typeof window.updatePrivateModeControls === 'function') {
+        window.updatePrivateModeControls();
+    }
+}
+
 async function login() {
     const code = document.getElementById('participantCode').value;
     const errorDiv = document.getElementById('loginError');
@@ -229,6 +261,7 @@ async function login() {
             if (firstDrawerItem) {
                 firstDrawerItem.classList.add('active');
             }
+            syncDialogueModeUI();
             
             // Load episode selector
             await loadEpisodeSelector();
@@ -300,6 +333,17 @@ async function loadGame() {
 async function handleAction(action, closeDrawersOnSuccess = true) {
     console.log('Handling action:', action);
     const normalizedAction = String(action || '').trim().toLowerCase();
+
+    if (normalizedAction === 'mode_public') {
+        currentCharacter = null;
+        syncDialogueModeUI();
+    } else if (normalizedAction.startsWith('talk_')) {
+        const targetCharacter = resolveCharacterFromTalkAction(normalizedAction);
+        if (targetCharacter) {
+            currentCharacter = targetCharacter;
+            syncDialogueModeUI();
+        }
+    }
 
     // Open side drawers directly from chat menu without backend roundtrip.
     if (action === 'menu_talk') {
@@ -669,6 +713,7 @@ function logout() {
     sessionToken = '';
     participantCode = '';
     currentCharacter = null;
+    syncDialogueModeUI();
     updateResetHistoryMenuVisibility();
     
     // Hide game screen, show login screen
@@ -766,6 +811,7 @@ async function restoreSession() {
             if (firstDrawerItem) {
                 firstDrawerItem.classList.add('active');
             }
+            syncDialogueModeUI();
             
             // Load episode selector
             await loadEpisodeSelector();

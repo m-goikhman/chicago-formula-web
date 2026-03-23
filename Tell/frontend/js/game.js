@@ -9,6 +9,9 @@ function checkAndShowInputArea(messageContent, msgObj) {
     if (messageContent && messageContent.trim().startsWith('👥 FOUR PEOPLE ARE IN THE APARTMENT')) {
         inputArea.style.display = 'flex';
         window.inputAreaShown = true;
+        if (typeof window.updatePrivateModeControls === 'function') {
+            window.updatePrivateModeControls();
+        }
         return;
     }
     // Episodes 2–4 (or if user skipped to them before finishing ep1 onboarding): show input when menu is shown
@@ -16,6 +19,9 @@ function checkAndShowInputArea(messageContent, msgObj) {
     if (msgObj && msgObj.type === 'menu') {
         inputArea.style.display = 'flex';
         window.inputAreaShown = true;
+        if (typeof window.updatePrivateModeControls === 'function') {
+            window.updatePrivateModeControls();
+        }
     }
 }
 
