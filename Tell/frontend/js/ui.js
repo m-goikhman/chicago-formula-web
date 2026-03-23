@@ -196,6 +196,7 @@ function populateCharactersDrawer() {
     list.forEach(char => {
         const item = document.createElement('div');
         item.className = 'drawer-item';
+        item.classList.add(char.action === 'mode_public' ? 'chat-target-public' : 'chat-target-private');
         let iconHTML = '';
         const characterImageUrl = buildImageUrl(char.image);
         if (characterImageUrl) {
@@ -255,20 +256,55 @@ function setActiveCharacterDrawerItem(characterName = null) {
 function updatePrivateModeControls() {
     const privateModeControls = document.getElementById('privateModeControls');
     if (!privateModeControls) return;
+    const mainChatArea = document.querySelector('.main-chat-area');
+    const headerModeContext = document.getElementById('chatModeHeaderContext');
     const inputArea = document.getElementById('inputArea');
+    const inputElement = document.getElementById('messageInput');
+    const headerContextAvatar = document.getElementById('chatModeHeaderAvatar');
+    const backToCommonDialogueBtn = document.getElementById('backToCommonDialogueBtn');
     const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
-    const activeDrawerName = (
+    const activeDrawerNameRaw = (
         document.querySelector('#charactersList .drawer-item.active .name')?.textContent || ''
-    ).trim().toLowerCase();
-    const activeCharacterName = (currentCharacter?.name || '').trim().toLowerCase();
+    ).trim();
+    const activeDrawerName = activeDrawerNameRaw.toLowerCase();
+    const activeCharacterNameRaw = (currentCharacter?.name || '').trim();
+    const activeCharacterName = activeCharacterNameRaw.toLowerCase();
     const isPrivateModeActive = Boolean(
         activeCharacterName &&
         activeDrawerName &&
         activeDrawerName !== 'everyone' &&
         activeDrawerName === activeCharacterName
     );
+    const privateCharacterLabel = activeCharacterNameRaw || activeDrawerNameRaw;
+    const publicAvatarUrl = buildImageUrl('ep1/suspects.png');
+    const privateAvatarUrl = buildImageUrl(currentCharacter?.image);
 
     privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
+    if (backToCommonDialogueBtn) {
+        backToCommonDialogueBtn.classList.toggle('is-private', isPrivateModeActive);
+    }
+    if (headerContextAvatar) {
+        const avatarSrc = isPrivateModeActive && privateAvatarUrl ? privateAvatarUrl : publicAvatarUrl;
+        headerContextAvatar.src = avatarSrc || '';
+        headerContextAvatar.alt = isPrivateModeActive
+            ? `${privateCharacterLabel} avatar`
+            : 'Group chat avatar';
+    }
+    if (headerModeContext) {
+        headerModeContext.classList.toggle('is-private', isPrivateModeActive);
+        headerModeContext.title = isPrivateModeActive
+            ? `Private chat with ${privateCharacterLabel}`
+            : 'Public chat (Everyone)';
+    }
+    if (inputElement) {
+        inputElement.placeholder = isPrivateModeActive
+            ? `Message ${privateCharacterLabel}...`
+            : 'Type a message to everyone...';
+    }
+    if (mainChatArea) {
+        mainChatArea.classList.toggle('chat-mode-private', isPrivateModeActive);
+        mainChatArea.classList.toggle('chat-mode-public', !isPrivateModeActive);
+    }
 }
 
 async function backToCommonDialogue() {

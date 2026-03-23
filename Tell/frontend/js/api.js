@@ -400,6 +400,7 @@ async function handleAction(action, closeDrawersOnSuccess = true) {
             if (inputArea) {
                 inputArea.style.display = 'none';
             }
+            syncDialogueModeUI();
 
             await loadEpisodeSelector();
             await loadGame();
@@ -746,6 +747,7 @@ function logout() {
     if (inputArea) {
         inputArea.style.display = 'none';
     }
+    syncDialogueModeUI();
     
     // Close all drawers
     if (window.closeAllDrawers) {

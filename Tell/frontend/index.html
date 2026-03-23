@@ -41,9 +41,19 @@
                     </div>
                 </div>
             </div>
-            <button id="ninaFloatingButton" class="nina-floating-button" onclick="openNinaChat()" title="Ask Nina for help" aria-label="Ask Nina for help" style="display: none;">
-                <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-avatar">
-            </button>
+            <div id="chatModeHeaderContext" class="chat-mode-header-context" aria-live="polite">
+                <img id="chatModeHeaderAvatar" class="chat-mode-header-avatar" src="" alt="" loading="lazy">
+            </div>
+            <div id="privateModeControls" class="private-mode-controls private-mode-controls-header" style="display: none;">
+                <button
+                    id="backToCommonDialogueBtn"
+                    class="back-to-common-dialogue-btn back-to-common-dialogue-btn-header"
+                    onclick="backToCommonDialogue()"
+                    title="Back to group chat"
+                    aria-label="Back to group chat">
+                    ⤺
+                </button>
+            </div>
         </div>
 
         <!-- Horizontal dropdown menu -->
@@ -117,15 +127,13 @@
                     </div>
                 </div>
 
-                <div id="privateModeControls" class="private-mode-controls" style="display: none;">
-                    <button id="backToCommonDialogueBtn" class="back-to-common-dialogue-btn" onclick="backToCommonDialogue()">
-                        back to common dialogue
-                    </button>
-                </div>
                 <div class="input-area" id="inputArea" style="display: none;">
                     <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
                     <button id="sendBtn" onclick="sendMessage()">Send</button>
                 </div>
+                <button id="ninaFloatingButton" class="nina-floating-button nina-floating-button-chat" onclick="openNinaChat()" title="Ask Nina for help" aria-label="Ask Nina for help" style="display: none;">
+                    <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-avatar">
+                </button>
             </div>
 
             <!-- Right Drawer - Case Materials -->
@@ -188,7 +196,7 @@
                 <div class="character-profile-card" onclick="event.stopPropagation()">
                     <div class="character-profile-header">
                         <button class="character-profile-back" onclick="closeCharacterProfile()" aria-label="Back">←</button>
-                        <h3>Character</h3>
+                        <h3></h3>
                     </div>
                     <div class="character-profile-body">
                         <img id="characterProfileAvatar" class="character-profile-avatar" src="" alt="" />

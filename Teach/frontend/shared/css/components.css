@@ -276,6 +276,7 @@
             flex-direction: column;
             min-width: 0;
             min-height: 0;
+            position: relative;
             overflow: hidden;
         }
 
@@ -633,6 +634,14 @@
             transition: all 0.3s ease;
         }
 
+        .nina-floating-button-chat {
+            position: absolute;
+            right: 20px;
+            bottom: 88px;
+            margin-left: 0;
+            z-index: 120;
+        }
+
         .nina-floating-button:hover {
             border-color: #d4af64;
             transform: scale(1.08);
@@ -669,6 +678,11 @@
                 width: 36px;
                 height: 36px;
                 border-width: 1.5px;
+            }
+
+            .nina-floating-button-chat {
+                right: 12px;
+                bottom: calc(76px + env(safe-area-inset-bottom));
             }
 
             .nina-floating-button::after {
