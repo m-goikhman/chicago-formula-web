@@ -189,13 +189,23 @@ function resolveCharacterFromTalkAction(action) {
 
     const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
     const matched = stageCharacters.find((character) => (character?.key || '').toLowerCase() === characterKey);
-    if (!matched) {
-        return null;
+
+    if (matched) {
+        return {
+            key: matched.key || characterKey,
+            name: matched.full_name,
+            image: matched.image || null
+        };
     }
 
+    // Fallback: still switch private scope even when stage metadata is stale.
+    const fallbackName = characterKey
+        ? characterKey.charAt(0).toUpperCase() + characterKey.slice(1)
+        : 'Character';
     return {
-        name: matched.full_name,
-        image: matched.image || null
+        key: characterKey,
+        name: fallbackName,
+        image: null
     };
 }
 
@@ -603,8 +613,11 @@ async function sendMessage() {
 
     if (!text) return;
 
-    // Show user message
-    addMessage('user', 'You', text);
+    // Show user message in the active chat scope.
+    const currentChatScope = (typeof window.getActiveChatScope === 'function')
+        ? window.getActiveChatScope()
+        : 'public';
+    addMessage('user', 'You', text, null, null, false, { chatScope: currentChatScope });
     input.value = '';
     
     // Reset textarea height

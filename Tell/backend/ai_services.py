@@ -193,7 +193,13 @@ def _filter_history_for_character(history: list, character_key: str) -> list:
     
     return filtered
 
-async def ask_for_dialogue(participant_code: str, user_message: str, system_prompt: str, character_key: str = None) -> str:
+async def ask_for_dialogue(
+    participant_code: str,
+    user_message: str,
+    system_prompt: str,
+    character_key: str = None,
+    requester_code: str = None,
+) -> str:
     """The main function for all dialogue-based AI calls. Always expects and returns a simple string."""
     history_key = _resolve_history_key(participant_code)
     

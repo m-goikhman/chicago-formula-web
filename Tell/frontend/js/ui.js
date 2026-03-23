@@ -219,7 +219,10 @@ function populateCharactersDrawer() {
             if (char.name === 'Everyone') {
                 currentCharacter = null;
             } else {
-                currentCharacter = { name: char.name, image: char.image };
+                const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
+                    ? String(char.action).slice(5).toLowerCase()
+                    : null;
+                currentCharacter = { name: char.name, image: char.image, key: keyFromAction };
             }
             updatePrivateModeControls();
             
@@ -251,6 +254,49 @@ function setActiveCharacterDrawerItem(characterName = null) {
     if (targetItem) {
         targetItem.classList.add('active');
     }
+}
+
+function resolveCurrentCharacterKey() {
+    if (currentCharacter?.key) {
+        return String(currentCharacter.key).trim().toLowerCase();
+    }
+
+    const currentName = (currentCharacter?.name || '').trim().toLowerCase();
+    if (!currentName) {
+        return '';
+    }
+
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const matched = stageCharacters.find((character) => {
+        const fullName = (character?.full_name || '').trim().toLowerCase();
+        return fullName && fullName === currentName;
+    });
+    return (matched?.key || '').trim().toLowerCase();
+}
+
+function getActiveChatScope() {
+    const activeKey = resolveCurrentCharacterKey();
+    return activeKey ? `private:${activeKey}` : 'public';
+}
+
+function applyChatScopeVisibility() {
+    const chatArea = document.getElementById('chatArea');
+    if (!chatArea) return;
+
+    const activeScope = getActiveChatScope();
+    const messages = chatArea.querySelectorAll('.message');
+    messages.forEach((messageElement) => {
+        const isHiddenByUser = messageElement.dataset.userHidden === 'true';
+        const scope = (messageElement.dataset.chatScope || 'public').trim().toLowerCase();
+        const isPrivateMessage = scope.startsWith('private:');
+        const shouldHideByScope = activeScope === 'public'
+            ? isPrivateMessage
+            : scope !== activeScope;
+
+        const shouldHide = isHiddenByUser || shouldHideByScope;
+        messageElement.style.display = shouldHide ? 'none' : 'flex';
+        messageElement.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
+    });
 }
 
 function updatePrivateModeControls() {
@@ -305,6 +351,8 @@ function updatePrivateModeControls() {
         mainChatArea.classList.toggle('chat-mode-private', isPrivateModeActive);
         mainChatArea.classList.toggle('chat-mode-public', !isPrivateModeActive);
     }
+
+    applyChatScopeVisibility();
 }
 
 async function backToCommonDialogue() {
@@ -554,3 +602,5 @@ window.escapeHtml = escapeHtml;
 window.renderMarkdown = renderMarkdown;
 window.renderTypewriterText = renderTypewriterText;
 window.autoResizeTextarea = autoResizeTextarea;
+window.getActiveChatScope = getActiveChatScope;
+window.applyChatScopeVisibility = applyChatScopeVisibility;

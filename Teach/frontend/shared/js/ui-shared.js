@@ -119,6 +119,12 @@
         messageContent.className = 'message-content';
         messageContent.appendChild(contentWrapper);
 
+        const scopeFromOptions = typeof options.chatScope === 'string' ? options.chatScope.trim() : '';
+        const activeScope = (typeof global.getActiveChatScope === 'function')
+            ? global.getActiveChatScope()
+            : 'public';
+        messageDiv.dataset.chatScope = scopeFromOptions || activeScope || 'public';
+
         messageDiv.appendChild(messageContent);
         chatArea.appendChild(messageDiv);
         chatArea.scrollTop = chatArea.scrollHeight;
@@ -136,6 +142,10 @@
             } catch (e) {
                 console.warn('Error applying highlights:', e);
             }
+        }
+
+        if (typeof global.applyChatScopeVisibility === 'function') {
+            global.applyChatScopeVisibility();
         }
 
         return messageDiv;
@@ -178,9 +188,18 @@
         messageContent.className = 'message-content';
         messageContent.appendChild(contentWrapper);
 
+        const activeScope = (typeof global.getActiveChatScope === 'function')
+            ? global.getActiveChatScope()
+            : 'public';
+        typingDiv.dataset.chatScope = activeScope || 'public';
+
         typingDiv.appendChild(messageContent);
         chatArea.appendChild(typingDiv);
         chatArea.scrollTop = chatArea.scrollHeight;
+
+        if (typeof global.applyChatScopeVisibility === 'function') {
+            global.applyChatScopeVisibility();
+        }
 
         return typingDiv;
     }

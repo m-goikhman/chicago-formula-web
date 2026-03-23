@@ -75,6 +75,25 @@ function displayMessage(msg) {
         ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
         : {};
 
+    const explicitScope = typeof msg.chat_scope === 'string' ? msg.chat_scope.trim().toLowerCase() : '';
+    const activeScope = (typeof window.getActiveChatScope === 'function')
+        ? window.getActiveChatScope()
+        : 'public';
+    const senderKey = String(msg.character || '').trim().toLowerCase();
+    let chatScope = explicitScope || activeScope || 'public';
+    if (!explicitScope && type === 'character') {
+        // Keep only active private character replies in private scope; everything else is public.
+        const expectedPrivateScope = senderKey ? `private:${senderKey}` : '';
+        if (!expectedPrivateScope || !chatScope.startsWith('private:') || chatScope !== expectedPrivateScope) {
+            chatScope = 'public';
+        } else {
+            chatScope = expectedPrivateScope;
+        }
+    } else if (!explicitScope && type !== 'user') {
+        chatScope = 'public';
+    }
+    messageOptions.chatScope = chatScope;
+
     if (type === 'character' && senderAvatar && typeof window.openCharacterProfile === 'function') {
         messageOptions.onAvatarClick = () => window.openCharacterProfile({
             name: sender,
@@ -133,7 +152,13 @@ function displayMessage(msg) {
             if (btn.action === 'hide_message') {
                 // Hide the message when hide_message button is clicked
                 button.onclick = () => {
-                    messageDiv.style.display = 'none';
+                    messageDiv.dataset.userHidden = 'true';
+                    if (typeof window.applyChatScopeVisibility === 'function') {
+                        window.applyChatScopeVisibility();
+                    } else {
+                        messageDiv.style.display = 'none';
+                        messageDiv.setAttribute('aria-hidden', 'true');
+                    }
                 };
             } else {
                 button.onclick = () => handleAction(btn.action);
@@ -161,6 +186,9 @@ async function displayMessagesSequentially(messages, delay = 0) {
     // Display all messages immediately without delay
     for (const msg of messages) {
         displayMessage(msg);
+    }
+    if (typeof window.applyChatScopeVisibility === 'function') {
+        window.applyChatScopeVisibility();
     }
 }
 

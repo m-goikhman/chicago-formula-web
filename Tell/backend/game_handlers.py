@@ -941,6 +941,8 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
 
         debug_enabled = command_parts[1] == "on"
         state["debug_mode"] = debug_enabled
+        # Persist explicit tester preference so defaults do not overwrite it.
+        state["debug_mode_user_override"] = True
         await game_state_manager.save_game_state(participant_code, state)
         status_text = "enabled" if debug_enabled else "disabled"
         return [{"type": "system", "content": f"Debug mode {status_text} for TEST."}]
@@ -1015,7 +1017,10 @@ def initialize_game_state(participant_code: str) -> Dict:
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
         "participant_code": participant_code,
-        "debug_mode": False,
+        # TEST participant gets debug output by default.
+        "debug_mode": is_test_mode,
+        # True only after /debug on|off command is used.
+        "debug_mode_user_override": False,
         "waiting_for_participant_code": False,
         "onboarding_step": "consent",
         "current_language_level": "B1",  # Default level
@@ -1088,7 +1093,14 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         state["episode_messages"] = {}
 
     if "debug_mode" not in state:
-        state["debug_mode"] = False
+        state["debug_mode"] = is_test_mode
+
+    if "debug_mode_user_override" not in state:
+        state["debug_mode_user_override"] = False
+
+    # For legacy TEST states, turn debug on by default unless user explicitly toggled it.
+    if is_test_mode and not state.get("debug_mode_user_override", False):
+        state["debug_mode"] = True
 
     if "stage_locations" not in state:
         state["stage_locations"] = {"2": EP2_DEFAULT_LOCATION}
@@ -1803,19 +1815,82 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     # Set mode to private
     state["mode"] = "private"
     state["current_character"] = character_key
-    
-    # No AI narrator transitions when entering private mode.
-    # Narrator messages should come only from game_texts files.
 
-    opener_text = get_private_dialogue_opener(state, current_stage, character_key)
-    if opener_text:
-        sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
-        opener_text, opener_buttons = _extract_buttons_from_text(opener_without_sender)
-        if opener_text and opener_text.strip():
-            opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
-            if opener_buttons:
-                opener_message["buttons"] = opener_buttons
-            messages.append(opener_message)
+    current_language_level = state.get("current_language_level", "B1")
+    current_location = get_stage_location(state, current_stage)
+    system_prompt = combine_character_prompt(character_key, current_language_level, current_stage, current_location)
+    char_data = CHARACTER_DATA[character_key]
+
+    # Director cue for the first private line from the selected character.
+    private_opening_trigger = (
+        "The detective wants to speak with you in private right now. "
+        "Say a short first line to open the private dialogue in one brief sentence. "
+        "Stay fully in character."
+    )
+
+    try:
+        opener_reply = await ask_for_dialogue(
+            participant_code,
+            private_opening_trigger,
+            system_prompt,
+            character_key,
+            participant_code,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to generate private opener for '%s' (participant %s): %s",
+            character_key,
+            participant_code,
+            exc,
+        )
+        opener_reply = ""
+
+    if opener_reply and opener_reply.strip():
+        opener_reply = opener_reply.strip()
+        message_id = generate_message_id()
+        save_message_to_cache(message_id, opener_reply, character_key)
+        log_message(f"character_{character_key}", opener_reply, participant_code)
+        messages.append(
+            {
+                "type": "character",
+                "character": character_key,
+                "character_name": char_data["full_name"],
+                "character_image": char_data.get("image"),
+                "content": opener_reply,
+                "message_id": message_id,
+                "chat_scope": f"private:{character_key}",
+                "show_explain": True,
+            }
+        )
+    else:
+        # Fallback to configured opener text files for resiliency.
+        opener_text = get_private_dialogue_opener(state, current_stage, character_key)
+        if opener_text:
+            sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
+            opener_text, opener_buttons = _extract_buttons_from_text(opener_without_sender)
+            if opener_text and opener_text.strip():
+                opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
+                if opener_buttons:
+                    opener_message["buttons"] = opener_buttons
+                messages.append(opener_message)
+        elif character_key in CHARACTER_DATA:
+            # Guaranteed short opener if both AI and file opener are unavailable.
+            fallback_line = "I'm here. What do you want to ask me?"
+            message_id = generate_message_id()
+            save_message_to_cache(message_id, fallback_line, character_key)
+            log_message(f"character_{character_key}", fallback_line, participant_code)
+            messages.append(
+                {
+                    "type": "character",
+                    "character": character_key,
+                    "character_name": char_data["full_name"],
+                    "character_image": char_data.get("image"),
+                    "content": fallback_line,
+                    "message_id": message_id,
+                    "chat_scope": f"private:{character_key}",
+                    "show_explain": True,
+                }
+            )
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -1895,6 +1970,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
                 "character_image": char_data.get("image"),
                 "content": reply_text,
                 "message_id": message_id,
+                "chat_scope": f"private:{char_key}",
                 "show_explain": True
             })
         else:
@@ -1905,6 +1981,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
                 "character_name": char_data["full_name"],
                 "character_image": char_data.get("image"),
                 "content": "[Character is thinking...]",
+                "chat_scope": f"private:{char_key}",
                 "show_explain": False
             })
     except Exception as e:
@@ -1915,6 +1992,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             "character_name": char_data["full_name"],
             "character_image": char_data.get("image"),
             "content": "[Character is thinking...]",
+            "chat_scope": f"private:{char_key}",
             "show_explain": False
         })
     
