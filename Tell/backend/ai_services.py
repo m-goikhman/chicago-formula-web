@@ -148,19 +148,22 @@ def _parse_director_json_payload(response_text: str) -> dict:
 
     raise json.JSONDecodeError("Director response does not contain a valid JSON object", candidate, 0)
 
-def clear_user_conversation_history(user_id, participant_code: str = None):
-    """Clears conversation history for a user (optionally for current episode only), useful when corruption is detected."""
-    if participant_code:
-        from config import GAME_STATE
-        state = GAME_STATE.get(participant_code, {})
-        episode = state.get("current_stage", 1)
-        history_key = f"{user_id}:{episode}"
-    else:
-        history_key = str(user_id)
+def _resolve_history_key(participant_code: str) -> str:
+    """Resolve in-memory history key for a participant and current episode."""
+    from config import GAME_STATE
+
+    state = GAME_STATE.get(participant_code, {})
+    episode = state.get("current_stage", 1)
+    return f"{participant_code}:{episode}"
+
+
+def clear_user_conversation_history(participant_code: str):
+    """Clear conversation history for current participant and episode."""
+    history_key = _resolve_history_key(participant_code)
     if history_key in user_histories:
-        print(f"WARNING: Clearing conversation history for user {user_id} due to corruption")
+        print(f"WARNING: Clearing conversation history for participant {participant_code} due to corruption")
         user_histories[history_key] = []
-        log_message(user_id, "history_cleared", "Conversation history cleared due to AI corruption", None)
+        log_message("history_cleared", "Conversation history cleared due to AI corruption", participant_code)
 
 
 
@@ -190,37 +193,31 @@ def _filter_history_for_character(history: list, character_key: str) -> list:
     
     return filtered
 
-async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, character_key: str = None, participant_code: str = None) -> str:
+async def ask_for_dialogue(participant_code: str, user_message: str, system_prompt: str, character_key: str = None) -> str:
     """The main function for all dialogue-based AI calls. Always expects and returns a simple string."""
-    history_key = str(user_id)
-    if participant_code:
-        from config import GAME_STATE
-        state = GAME_STATE.get(participant_code, {})
-        episode = state.get("current_stage", 1)
-        history_key = f"{user_id}:{episode}"
+    history_key = _resolve_history_key(participant_code)
     
     if history_key not in user_histories:
         user_histories[history_key] = []
     
     # Get global knowledge from game state if participant_code is provided
     knowledge_context = ""
-    if participant_code:
-        from config import GAME_STATE
-        state = GAME_STATE.get(participant_code, {})
-        global_knowledge = state.get("global_knowledge", [])
+    from config import GAME_STATE
+    state = GAME_STATE.get(participant_code, {})
+    global_knowledge = state.get("global_knowledge", [])
+    
+    if global_knowledge:
+        # Format knowledge for context
+        knowledge_items = []
+        for item in global_knowledge:
+            stage = item.get("stage", "?")
+            info = item.get("information", "")
+            if info:
+                knowledge_items.append(f"Stage {stage}: {info}")
         
-        if global_knowledge:
-            # Format knowledge for context
-            knowledge_items = []
-            for item in global_knowledge:
-                stage = item.get("stage", "?")
-                info = item.get("information", "")
-                if info:
-                    knowledge_items.append(f"Stage {stage}: {info}")
-            
-            if knowledge_items:
-                knowledge_context = f"\n\nCONTEXT FROM PREVIOUS INVESTIGATIONS:\n" + "\n".join(f"- {item}" for item in knowledge_items)
-                knowledge_context += "\n\nYou may reference this information naturally in conversation, but don't force it. Only mention it if it's relevant to the current discussion."
+        if knowledge_items:
+            knowledge_context = f"\n\nCONTEXT FROM PREVIOUS INVESTIGATIONS:\n" + "\n".join(f"- {item}" for item in knowledge_items)
+            knowledge_context += "\n\nYou may reference this information naturally in conversation, but don't force it. Only mention it if it's relevant to the current discussion."
     
     # Enhance system prompt with character identity reminder
     if character_key:
@@ -245,21 +242,21 @@ async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, chara
     messages.append({"role": "user", "content": user_message})
     
     if client is None:
-        return False, _get_fallback_response(character_key), []
+        return _get_fallback_response(character_key)
 
     try:
         chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.7)  # Reduced from 0.8 for more stability
         assistant_reply = chat_completion.choices[0].message.content
         
         if not assistant_reply or assistant_reply.strip() == "":
-            print(f"WARNING: Empty response from AI for user {user_id}")
+            print(f"WARNING: Empty response from AI for participant {participant_code}")
             return "I'm not sure how to respond to that."
         
         # Validate the AI response for corruption and excessive length
         is_valid, validated_response = validate_ai_response(assistant_reply, character_key)
         if not is_valid:
-            print(f"WARNING: AI response validation failed for user {user_id}, using fallback")
-            log_message(user_id, "ai_validation_failed", f"Original response preview: {assistant_reply[:200]}...", None)
+            print(f"WARNING: AI response validation failed for participant {participant_code}, using fallback")
+            log_message("ai_validation_failed", f"Original response preview: {assistant_reply[:200]}...", participant_code)
             
             # Clear conversation history more aggressively when corruption is detected
             # Lowered threshold from 5000 to 2000 chars, and also clear on certain patterns
@@ -272,8 +269,8 @@ async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, chara
             )
             
             if should_clear_history:
-                print(f"WARNING: Severe AI corruption detected for user {user_id}, clearing conversation history")
-                clear_user_conversation_history(user_id, participant_code)
+                print(f"WARNING: Severe AI corruption detected for participant {participant_code}, clearing conversation history")
+                clear_user_conversation_history(participant_code)
             
             assistant_reply = validated_response
         else:
@@ -333,11 +330,11 @@ async def ask_for_dialogue(user_id, user_message: str, system_prompt: str, chara
             user_histories[history_key] = user_histories[history_key][-20:]
         return assistant_reply
     except Exception as e:
-        print(f"ERROR: Failed in ask_for_dialogue for user {user_id}: {e}")
-        log_message(user_id, "dialogue_error", f"ask_for_dialogue failed: {e}", None)
+        print(f"ERROR: Failed in ask_for_dialogue for participant {participant_code}: {e}")
+        log_message("dialogue_error", f"ask_for_dialogue failed: {e}", participant_code)
         return "Sorry, a server error occurred."
 
-async def ask_tutor_for_analysis(user_id: int, text_to_analyze: str) -> dict:
+async def ask_tutor_for_analysis(participant_code: str, text_to_analyze: str) -> dict:
     """A special function that calls the Tutor for text analysis and expects a JSON response."""
     from config import CHARACTER_DATA # Local import to avoid circular dependency
     tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
@@ -352,16 +349,16 @@ async def ask_tutor_for_analysis(user_id: int, text_to_analyze: str) -> dict:
         # Validate response for corruption
         is_valid, validated_response = validate_ai_response(response_text)
         if not is_valid:
-            print(f"WARNING: Tutor analysis response validation failed for user {user_id}")
-            log_message(user_id, "tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", None)
+            print(f"WARNING: Tutor analysis response validation failed for participant {participant_code}")
+            log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
             return {"improvement_needed": False, "feedback": ""}
         
         return json.loads(validated_response)
     except (json.JSONDecodeError, Exception) as e:
-        log_message(user_id, "tutor_error", f"Could not parse tutor analysis JSON: {e}", None)
+        log_message("tutor_error", f"Could not parse tutor analysis JSON: {e}", participant_code)
         return {"improvement_needed": False, "feedback": ""}
 
-async def ask_tutor_for_explanation(user_id: int, text_to_explain: str, original_message: str = "") -> dict:
+async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str, original_message: str = "") -> dict:
     """A special function that calls the Tutor for an explanation and expects a JSON response."""
     from config import CHARACTER_DATA
     tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
@@ -380,16 +377,16 @@ async def ask_tutor_for_explanation(user_id: int, text_to_explain: str, original
         # Validate response for corruption
         is_valid, validated_response = validate_ai_response(response_text)
         if not is_valid:
-            print(f"WARNING: Tutor explanation response validation failed for user {user_id}")
-            log_message(user_id, "tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", None)
+            print(f"WARNING: Tutor explanation response validation failed for participant {participant_code}")
+            log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
             return {}
         
         return json.loads(validated_response)
     except (json.JSONDecodeError, Exception) as e:
-        log_message(user_id, "tutor_error", f"Could not parse tutor explanation JSON: {e}", None)
+        log_message("tutor_error", f"Could not parse tutor explanation JSON: {e}", participant_code)
         return {}
 
-async def ask_tutor_for_final_summary(user_id: int, progress_data: dict) -> dict:
+async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict) -> dict:
     """A special function that calls the Tutor for final learning summary and expects a JSON response."""
     from config import CHARACTER_DATA
     tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
@@ -426,13 +423,13 @@ async def ask_tutor_for_final_summary(user_id: int, progress_data: dict) -> dict
         # Validate response for corruption
         is_valid, validated_response = validate_ai_response(response_text)
         if not is_valid:
-            print(f"WARNING: Tutor final summary response validation failed for user {user_id}")
-            log_message(user_id, "tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", None)
+            print(f"WARNING: Tutor final summary response validation failed for participant {participant_code}")
+            log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
             return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
         
         return json.loads(validated_response)
     except (json.JSONDecodeError, Exception) as e:
-        log_message(user_id, "tutor_error", f"Could not parse tutor final summary JSON: {e}", None)
+        log_message("tutor_error", f"Could not parse tutor final summary JSON: {e}", participant_code)
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
 
 
@@ -458,35 +455,35 @@ async def ask_word_spotter(text_to_analyze: str) -> list:
     except Exception as e:
         print(f"Error calling Word Spotter or parsing JSON: {e}"); return []
 
-async def ask_director(user_id: int, context_text: str, message: str) -> dict:
+async def ask_director(participant_code: str, context_text: str, message: str) -> dict:
     """Asks the Director LLM for the next scene and returns it as a dictionary."""
     from predefined_responses import try_predefined_response
     from config import GAME_STATE
     
     # First, try to get a predefined response based on keywords
     try:
-        print(f"DEBUG: Checking predefined responses for user {user_id}, message: '{message}'")
-        state = GAME_STATE.get(user_id, {})
+        print(f"DEBUG: Checking predefined responses for participant {participant_code}, message: '{message}'")
+        state = GAME_STATE.get(participant_code, {})
         topic_memory = state.get("topic_memory", {"topic": "None", "spoken": []})
-        print(f"DEBUG: Topic memory for user {user_id}: {topic_memory}")
+        print(f"DEBUG: Topic memory for participant {participant_code}: {topic_memory}")
         
-        predefined_response = try_predefined_response(user_id, message, topic_memory)
-        print(f"DEBUG: Predefined response result for user {user_id}: {predefined_response is not None}")
+        predefined_response = try_predefined_response(participant_code, message, topic_memory)
+        print(f"DEBUG: Predefined response result for participant {participant_code}: {predefined_response is not None}")
         
         if predefined_response:
-            print(f"DEBUG: Using predefined response for user {user_id}: {predefined_response}")
-            log_message(user_id, "director_predefined", f"Used predefined response for message: {message[:100]}", None)
+            print(f"DEBUG: Using predefined response for participant {participant_code}: {predefined_response}")
+            log_message("director_predefined", f"Used predefined response for message: {message[:100]}", participant_code)
             return predefined_response
         else:
-            print(f"DEBUG: No predefined response found for user {user_id}, falling back to AI director")
+            print(f"DEBUG: No predefined response found for participant {participant_code}, falling back to AI director")
     except Exception as e:
-        print(f"WARNING: Failed to check predefined responses for user {user_id}: {e}")
+        print(f"WARNING: Failed to check predefined responses for participant {participant_code}: {e}")
         import traceback
         traceback.print_exc()
         # Continue to AI director as fallback
     
     # Fallback to AI Director (episode + location-aware path)
-    state = GAME_STATE.get(user_id, {})
+    state = GAME_STATE.get(participant_code, {})
     episode = state.get("current_stage", 1)
     location = None
     try:
@@ -509,23 +506,23 @@ async def ask_director(user_id: int, context_text: str, message: str) -> dict:
     try:
         if client is None:
             raise RuntimeError("Groq client not available")
-        print(f"DEBUG: Calling director for user {user_id} with context: {context_text[:100]}...")
+        print(f"DEBUG: Calling director for participant {participant_code} with context: {context_text[:100]}...")
         chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=director_messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
-        print(f"DEBUG: Director raw response for user {user_id}: {response_text[:200]}...")
-        log_message(user_id, "director", response_text, None)
+        print(f"DEBUG: Director raw response for participant {participant_code}: {response_text[:200]}...")
+        log_message("director", response_text, participant_code)
         
         # Validate response for corruption before parsing JSON
         is_valid, validated_response = validate_ai_response(response_text)
         if not is_valid:
-            print(f"WARNING: Director response validation failed for user {user_id}")
-            log_message(user_id, "director_validation_failed", f"Corrupted director response: {response_text[:200]}...", None)
+            print(f"WARNING: Director response validation failed for participant {participant_code}")
+            log_message("director_validation_failed", f"Corrupted director response: {response_text[:200]}...", participant_code)
             return {"scene": []}
         
         # Try to parse the JSON response (with tolerant extraction)
         try:
             director_decision = _parse_director_json_payload(validated_response)
-            print(f"DEBUG: Director parsed JSON for user {user_id}: {director_decision}")
+            print(f"DEBUG: Director parsed JSON for participant {participant_code}: {director_decision}")
             
             # Validate the response structure
             if not isinstance(director_decision, dict):
@@ -545,10 +542,10 @@ async def ask_director(user_id: int, context_text: str, message: str) -> dict:
         except json.JSONDecodeError as json_error:
             print(f"ERROR: Failed to parse director JSON response: {json_error}")
             print(f"Director response text: {response_text}")
-            log_message(user_id, "director_error", f"JSON parse error: {json_error}. Response: {response_text[:500]}", None)
+            log_message("director_error", f"JSON parse error: {json_error}. Response: {response_text[:500]}", participant_code)
             return {"scene": []}
             
     except Exception as e:
         print(f"ERROR: Failed to call director: {e}")
-        log_message(user_id, "director_error", f"Director call failed: {e}", None)
+        log_message("director_error", f"Director call failed: {e}", participant_code)
         return {"scene": []}

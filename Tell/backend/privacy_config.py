@@ -1,13 +1,13 @@
 """
-Privacy Configuration for the Detective Game Bot
+Privacy configuration for the web detective game.
 
 This file ensures that no personal information (names, usernames, etc.) 
-is collected, stored, or logged. Only anonymous user IDs are used.
+is collected, stored, or logged. Only anonymous participant identifiers are used.
 """
 
 # Privacy settings
 PRIVACY_CONFIG = {
-    "log_user_id_only": True,  # Only log numeric user IDs, never names/usernames
+    "log_participant_code_only": True,  # Log only participant identifiers, never names/usernames
     "no_personal_data": True,  # Never collect or store personal information
     "anonymous_logging": True,  # All logs use anonymous identifiers
     "data_retention": "game_session_only"  # Data only kept for active game sessions
@@ -15,7 +15,7 @@ PRIVACY_CONFIG = {
 
 # Allowed data to log (privacy-safe)
 ALLOWED_LOG_DATA = {
-    "user_id": True,  # Numeric Telegram user ID (anonymous)
+    "participant_code": True,  # Anonymous participant identifier
     "message_type": True,  # Type of message (text, callback, etc.)
     "game_actions": True,  # Game-related actions (clues examined, etc.)
     "learning_progress": True,  # Language learning progress (anonymous)
@@ -54,8 +54,8 @@ def sanitize_log_data(data_dict: dict) -> dict:
     for key, value in data_dict.items():
         if key in ALLOWED_LOG_DATA and ALLOWED_LOG_DATA[key]:
             sanitized[key] = value
-        elif key == 'from' and isinstance(value, dict):
-            # Only keep user_id from 'from' field
-            if 'id' in value:
-                sanitized['user_id'] = value['id']
+        elif key in ("participant", "session") and isinstance(value, dict):
+            # Keep only anonymous participant identifier from nested payloads.
+            if "participant_code" in value:
+                sanitized["participant_code"] = value["participant_code"]
     return sanitized

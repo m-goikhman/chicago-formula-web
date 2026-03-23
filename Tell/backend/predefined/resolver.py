@@ -29,11 +29,11 @@ def _resolve_active_characters(state: Dict[str, Any]) -> Set[str]:
     return set(configured) if isinstance(configured, list) else set()
 
 
-def resolve_profile_for_user(user_id: Any) -> Tuple[str, Dict[str, Any], Set[str]]:
+def resolve_profile_for_user(participant_code: Any) -> Tuple[str, Dict[str, Any], Set[str]]:
     """
     Select predefined profile by game context.
     """
-    state = GAME_STATE.get(user_id, {})
+    state = GAME_STATE.get(participant_code, {})
     stage = state.get("current_stage", 1)
     active_characters = _resolve_active_characters(state) if state else set()
 

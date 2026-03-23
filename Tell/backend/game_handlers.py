@@ -513,12 +513,12 @@ async def _handle_ep2_scripted_public_message(
         and not ep2_state.get("university_analysis_done", False)
     ):
         if not _is_english_usb_explanation(message_text):
-            log_message(0, "user", message_text, participant_code)
+            log_message("user", message_text, participant_code)
             if "nina" in stage_characters and "nina" in CHARACTER_DATA:
                 nina_data = CHARACTER_DATA["nina"]
                 message_id = generate_message_id()
                 save_message_to_cache(message_id, EP2_USB_EXPLANATION_FALLBACK, "nina")
-                log_message(0, "character_nina", EP2_USB_EXPLANATION_FALLBACK, participant_code)
+                log_message("character_nina", EP2_USB_EXPLANATION_FALLBACK, participant_code)
                 messages.append(
                     {
                         "type": "character",
@@ -543,7 +543,7 @@ async def _handle_ep2_scripted_public_message(
     active_char_data = CHARACTER_DATA[active_character_key]
     current_language_level = state.get("current_language_level", "B1")
 
-    log_message(0, "user", message_text, participant_code)
+    log_message("user", message_text, participant_code)
 
     system_prompt = combine_character_prompt(active_character_key, current_language_level, current_stage, current_location)
     if force_usb_analysis_prompt and active_character_key == "james":
@@ -574,7 +574,7 @@ async def _handle_ep2_scripted_public_message(
 
     other_message_id = generate_message_id()
     save_message_to_cache(other_message_id, other_reply, active_character_key)
-    log_message(0, f"character_{active_character_key}", other_reply, participant_code)
+    log_message(f"character_{active_character_key}", other_reply, participant_code)
     messages.append(
         {
             "type": "character",
@@ -681,7 +681,7 @@ async def _handle_ep2_scripted_public_message(
             nina_data = CHARACTER_DATA["nina"]
             nina_message_id = generate_message_id()
             save_message_to_cache(nina_message_id, nina_reply, "nina")
-            log_message(0, "character_nina", nina_reply, participant_code)
+            log_message("character_nina", nina_reply, participant_code)
             messages.append(
                 {
                     "type": "character",
@@ -715,7 +715,7 @@ async def _handle_ep2_scripted_public_message(
                 if james_followup:
                     james_followup_message_id = generate_message_id()
                     save_message_to_cache(james_followup_message_id, james_followup, "james")
-                    log_message(0, "character_james", james_followup, participant_code)
+                    log_message("character_james", james_followup, participant_code)
                     messages.append(
                         {
                             "type": "character",
@@ -870,7 +870,7 @@ def _build_character_message_for_sender(participant_code: str, text: str, sender
     message_id = generate_message_id()
     resolved_sender = sender_key if sender_key in CHARACTER_DATA or sender_key == "narrator" else "narrator"
     log_role = "narrator" if resolved_sender == "narrator" else f"character_{resolved_sender}"
-    log_message(0, log_role, text, participant_code)
+    log_message(log_role, text, participant_code)
 
     if resolved_sender == "narrator":
         save_message_to_cache(message_id, text, "narrator")
@@ -1315,7 +1315,7 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
         if saved_state.get("game_completed"):
             logger.info(f"Participant {participant_code}: Previous game completed, starting fresh")
             await game_state_manager.delete_game_state(participant_code)
-            progress_manager.clear_user_progress(participant_code, participant_code)
+            progress_manager.clear_participant_progress(participant_code)
     
     # Initialize or restore game state
     if participant_code not in GAME_STATE:
@@ -1355,7 +1355,7 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     welcome_text = load_system_prompt(get_game_text_path("onboarding_1_welcome.txt", episode))
     
     # Log system message
-    log_message(0, "system", welcome_text, participant_code)
+    log_message("system", welcome_text, participant_code)
     
     message_id = generate_message_id()
     save_message_to_cache(message_id, welcome_text)
@@ -1394,7 +1394,7 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
         language_level_text = load_system_prompt(get_game_text_path("onboarding_4_language_level.txt", episode))
         
         # Log first message
-        log_message(0, "system", language_level_text, participant_code)
+        log_message("system", language_level_text, participant_code)
         
         message_id1 = generate_message_id()
         save_message_to_cache(message_id1, language_level_text)
@@ -1410,7 +1410,7 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
         intro_b1_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
         
         # Log second message
-        log_message(0, "system", intro_b1_text, participant_code)
+        log_message("system", intro_b1_text, participant_code)
         
         message_id2 = generate_message_id()
         save_message_to_cache(message_id2, intro_b1_text)
@@ -1500,7 +1500,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     
     # Show updated intro text (old message will be removed by frontend)
     # Log system message
-    log_message(0, "system", intro_text, participant_code)
+    log_message("system", intro_text, participant_code)
     
     message_id = generate_message_id()
     save_message_to_cache(message_id, intro_text)
@@ -1538,7 +1538,7 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
     confirmed_text = level_confirmed_text.replace("[LEVEL]", level.upper())
     
     # Log system message
-    log_message(0, "system", confirmed_text, participant_code)
+    log_message("system", confirmed_text, participant_code)
     
     message_id = generate_message_id()
     save_message_to_cache(message_id, confirmed_text)
@@ -1621,7 +1621,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     content, parsed_buttons = _extract_buttons_from_text(raw_content)
     
     log_role = entry.get("character", "narrator") if entry["type"] == "character" else "narrator"
-    log_message(0, log_role, content, participant_code)
+    log_message(log_role, content, participant_code)
     
     message_id = generate_message_id()
     if entry["type"] == "character":
@@ -1700,7 +1700,7 @@ async def handle_location_transition(participant_code: str, action: str) -> List
 
     location_name = locations.get(target_location, {}).get("name", target_location)
     transition_text = f"You arrived at: {location_name}."
-    log_message(0, "system", transition_text, participant_code)
+    log_message("system", transition_text, participant_code)
 
     messages = [{"type": "system", "content": transition_text}]
     messages.extend(await handle_main_menu(participant_code))
@@ -1727,7 +1727,7 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
     menu_text = "What would you like to do?"
     
     # Log menu message
-    log_message(0, "menu", menu_text, participant_code)
+    log_message("menu", menu_text, participant_code)
     
     messages.append({
         "type": "menu",
@@ -1769,7 +1769,7 @@ async def handle_menu_talk(participant_code: str) -> List[Dict]:
     menu_text = "Choose your conversation partner:"
     
     # Log menu message
-    log_message(0, "menu", menu_text, participant_code)
+    log_message("menu", menu_text, participant_code)
     
     messages.append({
         "type": "menu",
@@ -1800,55 +1800,8 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     state["mode"] = "private"
     state["current_character"] = character_key
     
-    char_data = CHARACTER_DATA[character_key]
-    current_stage = state.get("current_stage", 1)
-    
-    # Episode 2 uses direct character openers without narrator transitions.
-    if current_stage != 2:
-        char_name = char_data["full_name"]
-        current_language_level = state.get("current_language_level", "B1")
-        current_location = get_stage_location(state, current_stage)
-        # Generate narrator transition
-        try:
-            narrator_prompt = combine_character_prompt("narrator", current_language_level, current_stage, current_location)
-            description_text = await ask_for_dialogue(
-                participant_code,
-                f"Describe the detective taking {char_name} aside for a private talk.",
-                narrator_prompt,
-                "narrator",
-                participant_code
-            )
-
-            # Log narrator message
-            log_message(0, "narrator", description_text, participant_code)
-
-            message_id = generate_message_id()
-            save_message_to_cache(message_id, description_text, "narrator")
-            messages.append({
-                "type": "character",
-                "character": "narrator",
-                "character_name": "Narrator",
-                "content": description_text,
-                "message_id": message_id,
-                "show_explain": True
-            })
-        except Exception as e:
-            logger.error(f"Failed to generate narrator transition: {e}")
-            fallback_text = f"You take {char_name} aside for a private conversation."
-
-            # Log narrator message
-            log_message(0, "narrator", fallback_text, participant_code)
-
-            message_id = generate_message_id()
-            save_message_to_cache(message_id, fallback_text, "narrator")
-            messages.append({
-                "type": "character",
-                "character": "narrator",
-                "character_name": "Narrator",
-                "content": fallback_text,
-                "message_id": message_id,
-                "show_explain": True
-            })
+    # No AI narrator transitions when entering private mode.
+    # Narrator messages should come only from game_texts files.
 
     opener_text = get_private_dialogue_opener(state, current_stage, character_key)
     if opener_text:
@@ -1903,7 +1856,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
     
     # Log user message
-    log_message(0, "user", message_text, participant_code)
+    log_message("user", message_text, participant_code)
 
     if debug_mode_enabled:
         debug_snapshot = _build_private_input_debug_snapshot(
@@ -1929,7 +1882,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             save_message_to_cache(message_id, reply_text, char_key)
             
             # Log character response
-            log_message(0, f"character_{char_key}", reply_text, participant_code)
+            log_message(f"character_{char_key}", reply_text, participant_code)
             
             messages.append({
                 "type": "character",
@@ -1999,7 +1952,7 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
     logger.info(f"Participant {participant_code}: Message to Nina (mentor)")
     
     # Log user message
-    log_message(0, "user", message_text, participant_code)
+    log_message("user", message_text, participant_code)
     
     try:
         reply_text = await ask_for_dialogue(
@@ -2015,7 +1968,7 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
             save_message_to_cache(message_id, reply_text, char_key)
             
             # Log Nina's response
-            log_message(0, f"character_{char_key}", reply_text, participant_code)
+            log_message(f"character_{char_key}", reply_text, participant_code)
             
             messages.append({
                 "type": "character",
@@ -2097,7 +2050,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         logger.info(f"Participant {participant_code}: Direct addressing detected for character '{character_key}'")
         
         # Log user message
-        log_message(0, "user", message_text, participant_code)
+        log_message("user", message_text, participant_code)
         
         try:
             reply_text = await ask_for_dialogue(
@@ -2112,7 +2065,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 save_message_to_cache(message_id, reply_text, character_key)
                 
                 # Log character response
-                log_message(0, f"character_{character_key}", reply_text, participant_code)
+                log_message(f"character_{character_key}", reply_text, participant_code)
                 
                 messages.append({
                     "type": "character",
@@ -2160,7 +2113,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     )
     
     # Log user message
-    log_message(0, "user", message_text, participant_code)
+    log_message("user", message_text, participant_code)
     
     logger.info(f"Participant {participant_code}: Getting director decision for public mode")
     logger.info(f"Participant {participant_code}: Context: {context_for_director}")
@@ -2238,7 +2191,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                         save_message_to_cache(message_id, reply_text, char_key)
                         
                         # Log character response
-                        log_message(0, f"character_{char_key}", reply_text, participant_code)
+                        log_message(f"character_{char_key}", reply_text, participant_code)
                         
                         messages.append({
                             "type": "character",
@@ -2294,7 +2247,7 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
     mode_text = "💬 You're now speaking with everyone in public. Ask your questions!"
     
     # Log system message
-    log_message(0, "system", mode_text, participant_code)
+    log_message("system", mode_text, participant_code)
     
     messages.append({
         "type": "system",
@@ -2332,7 +2285,7 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     menu_text = "Select evidence to examine:"
     
     # Log menu message
-    log_message(0, "menu", menu_text, participant_code)
+    log_message("menu", menu_text, participant_code)
     
     messages.append({
         "type": "menu",
@@ -2373,7 +2326,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     state.setdefault("clues_examined", set()).add(clue_id)
     
     # Log clue examination
-    log_message(0, "clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
+    log_message("clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
     
     clue_message = {
         "type": "clue",
@@ -2425,7 +2378,7 @@ async def handle_language_menu_difficulty(participant_code: str) -> List[Dict]:
     text = f"⚙️ **Text Difficulty Settings**\n\nCurrent level: **{current_level}**\n\nChoose your preferred difficulty level:\n\n🌱 **Light (A2)** - Simple vocabulary and grammar\n⚖️ **Balanced (B1)** - Intermediate level, balanced complexity\n🚀 **Advanced (B2)** - More complex structures and vocabulary"
     
     # Log system message
-    log_message(0, "system", text, participant_code)
+    log_message("system", text, participant_code)
     
     save_message_to_cache(message_id, text)
     
@@ -2463,7 +2416,7 @@ async def handle_difficulty_set(participant_code: str, new_level: str) -> List[D
     text = f"✅ **Difficulty Updated!**\n\nYour text difficulty has been changed from **{old_level}** to **{new_level}**.\n\nThis setting will apply to all new conversations and character interactions. You can change it anytime from the Language Learning menu."
     
     # Log system message
-    log_message(0, "system", text, participant_code)
+    log_message("system", text, participant_code)
     
     save_message_to_cache(message_id, text)
     
@@ -2489,11 +2442,10 @@ async def handle_language_menu_progress(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
     
     # Get progress data from progress manager
-    # Use 0 as user_id since we're using participant_code for identification in web version
-    # This will load from: participant_logs/language_progress/web_{participant_code}_language_progress.json
-    # (Note: 'web_' prefix separates web version data from Telegram bot data)
+    # Load progress by participant code in web version.
+    # This uses: participant_logs/language_progress/web_{participant_code}_language_progress.json
     logger.info(f"Participant {participant_code}: Loading progress from: participant_logs/language_progress/web_{participant_code}_language_progress.json")
-    logs = progress_manager.get_user_progress(0, participant_code)
+    logs = progress_manager.get_participant_progress(participant_code)
     
     logger.info(f"Participant {participant_code}: Progress data received - words_learned: {len(logs.get('words_learned', []))}, writing_feedback: {len(logs.get('writing_feedback', []))}")
     
@@ -2508,7 +2460,7 @@ async def handle_language_menu_progress(participant_code: str) -> List[Dict]:
         text = "📊 **Your Progress Report**\n\nYou don't have any saved progress yet! Keep playing and asking for explanations to build your learning history."
         
         # Log system message
-        log_message(0, "system", text, participant_code)
+        log_message("system", text, participant_code)
         
         save_message_to_cache(message_id, text)
         
@@ -2546,7 +2498,7 @@ async def handle_language_menu_progress(participant_code: str) -> List[Dict]:
     message_id = generate_message_id()
     
     # Log system message
-    log_message(0, "system", report, participant_code)
+    log_message("system", report, participant_code)
     
     save_message_to_cache(message_id, report)
     
@@ -2594,7 +2546,7 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
     james_data = CHARACTER_DATA.get("james", {"full_name": "James"})
     message_id = generate_message_id()
     save_message_to_cache(message_id, EP2_JAMES_USB_QUESTION, "james")
-    log_message(0, "character_james", EP2_JAMES_USB_QUESTION, participant_code)
+    log_message("character_james", EP2_JAMES_USB_QUESTION, participant_code)
 
     await game_state_manager.save_game_state(participant_code, state)
 
@@ -2622,15 +2574,15 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     
     logger.info(f"Participant {participant_code}: Analyzing text from WEB version: '{text[:100]}...'")
     
-    # Use 0 as user_id since we're using participant_code for identification in web version
-    analysis_result = await ask_tutor_for_analysis(0, text)
+    # Use participant_code as identity in web version.
+    analysis_result = await ask_tutor_for_analysis(participant_code, text)
     
     if analysis_result.get("improvement_needed"):
         feedback = analysis_result.get("feedback", "")
         logger.info(f"Participant {participant_code}: Tutor feedback needed. Saving to: participant_logs/language_progress/web_{participant_code}_language_progress.json")
         logger.info(f"Feedback: '{feedback[:100]}...'")
-        # Use progress manager to save feedback - will use participant_code for file path
-        success = progress_manager.add_writing_feedback(0, text, feedback, participant_code)
+        # Save participant-scoped writing feedback.
+        success = progress_manager.add_participant_writing_feedback(participant_code, text, feedback)
         if success:
             logger.info(f"Participant {participant_code}: Successfully saved feedback to progress manager")
         else:

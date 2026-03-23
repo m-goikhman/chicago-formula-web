@@ -29,15 +29,18 @@ class GameStateManager:
                 self.bucket = None
         return self.bucket
     
-    def _get_state_blob_name(self, user_id: int) -> str:
-        """Get the blob name for storing user's game state."""
-        return f"game_states/user_{user_id}_state.json"
+    def _get_state_blob_name(self, participant_code: str) -> str:
+        """Get blob name for storing participant game state.
+
+        Keep the historical `user_` prefix for backward-compatible paths.
+        """
+        return f"game_states/user_{participant_code}_state.json"
     
-    async def save_game_state(self, user_id: int, state: Dict[str, Any]) -> bool:
-        """Save the current game state for a user to persistent storage."""
+    async def save_game_state(self, participant_code: str, state: Dict[str, Any]) -> bool:
+        """Save current game state for a participant to persistent storage."""
         bucket = self._get_bucket()
         if not bucket:
-            logger.warning(f"Cannot save game state for user {user_id}: No storage bucket configured")
+            logger.warning(f"Cannot save game state for participant {participant_code}: No storage bucket configured")
             return False
         
         try:
@@ -46,10 +49,10 @@ class GameStateManager:
             data = {
                 "state": state,
                 "last_saved": datetime.datetime.now(cet_tz).isoformat(),
-                "user_id": user_id
+                "participant_code": participant_code
             }
             
-            blob_name = self._get_state_blob_name(user_id)
+            blob_name = self._get_state_blob_name(participant_code)
             blob = bucket.blob(blob_name)
             
             # Convert sets to lists for JSON serialization
@@ -60,26 +63,26 @@ class GameStateManager:
                 content_type="application/json; charset=utf-8"
             )
             
-            logger.info(f"Successfully saved game state for user {user_id}")
+            logger.info(f"Successfully saved game state for participant {participant_code}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to save game state for user {user_id}: {e}")
+            logger.error(f"Failed to save game state for participant {participant_code}: {e}")
             return False
     
-    async def load_game_state(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Load the saved game state for a user from persistent storage."""
+    async def load_game_state(self, participant_code: str) -> Optional[Dict[str, Any]]:
+        """Load saved game state for a participant from persistent storage."""
         bucket = self._get_bucket()
         if not bucket:
-            logger.warning(f"Cannot load game state for user {user_id}: No storage bucket configured")
+            logger.warning(f"Cannot load game state for participant {participant_code}: No storage bucket configured")
             return None
         
         try:
-            blob_name = self._get_state_blob_name(user_id)
+            blob_name = self._get_state_blob_name(participant_code)
             blob = bucket.blob(blob_name)
             
             if not blob.exists():
-                logger.info(f"No saved game state found for user {user_id}")
+                logger.info(f"No saved game state found for participant {participant_code}")
                 return None
             
             # Download and parse the state
@@ -89,34 +92,34 @@ class GameStateManager:
             # Convert lists back to sets where appropriate
             restored_state = self._restore_state_from_storage(saved_data)
             
-            logger.info(f"Successfully loaded game state for user {user_id}")
+            logger.info(f"Successfully loaded game state for participant {participant_code}")
             return restored_state
             
         except Exception as e:
-            logger.error(f"Failed to load game state for user {user_id}: {e}")
+            logger.error(f"Failed to load game state for participant {participant_code}: {e}")
             return None
     
-    async def delete_game_state(self, user_id: int) -> bool:
-        """Delete the saved game state for a user (e.g., when game is completed)."""
+    async def delete_game_state(self, participant_code: str) -> bool:
+        """Delete saved game state for a participant (e.g., when game is completed)."""
         bucket = self._get_bucket()
         if not bucket:
-            logger.warning(f"Cannot delete game state for user {user_id}: No storage bucket configured")
+            logger.warning(f"Cannot delete game state for participant {participant_code}: No storage bucket configured")
             return False
         
         try:
-            blob_name = self._get_state_blob_name(user_id)
+            blob_name = self._get_state_blob_name(participant_code)
             blob = bucket.blob(blob_name)
             
             if blob.exists():
                 blob.delete()
-                logger.info(f"Successfully deleted game state for user {user_id}")
+                logger.info(f"Successfully deleted game state for participant {participant_code}")
             else:
-                logger.info(f"No game state to delete for user {user_id}")
+                logger.info(f"No game state to delete for participant {participant_code}")
             
             return True
             
         except Exception as e:
-            logger.error(f"Failed to delete game state for user {user_id}: {e}")
+            logger.error(f"Failed to delete game state for participant {participant_code}: {e}")
             return False
     
     def _prepare_state_for_storage(self, state: Dict[str, Any]) -> Dict[str, Any]:

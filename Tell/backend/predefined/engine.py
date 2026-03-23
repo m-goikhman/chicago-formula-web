@@ -89,16 +89,16 @@ def _is_predefined_already_used(predefined_used: List[str], topic_key: str, scop
     return scoped_topic_key in predefined_used or topic_key in predefined_used
 
 
-def _mark_predefined_as_used(user_id: Any, scoped_topic_key: str):
+def _mark_predefined_as_used(participant_code: Any, scoped_topic_key: str):
     """Mark predefined response as used in game state."""
-    if user_id in GAME_STATE:
-        topic_memory = GAME_STATE[user_id].get("topic_memory", {})
+    if participant_code in GAME_STATE:
+        topic_memory = GAME_STATE[participant_code].get("topic_memory", {})
         predefined_used = topic_memory.get("predefined_used", [])
         if scoped_topic_key not in predefined_used:
             predefined_used.append(scoped_topic_key)
             topic_memory["predefined_used"] = predefined_used
-            GAME_STATE[user_id]["topic_memory"] = topic_memory
-            print(f"DEBUG PREDEFINED: Marked topic '{scoped_topic_key}' as used for user {user_id}")
+            GAME_STATE[participant_code]["topic_memory"] = topic_memory
+            print(f"DEBUG PREDEFINED: Marked topic '{scoped_topic_key}' as used for participant {participant_code}")
 
 
 def _build_predefined_response(topic_data: Dict[str, Any], character_keys: List[str], active_characters: Set[str]) -> Dict[str, Any]:
@@ -124,22 +124,22 @@ def _build_predefined_response(topic_data: Dict[str, Any], character_keys: List[
     return {"scene": scene_actions, "new_topic": topic_data.get("topic_name", "General investigation")}
 
 
-def try_predefined_response(user_id: Any, message: str, topic_memory: Dict) -> Optional[Dict[str, Any]]:
+def try_predefined_response(participant_code: Any, message: str, topic_memory: Dict) -> Optional[Dict[str, Any]]:
     """
     Universal predefined engine:
     - resolves profile from current game context
     - detects topic using that profile
     - executes profile strategy while respecting spoken/active characters
     """
-    profile_id, profile, active_characters = resolve_profile_for_user(user_id)
+    profile_id, profile, active_characters = resolve_profile_for_user(participant_code)
     topics = profile.get("topics", {})
     if not topics:
-        print(f"DEBUG PREDEFINED: No predefined profile for user {user_id} ({profile_id})")
+        print(f"DEBUG PREDEFINED: No predefined profile for participant {participant_code} ({profile_id})")
         return None
 
     detected_topic = detect_topic_from_keywords(message, topics)
     print(
-        f"DEBUG PREDEFINED: User {user_id}, profile {profile_id}, "
+        f"DEBUG PREDEFINED: Participant {participant_code}, profile {profile_id}, "
         f"message: '{message}' -> detected topic: {detected_topic}"
     )
     if not detected_topic:
@@ -153,7 +153,7 @@ def try_predefined_response(user_id: Any, message: str, topic_memory: Dict) -> O
     if _is_predefined_already_used(predefined_used, detected_topic, scoped_topic_key):
         print(
             f"DEBUG PREDEFINED: Predefined response for topic '{scoped_topic_key}' "
-            f"already used for user {user_id}, skipping"
+            f"already used for participant {participant_code}, skipping"
         )
         return None
 
@@ -178,8 +178,8 @@ def try_predefined_response(user_id: Any, message: str, topic_memory: Dict) -> O
 
         result = _build_predefined_response(topic_data, [], active_characters)
         if result.get("scene"):
-            _mark_predefined_as_used(user_id, scoped_topic_key)
-        print(f"DEBUG PREDEFINED: Final response for user {user_id}: {result}")
+            _mark_predefined_as_used(participant_code, scoped_topic_key)
+        print(f"DEBUG PREDEFINED: Final response for participant {participant_code}: {result}")
         return result if result.get("scene") else None
 
     specific_character = extract_character_from_message(message)
@@ -190,11 +190,11 @@ def try_predefined_response(user_id: Any, message: str, topic_memory: Dict) -> O
     ):
         result = _build_predefined_response(topic_data, [specific_character], active_characters)
         if result.get("scene"):
-            _mark_predefined_as_used(user_id, scoped_topic_key)
+            _mark_predefined_as_used(participant_code, scoped_topic_key)
             return result
 
     available_characters = _get_characters_who_can_respond(topic_data, adjusted_topic_memory, active_characters)
-    print(f"DEBUG PREDEFINED: Available characters for user {user_id}: {available_characters}")
+    print(f"DEBUG PREDEFINED: Available characters for participant {participant_code}: {available_characters}")
     if not available_characters:
         print(
             f"DEBUG PREDEFINED: No available characters for topic '{scoped_topic_key}', "
@@ -207,13 +207,13 @@ def try_predefined_response(user_id: Any, message: str, topic_memory: Dict) -> O
     else:
         chosen_characters = [random.choice(available_characters)]
     print(
-        f"DEBUG PREDEFINED: Strategy '{response_strategy}', chosen characters for user {user_id}: "
+        f"DEBUG PREDEFINED: Strategy '{response_strategy}', chosen characters for participant {participant_code}: "
         f"{chosen_characters}"
     )
 
     result = _build_predefined_response(topic_data, chosen_characters, active_characters)
     if result.get("scene"):
-        _mark_predefined_as_used(user_id, scoped_topic_key)
-    print(f"DEBUG PREDEFINED: Final response for user {user_id}: {result}")
+        _mark_predefined_as_used(participant_code, scoped_topic_key)
+    print(f"DEBUG PREDEFINED: Final response for participant {participant_code}: {result}")
     return result if result.get("scene") else None
 

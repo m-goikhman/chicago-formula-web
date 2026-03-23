@@ -180,10 +180,10 @@ async def reset_game(current_user=Depends(get_current_user)):
 
     # Clear persisted game state and progress
     await game_state_manager.delete_game_state(participant_code)
-    progress_manager.clear_user_progress(0, participant_code)
+    progress_manager.clear_participant_progress(participant_code)
 
     # Clear persisted chat history log
-    clear_chat_history_log(0, participant_code)
+    clear_chat_history_log(participant_code)
 
     return ResetGameResponse(
         success=True,
@@ -202,7 +202,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     logger.info(f"Action from {participant_code}: {request.action}")
     
     # Log user action to chat history
-    log_message(0, "action", request.action, participant_code)
+    log_message("action", request.action, participant_code)
     
     from game_handlers import (
         handle_onboarding_button,
@@ -409,9 +409,9 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         if not word:
             return {"error": "No word provided"}
         
-        # Use 0 as user_id since we're using participant_code for identification
+        # Use participant_code as identity in web version.
         explanation_data = await ask_tutor_for_explanation(
-            0,  # user_id (not used in web version, participant_code is used instead)
+            participant_code,
             word, 
             original_text
         )
@@ -432,7 +432,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         formatted_reply = f"*{tutor_data['full_name']}:*\n{reply_text}"
         
         # Log tutor response
-        log_message(0, "character_tutor", formatted_reply, participant_code)
+        log_message("character_tutor", formatted_reply, participant_code)
         
         messages.append({
             "type": "character",
@@ -443,7 +443,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         })
         
         # Save learned word to progress
-        progress_manager.add_word_learned(0, word, definition, participant_code)
+        progress_manager.add_participant_word_learned(participant_code, word, definition)
         
         return {"messages": messages}
     
@@ -475,7 +475,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         formatted_reply = f"*{tutor_data['full_name']}:*\n{reply_text}"
         
         # Log tutor response
-        log_message(0, "character_tutor", formatted_reply, participant_code)
+        log_message("character_tutor", formatted_reply, participant_code)
         
         messages.append({
             "type": "character",

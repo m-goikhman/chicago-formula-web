@@ -23,8 +23,8 @@ def _get_bucket():
     return bucket
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def log_message(user_id: int, role: str, content: str, participant_code: str = None):
-    """Writes a message to the user's chat history log in Google Cloud Storage."""
+def log_message(role: str, content: str, participant_code: str):
+    """Write a message to participant chat history in Cloud Storage."""
     bucket = _get_bucket()
     if not bucket:
         print("WARNING: GCS_BUCKET_NAME is not set or invalid. Cloud logging is disabled.")
@@ -35,11 +35,7 @@ def log_message(user_id: int, role: str, content: str, participant_code: str = N
         # This ensures complete data capture for both research and regular logs
         sanitized_content = content
 
-        # Use participant code if available, otherwise fall back to user_id
-        if participant_code:
-            blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
-        else:
-            blob_name = f"user_logs/chat_history_{user_id}.txt"
+        blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
         blob = bucket.blob(blob_name)
 
         try:
@@ -56,28 +52,25 @@ def log_message(user_id: int, role: str, content: str, participant_code: str = N
         blob.upload_from_string(new_content, content_type="text/plain; charset=utf-8")
 
     except Exception as e:
-        print(f"[ERROR] Failed to write log to Cloud Storage for user {user_id}: {e}")
+        print(f"[ERROR] Failed to write log to Cloud Storage for participant {participant_code}: {e}")
 
 
-def clear_chat_history_log(user_id: int, participant_code: str = None) -> bool:
-    """Delete a user's chat history log from Google Cloud Storage."""
+def clear_chat_history_log(participant_code: str) -> bool:
+    """Delete a participant chat history log from Google Cloud Storage."""
     bucket = _get_bucket()
     if not bucket:
         print("WARNING: GCS_BUCKET_NAME is not set or invalid. Cannot clear chat history log.")
         return False
 
     try:
-        if participant_code:
-            blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
-        else:
-            blob_name = f"user_logs/chat_history_{user_id}.txt"
+        blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
 
         blob = bucket.blob(blob_name)
         if blob.exists():
             blob.delete()
         return True
     except Exception as e:
-        print(f"[ERROR] Failed to clear chat history log for user {user_id}: {e}")
+        print(f"[ERROR] Failed to clear chat history log for participant {participant_code}: {e}")
         return False
 
 # Cache for system prompts to avoid repeated file I/O
