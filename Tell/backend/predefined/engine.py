@@ -187,18 +187,36 @@ def _build_predefined_response(topic_data: Dict[str, Any], character_keys: List[
     response_strategy = topic_data.get("response_strategy", "all")
     scene_actions: List[Dict[str, Any]] = []
 
+    def _make_default_action(char_key: str) -> Dict[str, Any]:
+        # Routing-only default: no director instruction, only explicit speaker.
+        return {"action": "character_reply", "data": {"character_key": char_key}}
+
     if response_strategy == "ordered_sequence":
-        ordered_actions = topic_data.get("ordered_responses", [])
-        for action in ordered_actions:
-            char_key = action.get("data", {}).get("character_key")
-            if active_characters and char_key and char_key not in active_characters:
-                continue
-            scene_actions.append(action)
+        ordered_characters = topic_data.get("ordered_characters", [])
+        if isinstance(ordered_characters, list) and ordered_characters:
+            for char_key in ordered_characters:
+                if not char_key:
+                    continue
+                if active_characters and char_key not in active_characters:
+                    continue
+                scene_actions.append(_make_default_action(char_key))
+        else:
+            ordered_actions = topic_data.get("ordered_responses", [])
+            for action in ordered_actions:
+                char_key = action.get("data", {}).get("character_key")
+                if active_characters and char_key and char_key not in active_characters:
+                    continue
+                if char_key:
+                    scene_actions.append(_make_default_action(char_key))
     else:
         templates = topic_data.get("response_templates", {})
         for character_key in character_keys:
             if character_key in templates:
-                scene_actions.append(templates[character_key])
+                action = templates[character_key]
+                action_char_key = action.get("data", {}).get("character_key")
+                scene_actions.append(_make_default_action(action_char_key or character_key))
+            else:
+                scene_actions.append(_make_default_action(character_key))
 
     if not scene_actions:
         return {"scene": []}

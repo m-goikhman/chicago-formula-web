@@ -14,16 +14,17 @@ def _clone_topic_without_pauline(topic_data: Dict[str, Any]) -> Dict[str, Any]:
         "topic_name": topic_data.get("topic_name", ""),
     }
 
-    response_templates = topic_data.get("response_templates", {})
-    cloned["response_templates"] = {k: v for k, v in response_templates.items() if k != "pauline"}
-
-    ordered_responses = topic_data.get("ordered_responses")
-    if isinstance(ordered_responses, list):
-        cloned["ordered_responses"] = [
-            action
-            for action in ordered_responses
-            if action.get("data", {}).get("character_key") != "pauline"
-        ]
+    ordered_characters = topic_data.get("ordered_characters")
+    if isinstance(ordered_characters, list):
+        cloned["ordered_characters"] = [char_key for char_key in ordered_characters if char_key != "pauline"]
+    else:
+        ordered_responses = topic_data.get("ordered_responses")
+        if isinstance(ordered_responses, list):
+            cloned["ordered_responses"] = [
+                action
+                for action in ordered_responses
+                if action.get("data", {}).get("character_key") != "pauline"
+            ]
     return cloned
 
 

@@ -40,7 +40,7 @@ EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
 EP1_PRIVATE_MIN_TURNS_ANY = 20
 TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
 EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
-PUBLIC_FOLLOWUP_LOCK_TURNS = 3
+PUBLIC_FOLLOWUP_LOCK_TURNS = 1
 
 
 def _is_test_participant(participant_code: str) -> bool:
@@ -196,14 +196,8 @@ def _is_public_group_address(message_text: str) -> bool:
         r"\bwho\s+else\b",
         r"\bwhat\s+about\s+the\s+others\b",
         r"\bothers\b",
-        r"\bвсе\b",
-        r"\bвсем\b",
-        r"\bвсе\s+вы\b",
-        r"\bкто\s+еще\b",
-        r"\bкто[-\s]?то\s+из\s+вас\b",
-        r"\bлюбой\s+из\s+вас\b",
-        r"\bкаждый\s+из\s+вас\b",
-        r"\bостальные\b",
+        r"\banyone\b",
+        r"\banybody\b",
     ]
     return any(re.search(pattern, lowered) for pattern in group_address_patterns)
 
