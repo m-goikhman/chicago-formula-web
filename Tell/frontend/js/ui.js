@@ -304,10 +304,12 @@ function updatePrivateModeControls() {
     if (!privateModeControls) return;
     const mainChatArea = document.querySelector('.main-chat-area');
     const headerModeContext = document.getElementById('chatModeHeaderContext');
+    const loginScreen = document.getElementById('loginScreen');
     const inputArea = document.getElementById('inputArea');
     const inputElement = document.getElementById('messageInput');
     const headerContextAvatar = document.getElementById('chatModeHeaderAvatar');
     const backToCommonDialogueBtn = document.getElementById('backToCommonDialogueBtn');
+    const isLoginVisible = Boolean(loginScreen && loginScreen.style.display !== 'none');
     const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
     const activeDrawerNameRaw = (
         document.querySelector('#charactersList .drawer-item.active .name')?.textContent || ''
@@ -337,6 +339,7 @@ function updatePrivateModeControls() {
             : 'Group chat avatar';
     }
     if (headerModeContext) {
+        headerModeContext.style.display = isLoginVisible ? 'none' : 'inline-flex';
         headerModeContext.classList.toggle('is-private', isPrivateModeActive);
         headerModeContext.title = isPrivateModeActive
             ? `Private chat with ${privateCharacterLabel}`

@@ -465,6 +465,7 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
     """Asks the Director LLM for the next scene and returns it as a dictionary."""
     from predefined_responses import try_predefined_response
     from config import GAME_STATE
+    director_basis = "ai_director_after_predefined_miss"
     
     # First, try to get a predefined response based on keywords
     try:
@@ -479,13 +480,16 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
         if predefined_response:
             print(f"DEBUG: Using predefined response for participant {participant_code}: {predefined_response}")
             log_message("director_predefined", f"Used predefined response for message: {message[:100]}", participant_code)
-            return predefined_response
+            predefined_payload = dict(predefined_response)
+            predefined_payload["_debug_director_basis"] = "predefined_response"
+            return predefined_payload
         else:
             print(f"DEBUG: No predefined response found for participant {participant_code}, falling back to AI director")
     except Exception as e:
         print(f"WARNING: Failed to check predefined responses for participant {participant_code}: {e}")
         import traceback
         traceback.print_exc()
+        director_basis = "ai_director_after_predefined_check_error"
         # Continue to AI director as fallback
     
     # Fallback to AI Director (episode + location-aware path)
@@ -523,7 +527,7 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
         if not is_valid:
             print(f"WARNING: Director response validation failed for participant {participant_code}")
             log_message("director_validation_failed", f"Corrupted director response: {response_text[:200]}...", participant_code)
-            return {"scene": []}
+            return {"scene": [], "_debug_director_basis": "ai_director_response_validation_failed"}
         
         # Try to parse the JSON response (with tolerant extraction)
         try:
@@ -533,25 +537,26 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
             # Validate the response structure
             if not isinstance(director_decision, dict):
                 print(f"ERROR: Director returned non-dict response: {type(director_decision)}")
-                return {"scene": []}
+                return {"scene": [], "_debug_director_basis": "ai_director_invalid_payload"}
             
             if "scene" not in director_decision:
                 print(f"ERROR: Director response missing 'scene' key: {director_decision}")
-                return {"scene": []}
+                return {"scene": [], "_debug_director_basis": "ai_director_missing_scene"}
             
             if not isinstance(director_decision["scene"], list):
                 print(f"ERROR: Director 'scene' is not a list: {type(director_decision['scene'])}")
-                return {"scene": []}
+                return {"scene": [], "_debug_director_basis": "ai_director_invalid_scene_type"}
             
+            director_decision["_debug_director_basis"] = director_basis
             return director_decision
             
         except json.JSONDecodeError as json_error:
             print(f"ERROR: Failed to parse director JSON response: {json_error}")
             print(f"Director response text: {response_text}")
             log_message("director_error", f"JSON parse error: {json_error}. Response: {response_text[:500]}", participant_code)
-            return {"scene": []}
+            return {"scene": [], "_debug_director_basis": "ai_director_json_parse_error"}
             
     except Exception as e:
         print(f"ERROR: Failed to call director: {e}")
         log_message("director_error", f"Director call failed: {e}", participant_code)
-        return {"scene": []}
+        return {"scene": [], "_debug_director_basis": "ai_director_call_error"}

@@ -40,6 +40,7 @@ EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
 EP1_PRIVATE_MIN_TURNS_ANY = 20
 TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
 EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
+PUBLIC_FOLLOWUP_LOCK_TURNS = 3
 
 
 def _is_test_participant(participant_code: str) -> bool:
@@ -103,6 +104,68 @@ def _build_private_input_debug_snapshot(
         f"System prompt preview:\n{prompt_preview}\n"
         f"History preview:\n{history_block}"
     )
+
+
+def _set_public_followup_lock(state: Dict, character_key: str, remaining: int = PUBLIC_FOLLOWUP_LOCK_TURNS) -> None:
+    """Keep a temporary public-routing lock on one character."""
+    if not character_key or remaining <= 0:
+        state.pop("public_followup_lock", None)
+        return
+    state["public_followup_lock"] = {
+        "character": character_key,
+        "remaining": int(remaining),
+    }
+
+
+def _clear_public_followup_lock(state: Dict) -> None:
+    """Drop temporary public-routing lock."""
+    state.pop("public_followup_lock", None)
+
+
+def _get_public_followup_lock(state: Dict) -> Tuple[Optional[str], int]:
+    """Return (character, remaining turns) for temporary public lock."""
+    lock_data = state.get("public_followup_lock", {})
+    if not isinstance(lock_data, dict):
+        return None, 0
+    char_key = lock_data.get("character")
+    try:
+        remaining = int(lock_data.get("remaining", 0))
+    except (TypeError, ValueError):
+        remaining = 0
+    if not char_key or remaining <= 0:
+        return None, 0
+    return char_key, remaining
+
+
+def _is_public_group_address(message_text: str) -> bool:
+    """Detect messages clearly aimed at the whole group in public mode."""
+    lowered = (message_text or "").lower().strip()
+    if not lowered:
+        return False
+
+    group_address_patterns = [
+        r"\beveryone\b",
+        r"\beverybody\b",
+        r"\byou\s+all\b",
+        r"\byou\s+guys\b",
+        r"\ball\s+of\s+you\b",
+        r"\bany\s+of\s+you\b",
+        r"\bwhich\s+of\s+you\b",
+        r"\bboth\s+of\s+you\b",
+        r"\brest\s+of\s+you\b",
+        r"\bwho\s+else\b",
+        r"\bwhat\s+about\s+the\s+others\b",
+        r"\bothers\b",
+        r"\bвсе\b",
+        r"\bвсем\b",
+        r"\bвсе\s+вы\b",
+        r"\bкто\s+еще\b",
+        r"\bкто[-\s]?то\s+из\s+вас\b",
+        r"\bлюбой\s+из\s+вас\b",
+        r"\bкаждый\s+из\s+вас\b",
+        r"\bостальные\b",
+    ]
+    return any(re.search(pattern, lowered) for pattern in group_address_patterns)
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -1006,6 +1069,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "mode": "public",
         "current_character": None,
         "last_public_responder": None,
+        "public_followup_lock": None,
         "waiting_for_word": False,
         "accused_character": None,
         "accusation_attempts": 0,
@@ -1112,6 +1176,8 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
 
     if "last_public_responder" not in state:
         state["last_public_responder"] = None
+    if "public_followup_lock" not in state:
+        state["public_followup_lock"] = None
     
     return state
 
@@ -1815,6 +1881,7 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     # Set mode to private
     state["mode"] = "private"
     state["current_character"] = character_key
+    _clear_public_followup_lock(state)
 
     current_language_level = state.get("current_language_level", "B1")
     current_location = get_stage_location(state, current_stage)
@@ -2120,7 +2187,19 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         resolve_character_from_singular_you,
     )
     
+    group_address_detected = _is_public_group_address(message_text)
+    locked_character_key, lock_remaining = _get_public_followup_lock(state)
+    if locked_character_key and locked_character_key not in stage_characters:
+        if debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Cleared follow-up lock for '{locked_character_key}' because character is not active in this location.",
+            )
+        _clear_public_followup_lock(state)
+        locked_character_key, lock_remaining = None, 0
+
     character_key = extract_character_from_message_strict(message_text)
+    direct_address_basis = "explicit_character_mention" if character_key else None
     implied_character_key = None
     if not character_key:
         implied_character_key = resolve_character_from_singular_you(
@@ -2129,6 +2208,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         )
         if implied_character_key in stage_characters:
             character_key = implied_character_key
+            direct_address_basis = "singular_you_to_last_public_responder"
             if debug_mode_enabled:
                 _append_debug_message(
                     messages,
@@ -2140,9 +2220,55 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 f"Singular 'you' pointed to '{implied_character_key}', but character is not active in this location.",
             )
 
+    if group_address_detected and locked_character_key:
+        if debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Cleared follow-up lock for '{locked_character_key}' due to explicit group addressing.",
+            )
+        _clear_public_followup_lock(state)
+        locked_character_key, lock_remaining = None, 0
+
+    if (
+        not character_key
+        and not group_address_detected
+        and locked_character_key
+        and lock_remaining > 0
+        and locked_character_key in stage_characters
+    ):
+        character_key = locked_character_key
+        direct_address_basis = "sticky_followup_after_singular_you"
+        lock_remaining -= 1
+        if lock_remaining > 0:
+            _set_public_followup_lock(state, locked_character_key, lock_remaining)
+        else:
+            _clear_public_followup_lock(state)
+        if debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Sticky follow-up routing to '{character_key}'. Remaining locked public turns: {lock_remaining}.",
+            )
+
+    if (
+        character_key
+        and locked_character_key
+        and character_key != locked_character_key
+    ):
+        if debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Cleared follow-up lock for '{locked_character_key}' because player directly addressed '{character_key}'.",
+            )
+        _clear_public_followup_lock(state)
+
     if character_key and character_key in CHARACTER_DATA and character_key in stage_characters:
         # Handle direct character addressing
         char_data = CHARACTER_DATA[character_key]
+        if debug_mode_enabled:
+            _append_debug_message(
+                messages,
+                f"Routing basis: direct addressing ({direct_address_basis}); director is skipped.",
+            )
         
         # Get current language level and episode for prompt resolution
         current_language_level = state.get("current_language_level", "B1")
@@ -2150,7 +2276,16 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         
         # Create context trigger
         topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
-        context_trigger = f"The detective is directly addressing you with this question: '{message_text}'. Current topic: {topic_memory.get('topic', 'None')}. Respond as your character."
+        if direct_address_basis == "sticky_followup_after_singular_you":
+            context_trigger = (
+                f"The detective is continuing the exchange with you in public mode: '{message_text}'. "
+                f"Current topic: {topic_memory.get('topic', 'None')}. Respond as your character."
+            )
+        else:
+            context_trigger = (
+                f"The detective is directly addressing you with this question: '{message_text}'. "
+                f"Current topic: {topic_memory.get('topic', 'None')}. Respond as your character."
+            )
         
         logger.info(f"Participant {participant_code}: Direct addressing detected for character '{character_key}'")
         
@@ -2172,6 +2307,10 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 # Log character response
                 log_message(f"character_{character_key}", reply_text, participant_code)
                 state["last_public_responder"] = character_key
+                if direct_address_basis == "singular_you_to_last_public_responder":
+                    _set_public_followup_lock(state, character_key, PUBLIC_FOLLOWUP_LOCK_TURNS)
+                elif direct_address_basis == "sticky_followup_after_singular_you" and lock_remaining <= 0:
+                    _clear_public_followup_lock(state)
                 
                 messages.append({
                     "type": "character",
@@ -2219,6 +2358,11 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     
     # Log user message
     log_message("user", message_text, participant_code)
+    if debug_mode_enabled:
+        _append_debug_message(
+            messages,
+            "Routing basis: no direct addressee; using director for public mode arbitration.",
+        )
     
     logger.info(f"Participant {participant_code}: Getting director decision for public mode")
     logger.info(f"Participant {participant_code}: Context: {context_for_director}")
@@ -2230,6 +2374,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     director_decision = await ask_director(participant_code, context_for_director, message_text)
     logger.info(f"Participant {participant_code}: Director decision received")
     if debug_mode_enabled:
+        director_basis = director_decision.get("_debug_director_basis", "unknown")
+        _append_debug_message(messages, f"Director basis: {director_basis}")
         _append_debug_message(messages, f"Director decision JSON: {json.dumps(director_decision, ensure_ascii=False)}")
     
     scene = director_decision.get("scene", [])

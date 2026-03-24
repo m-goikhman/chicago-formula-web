@@ -22,10 +22,10 @@ def extract_character_from_message(message: str) -> Optional[str]:
     message_lower = message.lower()
 
     character_names = {
-        "tim": ["tim", "тим"],
-        "pauline": ["pauline", "полин"],
-        "fiona": ["fiona", "фиона"],
-        "ronnie": ["ronnie", "ронни"],
+        "tim": ["tim"],
+        "pauline": ["pauline"],
+        "fiona": ["fiona"],
+        "ronnie": ["ronnie"],
     }
 
     for char_key, names in character_names.items():
@@ -40,15 +40,53 @@ def extract_character_from_message_strict(message: str) -> Optional[str]:
     message_lower = message.lower().strip()
 
     character_names = {
-        "tim": ["tim", "тим"],
-        "pauline": ["pauline", "полин"],
-        "fiona": ["fiona", "фиона"],
-        "ronnie": ["ronnie", "ронни"],
+        "tim": ["tim"],
+        "pauline": ["pauline"],
+        "fiona": ["fiona"],
+        "ronnie": ["ronnie"],
     }
+
+    dialogue_starters = [
+        "is", "are", "am", "do", "did", "does", "can", "could", "would", "will", "tell", "explain",
+        "confirm", "deny", "remember", "what", "where", "when", "why", "how", "who", "which",
+    ]
+
+    def _looks_like_name_enumeration(text: str) -> bool:
+        candidate = (text or "").strip(" .!?")
+        if not candidate:
+            return False
+
+        # Heuristic: "alex and pauline" / "alex, pauline, fiona" should not be
+        # treated as a directed question to the first name.
+        tokens = [part.strip() for part in re.split(r"\s*(?:,|and)\s*", candidate) if part.strip()]
+        if len(tokens) < 2:
+            return False
+
+        return all(re.match(r"^[a-z][a-z'\-]{1,30}$", token) for token in tokens)
+
+    def _is_likely_direct_vocative_remainder(text: str) -> bool:
+        remainder = (text or "").strip()
+        if not remainder:
+            return False
+        if "?" in remainder:
+            return True
+        if re.search(r"\b(you|your|you've|you'd|you'll)\b", remainder):
+            return True
+        if any(remainder.startswith(starter + " ") or remainder == starter for starter in dialogue_starters):
+            return True
+        if _looks_like_name_enumeration(remainder):
+            return False
+        return False
 
     for char_key, names in character_names.items():
         for name in names:
-            if message_lower.startswith(f"{name},"):
+            # Allow direct vocatives at the start or right after a clause boundary:
+            # "Tim, ...", "I see. Tim, ...", "Okay - Tim, ..."
+            match = re.search(
+                rf"(?:^|[.!?;:]\s+|[-–—]\s*){re.escape(name)},\s*(.+)$",
+                message_lower,
+            )
+            if match and _is_likely_direct_vocative_remainder(match.group(1)):
                 return char_key
 
     for char_key, names in character_names.items():
@@ -58,7 +96,6 @@ def extract_character_from_message_strict(message: str) -> Optional[str]:
 
     question_words = [
         "what", "where", "when", "why", "how", "who", "which", "whose",
-        "что", "где", "когда", "почему", "как", "кто", "чей", "какой",
     ]
     for char_key, names in character_names.items():
         for name in names:
@@ -67,6 +104,20 @@ def extract_character_from_message_strict(message: str) -> Optional[str]:
                 for q_word in question_words:
                     if remaining_text.startswith(q_word + " ") or remaining_text.startswith(q_word + ","):
                         return char_key
+
+    for char_key, names in character_names.items():
+        for name in names:
+            # Fallback for "I see. Tim what happened?"
+            match = re.search(
+                rf"(?:^|[.!?;:]\s+|[-–—]\s*){re.escape(name)}\s+(.+)$",
+                message_lower,
+            )
+            if not match:
+                continue
+            remaining_text = match.group(1).strip()
+            for q_word in question_words:
+                if remaining_text.startswith(q_word + " ") or remaining_text.startswith(q_word + ","):
+                    return char_key
     return None
 
 
