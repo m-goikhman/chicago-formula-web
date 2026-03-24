@@ -71,14 +71,16 @@ def _truncate_for_debug(value: str, max_len: int = 700) -> str:
     return f"{text[:max_len]}... [truncated, total={len(text)} chars]"
 
 
-def _build_private_input_debug_snapshot(
+def _build_dialogue_input_debug_snapshot(
     participant_code: str,
     state: Dict,
     char_key: str,
     system_prompt: str,
-    context_trigger: str,
+    input_label: str,
+    input_value: str,
+    scope_label: str,
 ) -> str:
-    """Build a concise preview of what goes into private dialogue call."""
+    """Build a concise preview of what goes into dialogue call."""
     episode = state.get("current_stage", 1)
     history_key = f"{participant_code}:{episode}"
     history = user_histories.get(history_key, [])
@@ -94,15 +96,53 @@ def _build_private_input_debug_snapshot(
             history_lines.append(f"- {role}: {content}")
 
     prompt_preview = _truncate_for_debug(system_prompt, 700)
-    trigger_preview = _truncate_for_debug(context_trigger, 500)
+    input_preview = _truncate_for_debug(input_value, 500)
     history_block = "\n".join(history_lines)
     return (
-        f"Private input snapshot for '{char_key}'\n"
+        f"{scope_label} input snapshot for '{char_key}'\n"
         f"History key: {history_key}\n"
         f"History messages used (up to last 10): {len(history_tail)}\n"
-        f"Context trigger: {trigger_preview}\n"
+        f"{input_label}: {input_preview}\n"
         f"System prompt preview:\n{prompt_preview}\n"
         f"History preview:\n{history_block}"
+    )
+
+
+def _build_private_input_debug_snapshot(
+    participant_code: str,
+    state: Dict,
+    char_key: str,
+    system_prompt: str,
+    context_trigger: str,
+) -> str:
+    """Build a concise preview of what goes into private dialogue call."""
+    return _build_dialogue_input_debug_snapshot(
+        participant_code=participant_code,
+        state=state,
+        char_key=char_key,
+        system_prompt=system_prompt,
+        input_label="Context trigger",
+        input_value=context_trigger,
+        scope_label="Private",
+    )
+
+
+def _build_public_input_debug_snapshot(
+    participant_code: str,
+    state: Dict,
+    char_key: str,
+    system_prompt: str,
+    user_input: str,
+) -> str:
+    """Build a concise preview of what goes into public dialogue call."""
+    return _build_dialogue_input_debug_snapshot(
+        participant_code=participant_code,
+        state=state,
+        char_key=char_key,
+        system_prompt=system_prompt,
+        input_label="User input",
+        input_value=user_input,
+        scope_label="Public",
     )
 
 
@@ -562,6 +602,7 @@ async def _handle_ep2_scripted_public_message(
     """Episode 2 lightweight scripted director for university/hospital scenes."""
     messages: List[Dict] = []
     ep2_state = _get_ep2_director_state(state)
+    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
 
     visited_locations = ep2_state.get("visited_locations", [])
     if current_location not in visited_locations:
@@ -621,6 +662,15 @@ async def _handle_ep2_scripted_public_message(
         )
 
     try:
+        if debug_mode_enabled:
+            debug_snapshot = _build_public_input_debug_snapshot(
+                participant_code=participant_code,
+                state=state,
+                char_key=active_character_key,
+                system_prompt=system_prompt,
+                user_input=trigger,
+            )
+            _append_debug_message(messages, debug_snapshot)
         other_reply = await ask_for_dialogue(
             participant_code,
             trigger,
@@ -729,6 +779,15 @@ async def _handle_ep2_scripted_public_message(
         nina_prompt = load_system_prompt(get_prompt_path("nina", current_stage, current_location))
         nina_trigger = _build_ep2_nina_trigger(current_location, nina_cue, message_text, other_reply)
         try:
+            if debug_mode_enabled:
+                debug_snapshot = _build_public_input_debug_snapshot(
+                    participant_code=participant_code,
+                    state=state,
+                    char_key="nina",
+                    system_prompt=nina_prompt,
+                    user_input=nina_trigger,
+                )
+                _append_debug_message(messages, debug_snapshot)
             nina_reply = await ask_for_dialogue(
                 participant_code,
                 nina_trigger,
@@ -764,6 +823,15 @@ async def _handle_ep2_scripted_public_message(
                     "If she asked you a direct or implied question, answer it briefly and clearly as James."
                 )
                 try:
+                    if debug_mode_enabled:
+                        debug_snapshot = _build_public_input_debug_snapshot(
+                            participant_code=participant_code,
+                            state=state,
+                            char_key="james",
+                            system_prompt=system_prompt,
+                            user_input=james_followup_trigger,
+                        )
+                        _append_debug_message(messages, debug_snapshot)
                     james_followup = await ask_for_dialogue(
                         participant_code,
                         james_followup_trigger,
@@ -2156,7 +2224,7 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
 
 
 async def handle_public_message(participant_code: str, message_text: str) -> List[Dict]:
-    """Handle message in public conversation mode using director logic."""
+    """Handle message in public conversation mode with direct routing."""
     messages = []
     state = GAME_STATE.get(participant_code)
     
@@ -2274,28 +2342,25 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         current_language_level = state.get("current_language_level", "B1")
         system_prompt = combine_character_prompt(character_key, current_language_level, current_stage, current_location)
         
-        # Create context trigger
-        topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
-        if direct_address_basis == "sticky_followup_after_singular_you":
-            context_trigger = (
-                f"The detective is continuing the exchange with you in public mode: '{message_text}'. "
-                f"Current topic: {topic_memory.get('topic', 'None')}. Respond as your character."
-            )
-        else:
-            context_trigger = (
-                f"The detective is directly addressing you with this question: '{message_text}'. "
-                f"Current topic: {topic_memory.get('topic', 'None')}. Respond as your character."
-            )
-        
         logger.info(f"Participant {participant_code}: Direct addressing detected for character '{character_key}'")
         
         # Log user message
         log_message("user", message_text, participant_code)
+
+        if debug_mode_enabled:
+            debug_snapshot = _build_public_input_debug_snapshot(
+                participant_code=participant_code,
+                state=state,
+                char_key=character_key,
+                system_prompt=system_prompt,
+                user_input=message_text,
+            )
+            _append_debug_message(messages, debug_snapshot)
         
         try:
             reply_text = await ask_for_dialogue(
                 participant_code,
-                context_trigger,
+                message_text,
                 system_prompt,
                 character_key
             )
@@ -2347,137 +2412,127 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         
         return messages
     
-    # No direct addressing, use director logic
-    topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
-    active_characters_context = ", ".join(sorted(stage_characters)) if stage_characters else "none"
-    context_for_director = (
-        f"Player asks everyone. "
-        f"Active characters on stage: [{active_characters_context}]. "
-        f"Topic Memory: {json.dumps(topic_memory)}"
-    )
-    
+    # No direct addressing: keep predefined topic routing and remove AI director layer.
+    from predefined_responses import try_predefined_response
+
+    topic_memory = state.setdefault("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
+    topic_memory.setdefault("topic", "None")
+    topic_memory.setdefault("spoken", [])
+    topic_memory.setdefault("predefined_used", [])
+
     # Log user message
     log_message("user", message_text, participant_code)
-    if debug_mode_enabled:
-        _append_debug_message(
-            messages,
-            "Routing basis: no direct addressee; using director for public mode arbitration.",
-        )
-    
-    logger.info(f"Participant {participant_code}: Getting director decision for public mode")
-    logger.info(f"Participant {participant_code}: Context: {context_for_director}")
-    logger.info(f"Participant {participant_code}: User text: {message_text}")
-    
-    # Import director function
-    from ai_services import ask_director
-    
-    director_decision = await ask_director(participant_code, context_for_director, message_text)
-    logger.info(f"Participant {participant_code}: Director decision received")
-    if debug_mode_enabled:
-        director_basis = director_decision.get("_debug_director_basis", "unknown")
-        _append_debug_message(messages, f"Director basis: {director_basis}")
-        _append_debug_message(messages, f"Director decision JSON: {json.dumps(director_decision, ensure_ascii=False)}")
-    
-    scene = director_decision.get("scene", [])
-    new_topic = director_decision.get("new_topic", topic_memory["topic"])
-    
-    # Update topic memory
-    state["topic_memory"]["topic"] = new_topic
-    if new_topic != topic_memory.get("topic"):
-        # Reset spoken list but preserve predefined_used when topic changes
-        state["topic_memory"]["spoken"] = []
-        if "predefined_used" not in state["topic_memory"]:
-            state["topic_memory"]["predefined_used"] = []
-    
-    filtered_scene = []
-    for scene_action in scene:
-        action_type = scene_action.get("action")
-        data = scene_action.get("data", {})
-        if action_type in ["character_reply", "character_reaction"]:
-            character_key = data.get("character_key")
-            if character_key not in stage_characters:
+
+    selected_characters: List[str] = []
+    predefined_decision = try_predefined_response(participant_code, message_text, topic_memory)
+
+    if predefined_decision:
+        new_topic = predefined_decision.get("new_topic", topic_memory.get("topic", "None"))
+        previous_topic = topic_memory.get("topic", "None")
+        topic_memory["topic"] = new_topic
+        if new_topic != previous_topic:
+            topic_memory["spoken"] = []
+
+        scene = predefined_decision.get("scene", [])
+        for scene_action in scene:
+            action_type = scene_action.get("action")
+            if action_type not in ["character_reply", "character_reaction"]:
                 continue
-        filtered_scene.append(scene_action)
-
-    scene = filtered_scene
-
-    if not scene:
-        logger.warning(f"Participant {participant_code}: Director returned an empty scene")
-        if debug_mode_enabled:
-            _append_debug_message(messages, "Director returned an empty scene after filtering.")
-        messages.append({"type": "system", "content": "The investigation continues..."})
-        return messages
-    
-    # Execute scene actions
-    logger.info(f"Participant {participant_code}: Executing scene with {len(scene)} actions")
-    for scene_action in scene:
-        action_type = scene_action.get("action")
-        data = scene_action.get("data", {})
-        
-        if action_type in ["character_reply", "character_reaction"]:
+            data = scene_action.get("data", {})
             char_key = data.get("character_key")
-            trigger_msg = data.get("trigger_message")
-            
-            if char_key in CHARACTER_DATA and char_key in stage_characters and trigger_msg:
-                if debug_mode_enabled:
-                    _append_debug_message(messages, f"Director -> {char_key}: {trigger_msg}")
-                char_data = CHARACTER_DATA[char_key]
-                
-                # Get current language level and episode for prompt resolution
-                current_language_level = state.get("current_language_level", "B1")
-                current_stage = state.get("current_stage", 1)
-                current_location = get_stage_location(state, current_stage)
-                system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
-                
-                try:
-                    reply_text = await ask_for_dialogue(
-                        participant_code,
-                        trigger_msg,
-                        system_prompt,
-                        char_key
-                    )
-                    
-                    if reply_text:
-                        message_id = generate_message_id()
-                        save_message_to_cache(message_id, reply_text, char_key)
-                        
-                        # Log character response
-                        log_message(f"character_{char_key}", reply_text, participant_code)
-                        
-                        messages.append({
-                            "type": "character",
-                            "character": char_key,
-                            "character_name": char_data["full_name"],
-                            "character_image": char_data.get("image"),
-                            "content": reply_text,
-                            "message_id": message_id,
-                            "show_explain": True
-                        })
-                        
-                        # Mark character as having spoken on this topic
-                        state["topic_memory"]["spoken"].append(char_key)
-                        state["last_public_responder"] = char_key
-                    else:
-                        logger.error(f"Character '{char_key}' generated empty reply")
-                        messages.append({
-                            "type": "character",
-                            "character": char_key,
-                            "character_name": char_data["full_name"],
-                            "character_image": char_data.get("image"),
-                            "content": "[Character is thinking...]",
-                            "show_explain": False
-                        })
-                        
-                except Exception as e:
-                    logger.error(f"Failed to get character reply from '{char_key}': {e}")
-                    messages.append({
-                        "type": "character",
-                        "character": char_key,
-                        "character_name": char_data["full_name"],
-                        "character_image": char_data.get("image"),
-                        "content": "[Character is thinking...]",
-                        "show_explain": False
-                    })
+            if (
+                char_key in CHARACTER_DATA
+                and char_key in stage_characters
+                and char_key not in selected_characters
+            ):
+                selected_characters.append(char_key)
+
+        if debug_mode_enabled:
+            _append_debug_message(messages, "Routing basis: predefined topic routing without director.")
+            _append_debug_message(
+                messages,
+                f"Predefined decision JSON: {json.dumps(predefined_decision, ensure_ascii=False)}",
+            )
+
+    if not selected_characters:
+        selected_characters = sorted(char for char in stage_characters if char in CHARACTER_DATA)
+        if debug_mode_enabled:
+            _append_debug_message(messages, "Routing basis: no predefined match; all active characters respond.")
+
+    if not selected_characters:
+        messages.append({"type": "system", "content": "The investigation continues..."})
+        await game_state_manager.save_game_state(participant_code, state)
+        return messages
+
+    logger.info(
+        f"Participant {participant_code}: Public routing selected responders: {selected_characters}"
+    )
+
+    for char_key in selected_characters:
+        char_data = CHARACTER_DATA[char_key]
+
+        current_language_level = state.get("current_language_level", "B1")
+        current_stage = state.get("current_stage", 1)
+        current_location = get_stage_location(state, current_stage)
+        system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
+
+        if debug_mode_enabled:
+            debug_snapshot = _build_public_input_debug_snapshot(
+                participant_code=participant_code,
+                state=state,
+                char_key=char_key,
+                system_prompt=system_prompt,
+                user_input=message_text,
+            )
+            _append_debug_message(messages, debug_snapshot)
+
+        try:
+            reply_text = await ask_for_dialogue(
+                participant_code,
+                message_text,
+                system_prompt,
+                char_key
+            )
+
+            if reply_text:
+                message_id = generate_message_id()
+                save_message_to_cache(message_id, reply_text, char_key)
+                log_message(f"character_{char_key}", reply_text, participant_code)
+
+                messages.append({
+                    "type": "character",
+                    "character": char_key,
+                    "character_name": char_data["full_name"],
+                    "character_image": char_data.get("image"),
+                    "content": reply_text,
+                    "message_id": message_id,
+                    "show_explain": True
+                })
+
+                if char_key not in topic_memory["spoken"]:
+                    topic_memory["spoken"].append(char_key)
+                state["last_public_responder"] = char_key
+            else:
+                logger.error(f"Character '{char_key}' generated empty reply")
+                messages.append({
+                    "type": "character",
+                    "character": char_key,
+                    "character_name": char_data["full_name"],
+                    "character_image": char_data.get("image"),
+                    "content": "[Character is thinking...]",
+                    "show_explain": False
+                })
+
+        except Exception as e:
+            logger.error(f"Failed to get character reply from '{char_key}': {e}")
+            messages.append({
+                "type": "character",
+                "character": char_key,
+                "character_name": char_data["full_name"],
+                "character_image": char_data.get("image"),
+                "content": "[Character is thinking...]",
+                "show_explain": False
+            })
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
