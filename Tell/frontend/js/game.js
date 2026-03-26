@@ -111,11 +111,22 @@ function displayMessage(msg) {
         messageOptions
     );
 
-    // Backend-driven UI flags (e.g., enable/disable dynamic Case Materials actions).
+    // Backend-driven UI flags (e.g., mode switches, dynamic Case Materials actions).
     if (msg.ui && typeof msg.ui.caseMaterialsAccusationAvailable === 'boolean') {
         window.caseMaterialsAccusationAvailable = msg.ui.caseMaterialsAccusationAvailable;
         if (typeof window.populateCaseMaterialsDrawer === 'function') {
             window.populateCaseMaterialsDrawer();
+        }
+    }
+    if (msg.ui && msg.ui.switchToPublicMode === true) {
+        if (typeof currentCharacter !== 'undefined') {
+            currentCharacter = null;
+        }
+        if (typeof window.setActiveCharacterDrawerItem === 'function') {
+            window.setActiveCharacterDrawerItem(null);
+        }
+        if (typeof window.updatePrivateModeControls === 'function') {
+            window.updatePrivateModeControls();
         }
     }
     

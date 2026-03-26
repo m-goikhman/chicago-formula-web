@@ -2761,8 +2761,8 @@ def _build_ep1_accusation_warning_message(state: Dict, include_back: bool = True
         "content": accusation_warning,
         "buttons": _build_ep1_accusation_buttons(state, include_back=include_back),
         "show_explain": False,
-        # Hide Case Materials accusation button while accusation options are active.
-        "ui": {"caseMaterialsAccusationAvailable": False},
+        # Keep the drawer button available if player chose the "not yet" path.
+        "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
     }
 
 
@@ -2812,7 +2812,7 @@ async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
         return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
 
     state["accuse_offer_pending"] = False
-    state["accuse_in_case_materials"] = False
+    state["accuse_in_case_materials"] = True
     state["accuse_unlocked"] = True
     state["accused_character"] = None
 
@@ -2834,9 +2834,27 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
     if examined_count < clues_count:
         return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
 
+    # If this is triggered from private dialogue, move to public first.
+    if state.get("mode") == "private":
+        state["mode"] = "public"
+        state["current_character"] = None
+        _clear_public_followup_lock(state)
+        state["accuse_offer_pending"] = False
+        state["accuse_in_case_materials"] = True
+        state["accuse_unlocked"] = True
+        state["accused_character"] = None
+        return [
+            {
+                "type": "system",
+                "content": "Hold on - if you're ready to make your accusation, let's do it in front of everyone.",
+                "show_explain": False,
+                "ui": {"switchToPublicMode": True},
+            },
+            _build_ep1_accusation_warning_message(state, include_back=True),
+        ]
+
     # Allow opening even if chat offer wasn't explicitly declined (stale UI), but keep state consistent.
     state["accuse_offer_pending"] = False
-    state["accuse_in_case_materials"] = False
     state["accuse_unlocked"] = True
     state["accused_character"] = None
 
@@ -2864,6 +2882,21 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     if not state.get("accuse_unlocked", False) or examined_count < clues_count:
         return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
 
+    # Accusations must be made in public mode.
+    if state.get("mode") == "private":
+        state["mode"] = "public"
+        state["current_character"] = None
+        _clear_public_followup_lock(state)
+        return [
+            {
+                "type": "system",
+                "content": "Hold on - if you're ready to make your accusation, let's do it in front of everyone.",
+                "show_explain": False,
+                "ui": {"switchToPublicMode": True},
+            },
+            _build_ep1_accusation_warning_message(state, include_back=True),
+        ]
+
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = False
 
@@ -2890,40 +2923,44 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     state["accusation_attempts"] = int(state.get("accusation_attempts", 0)) + 1
     attempts = state["accusation_attempts"]
 
-    # If attempts are exhausted -> lose + reveal
-    if attempts >= EP1_ACCUSATION_MAX_ATTEMPTS:
-        state["accuse_unlocked"] = False
-        state["accuse_in_case_materials"] = False
-        outro_lose = load_system_prompt(get_game_text_path("outro_lose.txt", 1))
-        return [
-            {
-                "type": "system",
-                "content": outro_lose,
-                "buttons": [
-                    {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
-                    {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
-                ],
-                "show_explain": False,
-                "ui": {"caseMaterialsAccusationAvailable": False},
-            }
-        ]
-
-    # Otherwise -> show the suspect defense (only files for wrong suspects exist)
+    # Always show accused character defense text on wrong accusations.
     defense_filename = f"defense_{accused_key}.txt"
     defense_text = _load_game_text_optional(defense_filename, 1)
     if not defense_text:
         # Fallback if file is missing
-        defense_text = "❌ That doesn't match. You still have another attempt."
+        defense_text = "❌ That doesn't match."
 
-    return [
-        {
+    defense_buttons = []
+    # If we still have attempts left, allow trying again.
+    if attempts < EP1_ACCUSATION_MAX_ATTEMPTS:
+        defense_buttons = _build_ep1_accusation_buttons(state, include_back=True)
+
+    defense_msg = {
+        "type": "system",
+        "content": defense_text,
+        "buttons": defense_buttons,
+        "show_explain": False,
+        "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
+    }
+
+    # If attempts are exhausted -> immediately follow with lose + reveal.
+    if attempts >= EP1_ACCUSATION_MAX_ATTEMPTS:
+        state["accuse_unlocked"] = False
+        state["accuse_in_case_materials"] = False
+        outro_lose = load_system_prompt(get_game_text_path("outro_lose.txt", 1))
+        lose_msg = {
             "type": "system",
-            "content": defense_text,
-            "buttons": _build_ep1_accusation_buttons(state, include_back=True),
+            "content": outro_lose,
+            "buttons": [
+                {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
+                {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
+            ],
             "show_explain": False,
             "ui": {"caseMaterialsAccusationAvailable": False},
         }
-    ]
+        return [defense_msg, lose_msg]
+
+    return [defense_msg]
 
 
 async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:

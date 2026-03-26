@@ -1,5 +1,4 @@
 [from: pauline]
 Hi Alex, it's Pauline.
 [buttons]
-Just let her in (no need to let her know police is here)|pauline_entrance_doorway
-Talk to her|talk_pauline
+Open the door|pauline_entrance_doorway
