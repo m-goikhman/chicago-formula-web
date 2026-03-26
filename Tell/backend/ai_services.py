@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+from typing import Dict, List, Optional
 from groq import Groq
 from config import GROQ_API_KEY, user_histories
 from utils import load_system_prompt, get_prompt_path, log_message, combine_character_prompt
@@ -18,6 +19,278 @@ else:
 
 # Telegram's message length limit
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+# Episode 1 contradiction-handling configuration.
+# We keep this structured in code so runtime checks rely on deterministic fact slots.
+EP1_CONTRADICTION_BEHAVIOR = {
+    "fiona": "memory_correction",
+    "ronnie": "memory_correction",
+    "tim": "forced_local_truth",
+    "pauline": "forced_local_truth",
+}
+
+EP1_CONTRADICTION_FACTS = {
+    "fiona": {
+        "arrival_and_discovery": {
+            "label": "arrival/discovery timeline",
+            "truth": (
+                "You arrived around 19:00, let Ronnie and Tim in around 19:08, "
+                "then found Alex unconscious around 19:10."
+            ),
+            "triggers": [
+                "arrive", "arrived", "got here", "came here",
+                "let them in", "intercom", "bathroom", "water running",
+                "found alex", "called 911", "19:00", "19:08", "19:10",
+            ],
+        },
+    },
+    "ronnie": {
+        "arrival_and_tim_state": {
+            "label": "arrival near Tim's car",
+            "truth": (
+                "You arrived around 19:05 and saw Tim near his car, visibly stressed, "
+                "talking about keys locked inside."
+            ),
+            "triggers": [
+                "19:05", "near his car", "tim near car", "locked keys",
+                "keys in car", "agitated", "stressed", "shaking", "white-faced",
+                "before entering", "buzzed the intercom",
+            ],
+        },
+    },
+    "tim": {
+        "arrival_timing": {
+            "label": "arrival timing",
+            "truth": (
+                "You first came to Alex's apartment early (around 17:50), "
+                "and later entered again with Ronnie around 19:08."
+            ),
+            "triggers": [
+                "arrive", "arrived", "came here", "got here",
+                "7:05", "19:05", "17:50", "before seven", "before 7",
+                "early", "late", "entered with ronnie",
+            ],
+        },
+        "whereabouts_1830_1900": {
+            "label": "whereabouts between 18:30 and 19:00",
+            "truth": (
+                "You were not just parking. You went to the university office area, "
+                "then returned near Alex's building before the party."
+            ),
+            "triggers": [
+                "18:30", "18:45", "18:50", "19:00", "where were you",
+                "driving", "parking", "university", "office", "between",
+            ],
+        },
+        "car_position": {
+            "label": "car position near the building",
+            "truth": (
+                "Your car had been near Alex's building for a while, and the keys ended up locked inside."
+            ),
+            "triggers": [
+                "car", "parked", "snow", "keys", "locked inside", "few blocks",
+                "honda", "near the building", "near entrance",
+            ],
+        },
+    },
+    "pauline": {
+        "first_visit": {
+            "label": "first visit before the party",
+            "truth": (
+                "You met Alex around 18:00, argued in the stairwell, then he sent you "
+                "to fetch the airplane USB from the office."
+            ),
+            "triggers": [
+                "18:00", "6:00", "first visit", "before the party",
+                "stairwell", "intercom", "argue", "argued", "came earlier",
+            ],
+        },
+        "usb_trip_and_return": {
+            "label": "USB trip timing",
+            "truth": (
+                "You left for the office around 18:15, picked up the airplane USB, "
+                "and returned it to Alex around 18:40."
+            ),
+            "triggers": [
+                "usb", "drive", "airplane", "office", "18:10", "18:15",
+                "18:25", "18:40", "returned the usb", "brought it back",
+            ],
+        },
+        "night_return": {
+            "label": "night return time",
+            "truth": "You came back later at night (around 21:00).",
+            "triggers": [
+                "21:00", "9:00", "came back", "returned at nine",
+                "back at nine", "came back now", "later tonight",
+            ],
+        },
+    },
+}
+
+_STRONG_CONTRADICTION_CUES = [
+    "you said", "you told me", "earlier you", "before you",
+    "just said", "previously", "now you're saying", "but now",
+    "which is it", "that doesn't add up", "that does not add up",
+    "doesn't add up", "does not add up", "contradict", "inconsistent",
+    "can't both be true", "cannot both be true",
+]
+
+_WITNESS_COMPARISON_CUES = [
+    "fiona says", "ronnie says", "tim says", "pauline says",
+    "fiona told", "ronnie told", "tim told", "pauline told",
+]
+
+_CONTRAST_CUES = [" but ", " however ", " though ", " yet ", " instead "]
+
+_NEGATIVE_AUX_CHALLENGE_PATTERN = re.compile(
+    r"\b(?:didn't|did not|haven't|have not|weren't|were not|isn't|is not|can't|cannot)\s+you\b",
+    re.IGNORECASE,
+)
+
+_TIME_TOKEN_PATTERN = re.compile(
+    r"\b(?:[01]?\d|2[0-3])(?::[0-5]\d)?\s*(?:am|pm)?\b",
+    re.IGNORECASE,
+)
+
+_TIME_WORDS = ["before", "after", "earlier", "later", "first", "then"]
+
+
+def _contains_any_phrase(text: str, phrases: List[str]) -> bool:
+    lowered = (text or "").lower()
+    return any(phrase in lowered for phrase in phrases)
+
+
+def _count_time_mentions(text: str) -> int:
+    lowered = (text or "").lower()
+    explicit_times = len(_TIME_TOKEN_PATTERN.findall(lowered))
+    time_words = sum(1 for marker in _TIME_WORDS if marker in lowered)
+    return explicit_times + time_words
+
+
+def _score_contradiction_intent(message: str) -> float:
+    lowered = (message or "").lower()
+    score = 0.0
+
+    if _contains_any_phrase(lowered, _STRONG_CONTRADICTION_CUES):
+        score += 2.0
+    if _contains_any_phrase(lowered, _WITNESS_COMPARISON_CUES):
+        score += 1.0
+    if _contains_any_phrase(lowered, _CONTRAST_CUES):
+        score += 1.0
+    if _NEGATIVE_AUX_CHALLENGE_PATTERN.search(lowered):
+        score += 0.5
+    if _count_time_mentions(lowered) >= 2:
+        score += 1.0
+
+    return score
+
+
+def _detect_ep1_contradiction_fact(message: str, character_key: str) -> Optional[Dict[str, str]]:
+    character_facts = EP1_CONTRADICTION_FACTS.get(character_key, {})
+    if not character_facts:
+        return None
+
+    lowered = (message or "").lower()
+    best_slot = None
+    best_score = 0
+    best_fact = None
+
+    for slot_key, fact_info in character_facts.items():
+        triggers = fact_info.get("triggers", [])
+        slot_hits = sum(1 for trigger in triggers if trigger in lowered)
+        if slot_hits > best_score:
+            best_slot = slot_key
+            best_score = slot_hits
+            best_fact = fact_info
+
+    # No fact slot anchored by message content -> no contradiction mode.
+    if not best_slot or not best_fact or best_score <= 0:
+        return None
+
+    contradiction_score = _score_contradiction_intent(lowered)
+
+    # Avoid false positives: negative questions alone should not trigger this mode.
+    if contradiction_score < 2.5:
+        return None
+
+    return {
+        "slot": best_slot,
+        "label": best_fact["label"],
+        "truth": best_fact["truth"],
+        "intent_score": str(contradiction_score),
+        "trigger_hits": str(best_score),
+    }
+
+
+def _resolve_ep1_contradiction_context(
+    participant_code: str,
+    user_message: str,
+    character_key: Optional[str],
+) -> Optional[Dict[str, str]]:
+    if not character_key:
+        return None
+
+    from config import GAME_STATE
+
+    state = GAME_STATE.get(participant_code, {})
+    if state.get("current_stage", 1) != 1:
+        return None
+
+    behavior = EP1_CONTRADICTION_BEHAVIOR.get(character_key)
+    if not behavior:
+        return None
+
+    fact_match = _detect_ep1_contradiction_fact(user_message, character_key)
+    if not fact_match:
+        return None
+
+    fact_label = fact_match["label"]
+    truth_anchor = fact_match["truth"]
+    slot_key = fact_match["slot"]
+    intent_score = fact_match.get("intent_score", "0")
+    trigger_hits = fact_match.get("trigger_hits", "0")
+
+    if behavior == "memory_correction":
+        instruction = (
+            "\n\nEP1 CONTRADICTION MODE (active for this turn only):\n"
+            f"The detective is challenging your timeline consistency about '{fact_label}'.\n"
+            "Treat this as a memory-precision issue.\n"
+            "You MUST: (1) briefly acknowledge the mismatch, "
+            "(2) correct the fact clearly, (3) continue normally.\n"
+            "Do NOT deny that a conflicting wording might have appeared earlier.\n"
+            f"Correct fact anchor: {truth_anchor}\n"
+        )
+        return {
+            "instruction": instruction,
+            "behavior": behavior,
+            "slot": slot_key,
+            "label": fact_label,
+            "intent_score": intent_score,
+            "trigger_hits": trigger_hits,
+            "truth": truth_anchor,
+        }
+
+    if behavior == "forced_local_truth":
+        instruction = (
+            "\n\nEP1 CONTRADICTION MODE (active for this turn only):\n"
+            f"The detective cornered you on '{fact_label}' with contradiction pressure.\n"
+            "You MUST reveal the truth for this specific fact now.\n"
+            "Important: reveal only this local fact; do not provide a full confession "
+            "or unrelated secrets unless directly asked.\n"
+            "Do NOT use blanket denial phrases (e.g., 'that's impossible, I just got here').\n"
+            f"Truth fact to state: {truth_anchor}\n"
+        )
+        return {
+            "instruction": instruction,
+            "behavior": behavior,
+            "slot": slot_key,
+            "label": fact_label,
+            "intent_score": intent_score,
+            "trigger_hits": trigger_hits,
+            "truth": truth_anchor,
+        }
+
+    return None
 
 def validate_ai_response(response: str, character_key: str = None) -> tuple[bool, str]:
     """
@@ -225,14 +498,49 @@ async def ask_for_dialogue(
             knowledge_context = f"\n\nCONTEXT FROM PREVIOUS INVESTIGATIONS:\n" + "\n".join(f"- {item}" for item in knowledge_items)
             knowledge_context += "\n\nYou may reference this information naturally in conversation, but don't force it. Only mention it if it's relevant to the current discussion."
     
+    state.pop("_last_contradiction_guard", None)
+
+    contradiction_context = _resolve_ep1_contradiction_context(
+        participant_code=participant_code,
+        user_message=user_message,
+        character_key=character_key,
+    )
+    contradiction_instruction = (contradiction_context or {}).get("instruction")
+
+    if contradiction_context and character_key:
+        state["_last_contradiction_guard"] = {
+            "character": character_key,
+            "behavior": contradiction_context.get("behavior", "unknown"),
+            "slot": contradiction_context.get("slot", "unknown"),
+            "label": contradiction_context.get("label", "unknown"),
+            "intent_score": contradiction_context.get("intent_score", "0"),
+            "trigger_hits": contradiction_context.get("trigger_hits", "0"),
+        }
+        log_message(
+            "contradiction_guard",
+            (
+                "EP1 contradiction mode applied for "
+                f"{character_key} ({contradiction_context.get('behavior')} | slot={contradiction_context.get('slot')} | "
+                f"intent={contradiction_context.get('intent_score')} | slot_hits={contradiction_context.get('trigger_hits')}). "
+                f"User message: {user_message[:200]}"
+            ),
+            participant_code,
+        )
+
     # Enhance system prompt with character identity reminder
     if character_key:
         from config import CHARACTER_DATA  # Local import to avoid circular dependency
         char_data = CHARACTER_DATA.get(character_key, {})
         char_name = char_data.get("full_name", character_key)
-        enhanced_system_prompt = f"{system_prompt}{knowledge_context}\n\nIMPORTANT: You are {char_name}. You must respond ONLY as {char_name}, speaking in first person about YOUR OWN experiences and observations. Do not speak for other characters or describe their actions."
+        enhanced_system_prompt = (
+            f"{system_prompt}{knowledge_context}"
+            f"{contradiction_instruction or ''}\n\n"
+            f"IMPORTANT: You are {char_name}. You must respond ONLY as {char_name}, "
+            "speaking in first person about YOUR OWN experiences and observations. "
+            "Do not speak for other characters or describe their actions."
+        )
     else:
-        enhanced_system_prompt = f"{system_prompt}{knowledge_context}"
+        enhanced_system_prompt = f"{system_prompt}{knowledge_context}{contradiction_instruction or ''}"
     
     # For Nina, use filtered history (only her conversations with the user)
     # For other characters, use shared history so they can see what others have said

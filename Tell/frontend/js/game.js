@@ -110,6 +110,14 @@ function displayMessage(msg) {
         msg.typewriter_style,
         messageOptions
     );
+
+    // Backend-driven UI flags (e.g., enable/disable dynamic Case Materials actions).
+    if (msg.ui && typeof msg.ui.caseMaterialsAccusationAvailable === 'boolean') {
+        window.caseMaterialsAccusationAvailable = msg.ui.caseMaterialsAccusationAvailable;
+        if (typeof window.populateCaseMaterialsDrawer === 'function') {
+            window.populateCaseMaterialsDrawer();
+        }
+    }
     
     // Check if we need to show input area and tutorial
     checkAndShowInputArea(msg.content, msg);
@@ -145,6 +153,18 @@ function displayMessage(msg) {
     if (buttons.length > 0) {
         const buttonRow = document.createElement('div');
         buttonRow.className = 'button-row';
+        // Prevent double-clicking different buttons from the same message.
+        // In some scenes (e.g. Pauline entrance) this would otherwise allow choosing two conflicting options.
+        const disableButtonRowOnce = () => {
+            if (buttonRow.dataset.disabled === 'true') return;
+            buttonRow.dataset.disabled = 'true';
+            const rowButtons = buttonRow.querySelectorAll('button');
+            rowButtons.forEach(b => {
+                b.disabled = true;
+                b.style.pointerEvents = 'none';
+            });
+            buttonRow.style.display = 'none';
+        };
 
         buttons.forEach(btn => {
             const button = document.createElement('button');
@@ -152,6 +172,7 @@ function displayMessage(msg) {
             if (btn.action === 'hide_message') {
                 // Hide the message when hide_message button is clicked
                 button.onclick = () => {
+                    disableButtonRowOnce();
                     messageDiv.dataset.userHidden = 'true';
                     if (typeof window.applyChatScopeVisibility === 'function') {
                         window.applyChatScopeVisibility();
@@ -161,7 +182,10 @@ function displayMessage(msg) {
                     }
                 };
             } else {
-                button.onclick = () => handleAction(btn.action);
+                button.onclick = () => {
+                    disableButtonRowOnce();
+                    handleAction(btn.action);
+                };
             }
             buttonRow.appendChild(button);
         });

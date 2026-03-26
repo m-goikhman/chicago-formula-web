@@ -42,6 +42,11 @@ TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
 EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
 PUBLIC_FOLLOWUP_LOCK_TURNS = 1
 
+# EP1 final accusation mechanic
+EP1_ACCUSATION_SUSPECT_KEYS = ["tim", "ronnie", "fiona", "pauline"]
+EP1_ACCUSATION_CORRECT_KEY = "tim"
+EP1_ACCUSATION_MAX_ATTEMPTS = 2
+
 
 def _is_test_participant(participant_code: str) -> bool:
     return isinstance(participant_code, str) and participant_code.upper() == "TEST"
@@ -69,6 +74,28 @@ def _truncate_for_debug(value: str, max_len: int = 700) -> str:
     if len(text) <= max_len:
         return text
     return f"{text[:max_len]}... [truncated, total={len(text)} chars]"
+
+
+def _append_contradiction_guard_debug_message(messages: List[Dict], state: Dict) -> None:
+    """Expose last contradiction guard decision in debug mode."""
+    guard = state.pop("_last_contradiction_guard", None)
+    if not guard:
+        return
+
+    character = guard.get("character", "unknown")
+    behavior = guard.get("behavior", "unknown")
+    slot = guard.get("slot", "unknown")
+    label = guard.get("label", "unknown")
+    intent_score = guard.get("intent_score", "0")
+    trigger_hits = guard.get("trigger_hits", "0")
+    _append_debug_message(
+        messages,
+        (
+            "Contradiction guard active: "
+            f"char={character}, mode={behavior}, slot={slot} ({label}), "
+            f"intent_score={intent_score}, slot_hits={trigger_hits}"
+        ),
+    )
 
 
 def _build_dialogue_input_debug_snapshot(
@@ -369,10 +396,21 @@ def get_clues_count_for_stage(stage_number: int) -> int:
     """Get number of clues configured for a specific stage."""
     stage_config = STAGE_CONFIG.get(stage_number, {})
     stage_clues_count = stage_config.get("clues_count")
-    if isinstance(stage_clues_count, int) and stage_clues_count > 0:
-        return stage_clues_count
-    # Backward compatibility fallback for legacy configs.
-    return TOTAL_CLUES
+    candidate_max = stage_clues_count if isinstance(stage_clues_count, int) and stage_clues_count > 0 else TOTAL_CLUES
+
+    # Make the gate resilient to missing clue files (e.g., some deployments only ship 3 clues).
+    # We treat a clue id as "available" iff Clue{N}.txt or clue{N}.txt exists for this episode.
+    existing = 0
+    for i in range(1, int(candidate_max) + 1):
+        for basename in (f"Clue{i}.txt", f"clue{i}.txt"):
+            rel_path = get_game_text_path(basename, stage_number)
+            abs_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
+            if os.path.exists(abs_path):
+                existing += 1
+                break
+
+    # If nothing exists, fall back to configured count (keeps legacy behavior predictable).
+    return existing if existing > 0 else int(candidate_max)
 
 
 def get_clue_name_for_stage(stage_number: int, clue_id: str) -> str:
@@ -672,6 +710,8 @@ async def _handle_ep2_scripted_public_message(
             active_character_key,
             participant_code,
         )
+        if debug_mode_enabled:
+            _append_contradiction_guard_debug_message(messages, state)
     except Exception as exc:
         logger.error(f"Failed to get scripted EP2 reply from '{active_character_key}': {exc}")
         other_reply = None
@@ -789,6 +829,8 @@ async def _handle_ep2_scripted_public_message(
                 "nina",
                 participant_code,
             )
+            if debug_mode_enabled:
+                _append_contradiction_guard_debug_message(messages, state)
         except Exception as exc:
             logger.error(f"Failed to get scripted EP2 Nina interjection: {exc}")
             nina_reply = None
@@ -833,6 +875,8 @@ async def _handle_ep2_scripted_public_message(
                         "james",
                         participant_code,
                     )
+                    if debug_mode_enabled:
+                        _append_contradiction_guard_debug_message(messages, state)
                 except Exception as exc:
                     logger.error(f"Failed to get James follow-up to Nina question: {exc}")
                     james_followup = None
@@ -1137,8 +1181,15 @@ def initialize_game_state(participant_code: str) -> Dict:
         "accusation_attempts": 0,
         "reveal_step": 0,
         "custom_reveal_step": 0,
-        "clues_examined": set(),  # Legacy - for current stage
-        "suspects_interrogated": set(),  # Legacy - for current stage
+        "clues_examined": set(),  # Legacy - for current stage; still used for clue / accusation gates
+        # Legacy: was used (e.g. Telegram) to count first private talk per suspect; web UI does not read it.
+        "suspects_interrogated": set(),
+        # Episode 1 accusation mechanic:
+        # - accuse_offer_pending: show "Would you like to accuse?" offer in chat
+        # - accuse_in_case_materials: show "Make an accusation" button in Case Materials drawer
+        # - accuse_unlocked: allow selecting accused character
+        "accuse_offer_pending": False,
+        "accuse_in_case_materials": False,
         "accuse_unlocked": False,
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
@@ -2044,15 +2095,9 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     current_language_level = state.get("current_language_level", "B1")
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
-    stage_characters = get_characters_for_stage(state, current_stage)
 
     _update_ep1_private_progress(state, char_key)
-    
-    # Check if this is first interrogation (for current episode's characters)
-    if char_key in stage_characters and char_key not in state.get("suspects_interrogated", set()):
-        state.setdefault("suspects_interrogated", set()).add(char_key)
-        # Note: Accuse unlock logic would go here
-    
+
     system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
     
     # Create context trigger
@@ -2084,6 +2129,8 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             char_key,
             participant_code
         )
+        if debug_mode_enabled:
+            _append_contradiction_guard_debug_message(messages, state)
         
         if reply_text:
             message_id = generate_message_id()
@@ -2263,7 +2310,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     character_key = extract_character_from_message_strict(message_text)
     direct_address_basis = "explicit_character_mention" if character_key else None
     implied_character_key = None
-    if not character_key:
+    if not character_key and not group_address_detected:
         implied_character_key = resolve_character_from_singular_you(
             message_text,
             state.get("last_public_responder"),
@@ -2358,6 +2405,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 system_prompt,
                 character_key
             )
+            if debug_mode_enabled:
+                _append_contradiction_guard_debug_message(messages, state)
             
             if reply_text:
                 message_id = generate_message_id()
@@ -2487,6 +2536,8 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 system_prompt,
                 char_key
             )
+            if debug_mode_enabled:
+                _append_contradiction_guard_debug_message(messages, state)
 
             if reply_text:
                 message_id = generate_message_id()
@@ -2625,6 +2676,10 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     
     # Mark clue as examined in state
     state.setdefault("clues_examined", set()).add(clue_id)
+    # Keep stage_progress in sync with the legacy EP1 fields.
+    if isinstance(state.get("stage_progress"), dict):
+        stage_prog = state["stage_progress"].setdefault(episode, {})
+        stage_prog.setdefault("clues_examined", set()).add(clue_id)
     
     # Log clue examination
     log_message("clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
@@ -2644,10 +2699,258 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
 
     messages.append(clue_message)
     
+    # EP1: show a 2-step accusation flow once all clues are examined:
+    # 1) Offer in chat: "Would you like to make an accusation? (Maybe better talk to people before.)"
+    # 2) If declined -> show accusation button in "Case Materials" drawer.
+    if episode == 1:
+        examined_count = len(state.get("clues_examined", set()))
+        clues_count = get_clues_count_for_stage(episode)
+
+        all_evidence_seen = examined_count >= clues_count
+        has_any_accusation_entry = bool(state.get("accuse_unlocked", False) or state.get("accuse_in_case_materials", False))
+
+        if all_evidence_seen and not has_any_accusation_entry and not state.get("accuse_offer_pending", False):
+            state["accuse_offer_pending"] = True
+            offer_text = (
+                "Ok, you've seen all the evidence. Would you like to make an accusation?\n"
+                "(Maybe better talk to people before.)"
+            )
+            messages.append(
+                {
+                    "type": "system",
+                    "content": offer_text,
+                    "buttons": [
+                        {"text": "Not yet (put accusation in Case Materials)", "action": "accuse_offer_declined"},
+                        {"text": "Yes, make an accusation", "action": "accuse_offer_accepted"},
+                    ],
+                    "show_explain": False,
+                    "ui": {"caseMaterialsAccusationAvailable": False},
+                }
+            )
+
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
     
     return messages
+
+
+# EP1 accusation flow handlers
+def _ep1_accusable_suspect_keys(state: Dict) -> List[str]:
+    """Suspects who may be accused in EP1 (Pauline only after part 2 / her entrance)."""
+    keys = [k for k in EP1_ACCUSATION_SUSPECT_KEYS if k in CHARACTER_DATA]
+    if get_stage_location(state, 1) != EP1_PART2_LOCATION:
+        keys = [k for k in keys if k != "pauline"]
+    return keys
+
+
+def _build_ep1_accusation_buttons(state: Dict, include_back: bool = True) -> List[Dict[str, str]]:
+    buttons = [
+        {"text": f"Accuse {CHARACTER_DATA[k]['full_name']}", "action": f"accuse_{k}"}
+        for k in _ep1_accusable_suspect_keys(state)
+    ]
+    if include_back:
+        buttons.append({"text": "⬅️ Back to Main Menu", "action": "show_main_menu"})
+    return buttons
+
+
+def _build_ep1_accusation_warning_message(state: Dict, include_back: bool = True) -> Dict:
+    """Build the "Are you sure?" accusation warning with accuse options."""
+    accusation_warning = load_system_prompt(get_game_text_path("accuse_warning.txt", 1))
+    return {
+        "type": "system",
+        "content": accusation_warning,
+        "buttons": _build_ep1_accusation_buttons(state, include_back=include_back),
+        "show_explain": False,
+        # Hide Case Materials accusation button while accusation options are active.
+        "ui": {"caseMaterialsAccusationAvailable": False},
+    }
+
+
+async def handle_accuse_offer_declined(participant_code: str) -> List[Dict]:
+    """Player declined the chat offer; move accusation action into Case Materials."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    episode = state.get("current_stage", 1)
+    if episode != 1:
+        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+
+    clues_count = get_clues_count_for_stage(episode)
+    examined_count = len(state.get("clues_examined", set()))
+    if examined_count < clues_count:
+        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
+
+    state["accuse_offer_pending"] = False
+    state["accuse_in_case_materials"] = True
+    state["accuse_unlocked"] = False
+    state["accused_character"] = None
+
+    return [
+        {
+            "type": "system",
+            "content": "Ok. You can make an accusation later from the Case Materials drawer.",
+            "show_explain": False,
+            "ui": {"caseMaterialsAccusationAvailable": True},
+        }
+    ]
+
+
+async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
+    """Player accepted the chat offer; show accusation warning immediately."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    episode = state.get("current_stage", 1)
+    if episode != 1:
+        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+
+    clues_count = get_clues_count_for_stage(episode)
+    examined_count = len(state.get("clues_examined", set()))
+    if examined_count < clues_count:
+        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
+
+    state["accuse_offer_pending"] = False
+    state["accuse_in_case_materials"] = False
+    state["accuse_unlocked"] = True
+    state["accused_character"] = None
+
+    return [_build_ep1_accusation_warning_message(state, include_back=True)]
+
+
+async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
+    """Open accusation warning from Case Materials drawer."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    episode = state.get("current_stage", 1)
+    if episode != 1:
+        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+
+    clues_count = get_clues_count_for_stage(episode)
+    examined_count = len(state.get("clues_examined", set()))
+    if examined_count < clues_count:
+        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
+
+    # Allow opening even if chat offer wasn't explicitly declined (stale UI), but keep state consistent.
+    state["accuse_offer_pending"] = False
+    state["accuse_in_case_materials"] = False
+    state["accuse_unlocked"] = True
+    state["accused_character"] = None
+
+    return [_build_ep1_accusation_warning_message(state, include_back=True)]
+
+
+async def handle_make_accusation(participant_code: str, accused_key: str) -> List[Dict]:
+    """Handle final player accusation for EP1."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    episode = state.get("current_stage", 1)
+    if episode != 1:
+        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+
+    accused_key = str(accused_key or "").strip().lower()
+    allowed_targets = _ep1_accusable_suspect_keys(state)
+    if accused_key not in allowed_targets:
+        return [{"type": "error", "content": "Unknown accusation target."}]
+
+    # Require that all clues are examined to unlock the accusation.
+    clues_count = get_clues_count_for_stage(episode)
+    examined_count = len(state.get("clues_examined", set()))
+    if not state.get("accuse_unlocked", False) or examined_count < clues_count:
+        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
+
+    state["accuse_offer_pending"] = False
+    state["accuse_in_case_materials"] = False
+
+    state["accused_character"] = accused_key
+
+    # Correct accusation -> win
+    if accused_key == EP1_ACCUSATION_CORRECT_KEY:
+        state["game_completed"] = True
+        state["accuse_unlocked"] = False
+        state["accuse_in_case_materials"] = False
+
+        outro_win = load_system_prompt(get_game_text_path("outro_win.txt", 1))
+        return [
+            {
+                "type": "system",
+                "content": outro_win,
+                "buttons": [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}],
+                "show_explain": False,
+                "ui": {"caseMaterialsAccusationAvailable": False},
+            }
+        ]
+
+    # Wrong accusation -> attempts & defense
+    state["accusation_attempts"] = int(state.get("accusation_attempts", 0)) + 1
+    attempts = state["accusation_attempts"]
+
+    # If attempts are exhausted -> lose + reveal
+    if attempts >= EP1_ACCUSATION_MAX_ATTEMPTS:
+        state["accuse_unlocked"] = False
+        state["accuse_in_case_materials"] = False
+        outro_lose = load_system_prompt(get_game_text_path("outro_lose.txt", 1))
+        return [
+            {
+                "type": "system",
+                "content": outro_lose,
+                "buttons": [
+                    {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
+                    {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
+                ],
+                "show_explain": False,
+                "ui": {"caseMaterialsAccusationAvailable": False},
+            }
+        ]
+
+    # Otherwise -> show the suspect defense (only files for wrong suspects exist)
+    defense_filename = f"defense_{accused_key}.txt"
+    defense_text = _load_game_text_optional(defense_filename, 1)
+    if not defense_text:
+        # Fallback if file is missing
+        defense_text = "❌ That doesn't match. You still have another attempt."
+
+    return [
+        {
+            "type": "system",
+            "content": defense_text,
+            "buttons": _build_ep1_accusation_buttons(state, include_back=True),
+            "show_explain": False,
+            "ui": {"caseMaterialsAccusationAvailable": False},
+        }
+    ]
+
+
+async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:
+    """Reveal final killer + supporting evidence for EP1."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if state.get("current_stage", 1) != 1:
+        return [{"type": "system", "content": "This reveal is available in Episode 1."}]
+
+    parts = []
+    for basename in ["reveal_2_killer.txt", "reveal_3_evidence.txt", "reveal_4_timeline.txt", "reveal_5_motive.txt"]:
+        text = _load_game_text_optional(basename, 1)
+        if text:
+            parts.append(text)
+
+    full_reveal = "\n\n".join(parts).strip() or "No reveal content available."
+
+    return [
+        {
+            "type": "system",
+            "content": full_reveal,
+            "buttons": [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}],
+            "show_explain": False,
+        }
+    ]
 
 
 # Language Learning Menu Handlers

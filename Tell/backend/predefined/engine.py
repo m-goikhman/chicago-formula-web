@@ -136,8 +136,9 @@ def resolve_character_from_singular_you(message: str, last_responder: Optional[s
         r"\byou\s+all\b",
         r"\ball\s+of\s+you\b",
         r"\bany\s+of\s+you\b",
+        r"\banybody\s+of\s+you\b",
         r"\bwhich\s+of\s+you\b",
-        r"\bone\s+of\s+you\b",
+        r"one\s+of\s+you\b",
         r"\bboth\s+of\s+you\b",
         r"\brest\s+of\s+you\b",
     ]

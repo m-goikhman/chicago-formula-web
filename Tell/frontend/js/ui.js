@@ -372,14 +372,28 @@ async function backToCommonDialogue() {
 function populateCaseMaterialsDrawer() {
     const materialsList = document.getElementById('caseMaterialsList');
     const currentStage = window.currentStageNumber || 1;
+    const showAccusationButton = window.caseMaterialsAccusationAvailable === true && currentStage === 1;
     const materials = currentStage === 2
         ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep2_clue_1' }]
-        : [
-            { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-            { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-            { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
-            { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
-        ];
+        : currentStage === 1
+            ? [
+                { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
+                { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
+                { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
+            ]
+            : [
+                { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
+                { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
+                { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
+                { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
+            ];
+
+    // Accusation action is injected dynamically based on backend-driven state.
+    if (showAccusationButton) {
+        if (Array.isArray(materials)) {
+            materials.push({ emoji: '⚖️', name: 'Make an accusation', action: 'accuse_open_menu' });
+        }
+    }
 
     materialsList.innerHTML = '';
     materials.forEach(item => {

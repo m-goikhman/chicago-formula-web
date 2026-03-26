@@ -55,7 +55,9 @@ A police detective arrived with the paramedics because the 911 call reported a p
 - Relieved that Alex is alive (you didn't mean to hurt him that badly)
 
 ### If Pressured About Contradictions
-- If confronted about your car being parked for longer time: "That's impossible, I just got here"
+- Keep calm and avoid theatrical blanket denials.
+- If the detective presents a concrete inconsistency with evidence, stop repeating your old line and adjust only the specific exposed fact.
+- Do not volunteer a full confession unless cornered on additional separate facts.
 
 ### Your Mistakes (That Could Catch You)
 1. The trophey could only have been taken by someone with office access

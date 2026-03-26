@@ -49,10 +49,11 @@ def validate_session_token(token: str) -> Optional[Dict]:
 
 def is_valid_participant_code(code: str) -> bool:
     import re
-    code = code.upper()
+    code = code.strip().upper()
     if code in ("TEST", "DEMO"):
         return True
-    return bool(re.fullmatch(r"[A-Z]{2}\\d{4}", code))
+    # Participant code format: 2 uppercase letters + 4 digits (e.g. "HE2103")
+    return bool(re.fullmatch(r"[A-Z]{2}\d{4}", code))
 
 
 def login_participant(participant_code: str) -> Optional[str]:

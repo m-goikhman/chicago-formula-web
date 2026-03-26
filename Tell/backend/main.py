@@ -217,6 +217,11 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_mode_public,
         handle_menu_evidence,
         handle_clue_examination,
+        handle_make_accusation,
+        handle_accuse_offer_declined,
+        handle_accuse_offer_accepted,
+        handle_accuse_open_menu,
+        handle_reveal_ep1_killer,
         handle_share_usb_with_james,
         handle_language_menu_difficulty,
         handle_difficulty_set,
@@ -256,6 +261,17 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     elif request.action.startswith("examine_clue_"):
         clue_id = request.action.split("_", 2)[2]
         messages = await handle_clue_examination(participant_code, clue_id)
+    elif request.action == "accuse_offer_declined":
+        messages = await handle_accuse_offer_declined(participant_code)
+    elif request.action == "accuse_offer_accepted":
+        messages = await handle_accuse_offer_accepted(participant_code)
+    elif request.action == "accuse_open_menu":
+        messages = await handle_accuse_open_menu(participant_code)
+    elif request.action.startswith("accuse_"):
+        accused_key = request.action.split("_", 1)[1]
+        messages = await handle_make_accusation(participant_code, accused_key)
+    elif request.action == "reveal_ep1_killer":
+        messages = await handle_reveal_ep1_killer(participant_code)
     elif request.action == "share_usb_with_james":
         messages = await handle_share_usb_with_james(participant_code)
     elif request.action == "language_menu_difficulty":
