@@ -372,7 +372,7 @@ async function backToCommonDialogue() {
 function populateCaseMaterialsDrawer() {
     const materialsList = document.getElementById('caseMaterialsList');
     const currentStage = window.currentStageNumber || 1;
-    const showAccusationButton = window.caseMaterialsAccusationAvailable === true && currentStage === 1;
+    const showAccusationButton = currentStage === 1;
     const materials = currentStage === 2
         ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep2_clue_1' }]
         : currentStage === 1
@@ -388,10 +388,10 @@ function populateCaseMaterialsDrawer() {
                 { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
             ];
 
-    // Accusation action is injected dynamically based on backend-driven state.
+    // EP1 simplification: Arrest Order is always available in Case Materials.
     if (showAccusationButton) {
         if (Array.isArray(materials)) {
-            materials.push({ emoji: '⚖️', name: 'Make an accusation', action: 'accuse_open_menu' });
+            materials.push({ emoji: '⚖️', name: 'Arrest Order', action: 'accuse_open_menu' });
         }
     }
 

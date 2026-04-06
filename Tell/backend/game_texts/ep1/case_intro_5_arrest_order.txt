@@ -1,0 +1,3 @@
+Oh, and one more thing — there's an Arrest Order in your case materials. When you're ready, you can open it, choose who you want to accuse, and explain why you think they did it. But take your time. Talk to everyone, look at the evidence. Once you submit it, the case is closed.
+[buttons]
+Ok, let's go|case_intro_next

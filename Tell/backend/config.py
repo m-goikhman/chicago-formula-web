@@ -18,7 +18,8 @@ STAGE_UNLOCK_DELAY_DAYS = 7  # Days between stage unlocks
 
 # Stage configuration
 # intro_files: list of steps for case intro. Each step is a filename (str) or dict with
-#   "file", optional "button", "type" ("system"|"character"), "image", "character".
+#   "file", "type" ("system"|"character"), "image", "character".
+# Buttons should be defined in the corresponding game_texts file via [buttons].
 # Episodes 2+ can have any length (0, 1, …); missing files are skipped without error.
 STAGE_CONFIG = {
     1: {
@@ -45,10 +46,10 @@ STAGE_CONFIG = {
             },
         },
         "intro_files": [
-            {"file": "case_intro_1_call.txt", "type": "character", "character": "nina", "button": "What happened?"},
-            {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina", "button": "Who is there?"},
-            {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina", "image": "ep1/suspects.png", "button": "Start Investigation!"},
-            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina", "image": "ep1/detective_guide.png", "button": "ok, let's go"}
+            {"file": "case_intro_1_call.txt", "type": "character", "character": "nina"},
+            {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina"},
+            {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina", "image": "ep1/suspects.png"},
+            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina", "image": "ep1/detective_guide.png"}
         ],
         "key_information": [
             "Tim stole the USB drive containing Alex's AI trading formula",
@@ -87,7 +88,7 @@ STAGE_CONFIG = {
             }
         },
         "intro_files": [
-            {"file": "case_intro_1.txt", "button": "🔍 Game Menu"}
+            {"file": "case_intro_1.txt"}
         ],
         "key_information": []
     },
@@ -96,7 +97,7 @@ STAGE_CONFIG = {
         "clues_count": 0,  # To be configured when content is created
         "characters": ["tim", "pauline", "fiona", "ronnie"],
         "intro_files": [
-            {"file": "intro.txt", "button": "🔍 Game Menu"}
+            {"file": "intro.txt"}
         ],
         "key_information": []
     },
@@ -105,7 +106,7 @@ STAGE_CONFIG = {
         "clues_count": 0,  # To be configured when content is created
         "characters": ["tim", "pauline", "fiona", "ronnie"],
         "intro_files": [
-            {"file": "intro.txt", "button": "🔍 Game Menu"}
+            {"file": "intro.txt"}
         ],
         "key_information": []
     }

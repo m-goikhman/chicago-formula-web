@@ -5,3 +5,5 @@ The red-haired girl in the pink sweater — that's Fiona McAllister, Alex's girl
 The tall guy standing in the back, gray shirt — Ronnie Snapper, an MBA student. Says he knows Alex from university.
 
 The one with glasses looking at his phone — Tim Kane, Alex's office mate.
+[buttons]
+Start Investigation!|case_intro_next

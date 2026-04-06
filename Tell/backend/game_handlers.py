@@ -1185,12 +1185,12 @@ def initialize_game_state(participant_code: str) -> Dict:
         # Legacy: was used (e.g. Telegram) to count first private talk per suspect; web UI does not read it.
         "suspects_interrogated": set(),
         # Episode 1 accusation mechanic:
-        # - accuse_offer_pending: show "Would you like to accuse?" offer in chat
-        # - accuse_in_case_materials: show "Make an accusation" button in Case Materials drawer
+        # - accuse_offer_pending: legacy offer flow flag (kept for compatibility)
+        # - accuse_in_case_materials: show "Arrest Order" button in Case Materials drawer
         # - accuse_unlocked: allow selecting accused character
         "accuse_offer_pending": False,
-        "accuse_in_case_materials": False,
-        "accuse_unlocked": False,
+        "accuse_in_case_materials": True,
+        "accuse_unlocked": True,
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
         "participant_code": participant_code,
@@ -1291,6 +1291,12 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         state["last_public_responder"] = None
     if "public_followup_lock" not in state:
         state["public_followup_lock"] = None
+
+    # EP1 simplification: Arrest Order is always available from Case Materials.
+    if state.get("current_stage", 1) == 1 and not state.get("game_completed", False):
+        state["accuse_offer_pending"] = False
+        state["accuse_in_case_materials"] = True
+        state["accuse_unlocked"] = True
     
     return state
 
@@ -1756,21 +1762,17 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
     return messages
 
 
-def _normalize_intro_step(entry, step_index: int, total: int):
-    """Normalize intro_files entry (dict or str) to {file, button, type, image, character}."""
-    is_last = step_index >= total - 1
-    default_button = "🔍 Game Menu" if is_last else "Next"
+def _normalize_intro_step(entry):
+    """Normalize intro_files entry (dict or str) to {file, type, image, character}."""
     if isinstance(entry, dict):
         return {
             "file": entry["file"],
-            "button": entry.get("button", default_button),
             "type": entry.get("type", "character"),
             "image": entry.get("image"),
             "character": entry.get("character", "nina"),
         }
     return {
         "file": entry,
-        "button": default_button,
         "type": "character",
         "image": None,
         "character": "nina",
@@ -1811,9 +1813,11 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     else:
         return messages
     
-    entry = _normalize_intro_step(intro_files[step], step, len(intro_files))
+    entry = _normalize_intro_step(intro_files[step])
     raw_content = _load_intro_file_safe(entry["file"], episode)
     content, parsed_buttons = _extract_buttons_from_text(raw_content)
+    default_button_text = "🔍 Game Menu" if step >= len(intro_files) - 1 else "Next"
+    fallback_buttons = [{"text": default_button_text, "action": "case_intro_next"}]
     
     log_role = entry.get("character", "narrator") if entry["type"] == "character" else "narrator"
     log_message(log_role, content, participant_code)
@@ -1823,7 +1827,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
         char_key = entry.get("character", "nina")
         save_message_to_cache(message_id, content, char_key)
         char_data = CHARACTER_DATA.get(char_key, {})
-        buttons = parsed_buttons or [{"text": entry["button"], "action": "case_intro_next"}]
+        buttons = parsed_buttons or fallback_buttons
         msg = {
             "type": "character",
             "character": char_key,
@@ -1838,7 +1842,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
             msg["image"] = entry["image"]
     else:
         save_message_to_cache(message_id, content)
-        buttons = parsed_buttons or [{"text": entry["button"], "action": "case_intro_next"}]
+        buttons = parsed_buttons or fallback_buttons
         msg = {
             "type": "system",
             "content": content,
@@ -2699,35 +2703,6 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
 
     messages.append(clue_message)
     
-    # EP1: show a 2-step accusation flow once all clues are examined:
-    # 1) Offer in chat: "Would you like to make an accusation? (Maybe better talk to people before.)"
-    # 2) If declined -> show accusation button in "Case Materials" drawer.
-    if episode == 1:
-        examined_count = len(state.get("clues_examined", set()))
-        clues_count = get_clues_count_for_stage(episode)
-
-        all_evidence_seen = examined_count >= clues_count
-        has_any_accusation_entry = bool(state.get("accuse_unlocked", False) or state.get("accuse_in_case_materials", False))
-
-        if all_evidence_seen and not has_any_accusation_entry and not state.get("accuse_offer_pending", False):
-            state["accuse_offer_pending"] = True
-            offer_text = (
-                "Ok, you've seen all the evidence. Would you like to make an accusation?\n"
-                "(Maybe better talk to people before.)"
-            )
-            messages.append(
-                {
-                    "type": "system",
-                    "content": offer_text,
-                    "buttons": [
-                        {"text": "Not yet (put accusation in Case Materials)", "action": "accuse_offer_declined"},
-                        {"text": "Yes, make an accusation", "action": "accuse_offer_accepted"},
-                    ],
-                    "show_explain": False,
-                    "ui": {"caseMaterialsAccusationAvailable": False},
-                }
-            )
-
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
     
@@ -2776,11 +2751,6 @@ async def handle_accuse_offer_declined(participant_code: str) -> List[Dict]:
     if episode != 1:
         return [{"type": "system", "content": "Accusation is available in Episode 1."}]
 
-    clues_count = get_clues_count_for_stage(episode)
-    examined_count = len(state.get("clues_examined", set()))
-    if examined_count < clues_count:
-        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
-
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = True
     state["accuse_unlocked"] = False
@@ -2806,11 +2776,6 @@ async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
     if episode != 1:
         return [{"type": "system", "content": "Accusation is available in Episode 1."}]
 
-    clues_count = get_clues_count_for_stage(episode)
-    examined_count = len(state.get("clues_examined", set()))
-    if examined_count < clues_count:
-        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
-
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = True
     state["accuse_unlocked"] = True
@@ -2828,11 +2793,6 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
     episode = state.get("current_stage", 1)
     if episode != 1:
         return [{"type": "system", "content": "Accusation is available in Episode 1."}]
-
-    clues_count = get_clues_count_for_stage(episode)
-    examined_count = len(state.get("clues_examined", set()))
-    if examined_count < clues_count:
-        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
 
     # If this is triggered from private dialogue, move to public first.
     if state.get("mode") == "private":
@@ -2876,11 +2836,8 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     if accused_key not in allowed_targets:
         return [{"type": "error", "content": "Unknown accusation target."}]
 
-    # Require that all clues are examined to unlock the accusation.
-    clues_count = get_clues_count_for_stage(episode)
-    examined_count = len(state.get("clues_examined", set()))
-    if not state.get("accuse_unlocked", False) or examined_count < clues_count:
-        return [{"type": "system", "content": "You need to examine all evidence before making an accusation."}]
+    if not state.get("accuse_unlocked", False):
+        return [{"type": "system", "content": "You need to open Arrest Order from Case Materials first."}]
 
     # Accusations must be made in public mode.
     if state.get("mode") == "private":

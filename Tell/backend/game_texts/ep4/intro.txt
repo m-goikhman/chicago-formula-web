@@ -1,1 +1,3 @@
 Alex Martin is awake. The hospital called this morning — he's ready to talk. This is it. You've heard everyone else's version of the story. Now it's time to hear his. Why did he lie to everyone? Where did the money really come from? And what was he trying to achieve? Go to the hospital. Get the answers.
+[buttons]
+🔍 Game Menu|case_intro_next

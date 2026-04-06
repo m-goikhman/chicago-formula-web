@@ -3,3 +3,5 @@ Hey, it's Sergeant Réyes. I know this is your first case — and I'm sorry I ca
 So here's the situation. A young man was found unconscious in his apartment with a head injury. He's alive, the paramedics just took him to the hospital.
 
 Get there as fast as you can.
+[buttons]
+What happened?|case_intro_next
