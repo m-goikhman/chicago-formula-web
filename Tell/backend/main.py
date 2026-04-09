@@ -228,6 +228,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_language_menu_progress,
         handle_language_menu_back,
         handle_game_text_action,
+        handle_inline_button_action,
     )
     
     # Route actions to appropriate handlers
@@ -284,10 +285,14 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     elif request.action == "language_menu_back":
         messages = await handle_language_menu_back(participant_code)
     else:
-        # Fallback: treat unknown action as a game_texts file path and show it as an in-game message.
-        messages = await handle_game_text_action(participant_code, request.action)
-        if not messages:
-            messages = [{"type": "error", "content": "Unknown action"}]
+        inline_messages = await handle_inline_button_action(participant_code, request.action)
+        if inline_messages is not None:
+            messages = inline_messages
+        else:
+            # Fallback: treat unknown action as a game_texts file path and show it as an in-game message.
+            messages = await handle_game_text_action(participant_code, request.action)
+            if not messages:
+                messages = [{"type": "error", "content": "Unknown action"}]
     
     # Append messages to current episode's chat history so they are restored when returning to this episode
     if messages:

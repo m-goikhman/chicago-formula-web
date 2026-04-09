@@ -1,5 +1,5 @@
 The victim is Alex Martin, 28 — a PhD student in Economics.
-
+------
 He invited some people to his apartment for a Christmas party. When the guests arrived, they found him unconscious in the bathroom.
 [buttons]
 Who is there?|case_intro_next

@@ -326,20 +326,36 @@ function updatePrivateModeControls() {
     const privateCharacterLabel = activeCharacterNameRaw || activeDrawerNameRaw;
     const publicAvatarUrl = buildImageUrl('ep1/suspects.png');
     const privateAvatarUrl = buildImageUrl(currentCharacter?.image);
+    const currentStage = Number(window.currentStageNumber || 1);
+    const navigationBar = document.getElementById('navigationBar');
+    const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
+    const shouldShowEp1PublicAvatar = currentStage === 1 && hasInvestigationStarted;
 
     privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
     if (backToCommonDialogueBtn) {
         backToCommonDialogueBtn.classList.toggle('is-private', isPrivateModeActive);
     }
     if (headerContextAvatar) {
-        const avatarSrc = isPrivateModeActive && privateAvatarUrl ? privateAvatarUrl : publicAvatarUrl;
-        headerContextAvatar.src = avatarSrc || '';
-        headerContextAvatar.alt = isPrivateModeActive
-            ? `${privateCharacterLabel} avatar`
-            : 'Group chat avatar';
+        const avatarSrc = isPrivateModeActive && privateAvatarUrl
+            ? privateAvatarUrl
+            : (shouldShowEp1PublicAvatar ? publicAvatarUrl : null);
+        if (avatarSrc) {
+            headerContextAvatar.src = avatarSrc;
+            headerContextAvatar.style.display = 'block';
+            headerContextAvatar.alt = isPrivateModeActive
+                ? `${privateCharacterLabel} avatar`
+                : 'Group chat avatar';
+        } else {
+            headerContextAvatar.src = '';
+            headerContextAvatar.alt = '';
+            headerContextAvatar.style.display = 'none';
+        }
     }
     if (headerModeContext) {
-        headerModeContext.style.display = isLoginVisible ? 'none' : 'inline-flex';
+        const shouldShowHeaderContext = !isLoginVisible && Boolean(
+            (isPrivateModeActive && privateAvatarUrl) || (!isPrivateModeActive && shouldShowEp1PublicAvatar)
+        );
+        headerModeContext.style.display = shouldShowHeaderContext ? 'inline-flex' : 'none';
         headerModeContext.classList.toggle('is-private', isPrivateModeActive);
         headerModeContext.title = isPrivateModeActive
             ? `Private chat with ${privateCharacterLabel}`

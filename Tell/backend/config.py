@@ -49,7 +49,8 @@ STAGE_CONFIG = {
             {"file": "case_intro_1_call.txt", "type": "character", "character": "nina"},
             {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina"},
             {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina", "image": "ep1/suspects.png"},
-            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina", "image": "ep1/detective_guide.png"}
+            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina", "image": "ep1/detective_guide.png"},
+            {"file": "case_intro_5_arrest_order.txt", "type": "character", "character": "nina"}
         ],
         "key_information": [
             "Tim stole the USB drive containing Alex's AI trading formula",

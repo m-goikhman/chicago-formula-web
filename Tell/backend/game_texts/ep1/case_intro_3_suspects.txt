@@ -1,9 +1,9 @@
 Three people are in the apartment. Nobody leaves until you're done. Here's who you'll be looking at:
-
+-----
 The red-haired girl in the pink sweater — that's Fiona McAllister, Alex's girlfriend. She's the one who called 911.
-
+-----
 The tall guy standing in the back, gray shirt — Ronnie Snapper, an MBA student. Says he knows Alex from university.
-
+------
 The one with glasses looking at his phone — Tim Kane, Alex's office mate.
 [buttons]
 Start Investigation!|case_intro_next

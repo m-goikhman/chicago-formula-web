@@ -18,6 +18,14 @@ from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_
 from game_state_manager import game_state_manager
 from shared.backend.progress_manager import progress_manager
 from ai_services import ask_for_dialogue
+from scripted_messages import (
+    extract_buttons_from_text as _sm_extract_buttons_from_text,
+    split_text_messages as _sm_split_text_messages,
+    extract_scripted_message_blocks as _sm_extract_scripted_message_blocks,
+    resolve_character_sender_key as _sm_resolve_character_sender_key,
+    extract_sender_from_text as _sm_extract_sender_from_text,
+    parse_inline_button_action as _sm_parse_inline_button_action,
+)
 import pytz
 
 logger = logging.getLogger(__name__)
@@ -915,94 +923,30 @@ def resolve_clue_text_path(clue_id: str, episode: int) -> str:
 
 
 def _extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
-    """
-    Parse optional [buttons] section.
-    Button format: "Button text|action_key" (one button per line).
-    """
-    lines = content.splitlines()
-    marker_index = -1
+    return _sm_extract_buttons_from_text(content)
 
-    for index, line in enumerate(lines):
-        if line.strip().lower() == "[buttons]":
-            marker_index = index
-            break
 
-    if marker_index < 0:
-        return content, []
+def _split_text_messages(content: str) -> List[str]:
+    return _sm_split_text_messages(content)
 
-    body_lines = lines[:marker_index]
-    while body_lines and body_lines[-1].strip() in ("", "---"):
-        body_lines.pop()
 
-    buttons: List[Dict[str, str]] = []
-    for raw in lines[marker_index + 1:]:
-        line = raw.strip()
-        if not line:
-            continue
-        text, sep, action = line.partition("|")
-        if not sep:
-            continue
-        text = text.strip()
-        action = action.strip()
-        if text and action:
-            buttons.append({"text": text, "action": action})
-
-    cleaned_content = "\n".join(body_lines).strip()
-    return cleaned_content, buttons
+def _extract_scripted_message_blocks(
+    content: str, default_sender: Optional[str] = None
+) -> List[Tuple[Optional[str], str]]:
+    return _sm_extract_scripted_message_blocks(content, default_sender=default_sender)
 
 
 def _resolve_character_sender_key(raw_sender: str) -> Optional[str]:
-    """Resolve sender key from metadata (key or full character name)."""
-    if not isinstance(raw_sender, str):
-        return None
-
-    normalized = raw_sender.strip().lower()
-    if not normalized:
-        return None
-
-    if normalized == "narrator":
-        return "narrator"
-
-    if normalized in CHARACTER_DATA:
-        return normalized
-
-    for key, data in CHARACTER_DATA.items():
-        full_name = str(data.get("full_name", "")).strip().lower()
-        if full_name and full_name == normalized:
-            return key
-
-    return None
+    return _sm_resolve_character_sender_key(raw_sender)
 
 
 def _extract_sender_from_text(content: str) -> Tuple[Optional[str], str]:
-    """
-    Parse optional sender metadata from the beginning of a file.
-    Supported first non-empty line formats:
-    - [from: james]
-    - [character: James Clark]
-    - [sender: narrator]
-    """
-    lines = content.splitlines()
-    first_nonempty_index = None
-    for index, line in enumerate(lines):
-        if line.strip():
-            first_nonempty_index = index
-            break
-
-    if first_nonempty_index is None:
-        return None, content
-
-    first_line = lines[first_nonempty_index].strip()
-    sender_match = re.match(r"^\[(from|character|sender)\s*:\s*([^\]]+)\]\s*$", first_line, flags=re.IGNORECASE)
-    if not sender_match:
-        return None, content
-
-    sender_key = _resolve_character_sender_key(sender_match.group(2))
-    body_lines = lines[:first_nonempty_index] + lines[first_nonempty_index + 1:]
-    return sender_key, "\n".join(body_lines).strip()
+    return _sm_extract_sender_from_text(content)
 
 
-def resolve_action_text_from_game_texts(action: str, episode: int) -> Optional[Tuple[str, List[Dict[str, str]], str]]:
+def resolve_action_text_from_game_texts(
+    action: str, episode: int
+) -> Optional[Tuple[List[Tuple[Optional[str], str]], List[Dict[str, str]], str]]:
     """
     Resolve button action as a game_texts file and return parsed message payload.
     Supports paths with/without `.txt`, e.g.:
@@ -1029,9 +973,10 @@ def resolve_action_text_from_game_texts(action: str, episode: int) -> Optional[T
 
     sender_key, content_without_sender = _extract_sender_from_text(file_content)
     text, buttons = _extract_buttons_from_text(content_without_sender)
-    if not text:
+    message_blocks = _extract_scripted_message_blocks(text, default_sender=sender_key or "narrator")
+    if not message_blocks:
         return None
-    return text, buttons, (sender_key or "narrator")
+    return message_blocks, buttons, (sender_key or "narrator")
 
 
 def _build_character_message_for_sender(participant_code: str, text: str, sender_key: str) -> Dict:
@@ -1082,11 +1027,36 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
     if not payload:
         return []
 
-    text, buttons, sender_key = payload
-    message = _build_character_message_for_sender(participant_code, text, sender_key)
-    if buttons:
-        message["buttons"] = buttons
-    return [message]
+    message_blocks, buttons, sender_key = payload
+    messages: List[Dict] = []
+    for index, (block_sender, text) in enumerate(message_blocks):
+        message = _build_character_message_for_sender(
+            participant_code, text, block_sender or sender_key
+        )
+        if buttons and index == len(message_blocks) - 1:
+            message["buttons"] = buttons
+        messages.append(message)
+    return messages
+
+
+async def handle_inline_button_action(participant_code: str, action: str) -> Optional[List[Dict]]:
+    """
+    Handle inline button script without creating a separate file.
+    Supported action formats:
+    - inline::message text
+    - inline::sender_key>>message text
+    - inline::Full Character Name>>message text
+    Use `\\n` in action to create line breaks in message text.
+    """
+    parsed = _sm_parse_inline_button_action(action)
+    if parsed is None:
+        return None
+
+    sender_key, message_text = parsed
+    if not message_text:
+        return []
+
+    return [_build_character_message_for_sender(participant_code, message_text, sender_key)]
 
 
 async def handle_test_chat_command(participant_code: str, message_text: str) -> Optional[List[Dict]]:
@@ -1178,6 +1148,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "public_followup_lock": None,
         "waiting_for_word": False,
         "accused_character": None,
+        "accused_wrong_keys": set(),
         "accusation_attempts": 0,
         "reveal_step": 0,
         "custom_reveal_step": 0,
@@ -1297,6 +1268,7 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         state["accuse_offer_pending"] = False
         state["accuse_in_case_materials"] = True
         state["accuse_unlocked"] = True
+        state.setdefault("accused_wrong_keys", set())
     
     return state
 
@@ -1816,44 +1788,49 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     entry = _normalize_intro_step(intro_files[step])
     raw_content = _load_intro_file_safe(entry["file"], episode)
     content, parsed_buttons = _extract_buttons_from_text(raw_content)
+    default_intro_sender = entry.get("character", "nina") if entry["type"] == "character" else "narrator"
+    content_blocks = _extract_scripted_message_blocks(content, default_sender=default_intro_sender)
+    if not content_blocks:
+        content_blocks = [(default_intro_sender, "Continue.")]
     default_button_text = "🔍 Game Menu" if step >= len(intro_files) - 1 else "Next"
     fallback_buttons = [{"text": default_button_text, "action": "case_intro_next"}]
-    
-    log_role = entry.get("character", "narrator") if entry["type"] == "character" else "narrator"
-    log_message(log_role, content, participant_code)
-    
-    message_id = generate_message_id()
-    if entry["type"] == "character":
-        char_key = entry.get("character", "nina")
-        save_message_to_cache(message_id, content, char_key)
-        char_data = CHARACTER_DATA.get(char_key, {})
-        buttons = parsed_buttons or fallback_buttons
-        msg = {
-            "type": "character",
-            "character": char_key,
-            "character_name": char_data.get("full_name", "Nina"),
-            "character_image": char_data.get("image") or "nina.png",
-            "content": content,
-            "message_id": message_id,
-            "show_explain": True,
-            "buttons": buttons
-        }
-        if entry.get("image"):
-            msg["image"] = entry["image"]
-    else:
-        save_message_to_cache(message_id, content)
-        buttons = parsed_buttons or fallback_buttons
-        msg = {
-            "type": "system",
-            "content": content,
-            "message_id": message_id,
-            "show_explain": True,
-            "buttons": buttons
-        }
-        if entry.get("image"):
-            msg["image"] = entry["image"]
-    
-    messages.append(msg)
+
+    buttons = parsed_buttons or fallback_buttons
+    for index, (block_sender, content_part) in enumerate(content_blocks):
+        resolved_intro_sender = block_sender or default_intro_sender
+        log_role = resolved_intro_sender if entry["type"] == "character" else "narrator"
+        log_message(log_role, content_part, participant_code)
+
+        message_id = generate_message_id()
+        is_last_part = index == len(content_blocks) - 1
+        if entry["type"] == "character":
+            char_key = resolved_intro_sender
+            save_message_to_cache(message_id, content_part, char_key)
+            char_data = CHARACTER_DATA.get(char_key, {})
+            msg = {
+                "type": "character",
+                "character": char_key,
+                "character_name": char_data.get("full_name", "Nina"),
+                "character_image": char_data.get("image") or "nina.png",
+                "content": content_part,
+                "message_id": message_id,
+                "show_explain": True,
+            }
+        else:
+            save_message_to_cache(message_id, content_part)
+            msg = {
+                "type": "system",
+                "content": content_part,
+                "message_id": message_id,
+                "show_explain": True,
+            }
+
+        if is_last_part:
+            msg["buttons"] = buttons
+            if entry.get("image"):
+                msg["image"] = entry["image"]
+        messages.append(msg)
+
     await game_state_manager.save_game_state(participant_code, state)
     return messages
 
@@ -2715,6 +2692,8 @@ def _ep1_accusable_suspect_keys(state: Dict) -> List[str]:
     keys = [k for k in EP1_ACCUSATION_SUSPECT_KEYS if k in CHARACTER_DATA]
     if get_stage_location(state, 1) != EP1_PART2_LOCATION:
         keys = [k for k in keys if k != "pauline"]
+    excluded_keys = set(state.get("accused_wrong_keys", set()) or set())
+    keys = [k for k in keys if k not in excluded_keys]
     return keys
 
 
@@ -2755,6 +2734,7 @@ async def handle_accuse_offer_declined(participant_code: str) -> List[Dict]:
     state["accuse_in_case_materials"] = True
     state["accuse_unlocked"] = False
     state["accused_character"] = None
+    state["accused_wrong_keys"] = set()
 
     return [
         {
@@ -2780,6 +2760,7 @@ async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
     state["accuse_in_case_materials"] = True
     state["accuse_unlocked"] = True
     state["accused_character"] = None
+    state["accused_wrong_keys"] = set()
 
     return [_build_ep1_accusation_warning_message(state, include_back=True)]
 
@@ -2803,6 +2784,8 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
         state["accuse_in_case_materials"] = True
         state["accuse_unlocked"] = True
         state["accused_character"] = None
+        if int(state.get("accusation_attempts", 0)) <= 0:
+            state["accused_wrong_keys"] = set()
         return [
             {
                 "type": "system",
@@ -2817,6 +2800,8 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
     state["accuse_offer_pending"] = False
     state["accuse_unlocked"] = True
     state["accused_character"] = None
+    if int(state.get("accusation_attempts", 0)) <= 0:
+        state["accused_wrong_keys"] = set()
 
     return [_build_ep1_accusation_warning_message(state, include_back=True)]
 
@@ -2879,6 +2864,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     # Wrong accusation -> attempts & defense
     state["accusation_attempts"] = int(state.get("accusation_attempts", 0)) + 1
     attempts = state["accusation_attempts"]
+    wrong_keys = set(state.get("accused_wrong_keys", set()) or set())
+    wrong_keys.add(accused_key)
+    state["accused_wrong_keys"] = wrong_keys
 
     # Always show accused character defense text on wrong accusations.
     defense_filename = f"defense_{accused_key}.txt"
@@ -2892,10 +2880,35 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     if attempts < EP1_ACCUSATION_MAX_ATTEMPTS:
         defense_buttons = _build_ep1_accusation_buttons(state, include_back=True)
 
-    defense_msg = {
+    defense_body, defense_file_buttons = _extract_buttons_from_text(defense_text)
+    defense_blocks = _extract_scripted_message_blocks(defense_body, default_sender=accused_key)
+    if not defense_blocks:
+        defense_blocks = [("narrator", defense_text)]
+
+    defense_messages: List[Dict] = []
+    for index, (block_sender, block_text) in enumerate(defense_blocks):
+        msg = _build_character_message_for_sender(
+            participant_code=participant_code,
+            text=block_text,
+            sender_key=block_sender or accused_key,
+        )
+        msg["show_explain"] = False
+        msg["ui"] = {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))}
+        if index == len(defense_blocks) - 1:
+            # Keep runtime buttons (try again / back) as default, but allow override from file.
+            msg["buttons"] = defense_file_buttons or defense_buttons
+        defense_messages.append(msg)
+
+    attempts_left = max(0, EP1_ACCUSATION_MAX_ATTEMPTS - attempts)
+    accused_name = CHARACTER_DATA.get(accused_key, {}).get("full_name", accused_key.title())
+    if attempts_left == 1:
+        attempts_left_text = "**1 more attempt**"
+    else:
+        attempts_left_text = f"**{attempts_left} more attempts**"
+
+    wrong_accusation_msg = {
         "type": "system",
-        "content": defense_text,
-        "buttons": defense_buttons,
+        "content": f"❌ This is not {accused_name}. You have {attempts_left_text} left.",
         "show_explain": False,
         "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
     }
@@ -2915,9 +2928,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             "show_explain": False,
             "ui": {"caseMaterialsAccusationAvailable": False},
         }
-        return [defense_msg, lose_msg]
+        return [*defense_messages, wrong_accusation_msg, lose_msg]
 
-    return [defense_msg]
+    return [*defense_messages, wrong_accusation_msg]
 
 
 async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:
