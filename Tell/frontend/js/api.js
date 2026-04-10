@@ -1010,6 +1010,53 @@ function renderMarkdownForNina(text) {
     return html;
 }
 
+function appendNinaModalMessage(msg = {}) {
+    const messagesContainer = document.getElementById('ninaChatMessages');
+    if (!messagesContainer) return;
+
+    const ninaMessageDiv = document.createElement('div');
+    ninaMessageDiv.className = 'nina-chat-message nina';
+
+    const content = renderMarkdownForNina(msg.content || '');
+    ninaMessageDiv.innerHTML = `
+        <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+        <div class="nina-chat-message-content">${content}</div>
+    `;
+
+    const buttons = Array.isArray(msg.buttons) ? msg.buttons : [];
+    if (buttons.length > 0) {
+        const contentEl = ninaMessageDiv.querySelector('.nina-chat-message-content');
+        if (contentEl) {
+            const buttonRow = document.createElement('div');
+            buttonRow.className = 'button-row';
+            buttonRow.style.marginTop = '10px';
+            const disableButtonRowOnce = () => {
+                if (buttonRow.dataset.disabled === 'true') return;
+                buttonRow.dataset.disabled = 'true';
+                const rowButtons = buttonRow.querySelectorAll('button');
+                rowButtons.forEach((b) => {
+                    b.disabled = true;
+                    b.style.pointerEvents = 'none';
+                });
+                buttonRow.style.display = 'none';
+            };
+            buttons.forEach((btn) => {
+                const button = document.createElement('button');
+                button.textContent = btn.text;
+                button.onclick = () => {
+                    disableButtonRowOnce();
+                    handleAction(btn.action);
+                };
+                buttonRow.appendChild(button);
+            });
+            contentEl.appendChild(buttonRow);
+        }
+    }
+
+    messagesContainer.appendChild(ninaMessageDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
 // Handle Enter key in Nina chat input
 document.addEventListener('DOMContentLoaded', function() {
     const ninaInput = document.getElementById('ninaChatInput');
@@ -1217,5 +1264,6 @@ window.restoreSession = restoreSession;
 window.openNinaChat = openNinaChat;
 window.closeNinaChat = closeNinaChat;
 window.sendNinaMessage = sendNinaMessage;
+window.appendNinaModalMessage = appendNinaModalMessage;
 window.loadEpisodeSelector = loadEpisodeSelector;
 window.switchEpisode = switchEpisode;

@@ -38,6 +38,17 @@ function displayMessage(msg) {
         );
         return null; // Don't add to chat
     }
+
+    if (msg.ui && msg.ui.openNinaChat === true && typeof window.openNinaChat === 'function') {
+        window.openNinaChat();
+    }
+    if (msg.ui && msg.ui.ninaModalMessage === true && typeof window.appendNinaModalMessage === 'function') {
+        window.appendNinaModalMessage(msg);
+        return null;
+    }
+    if (msg.ui && msg.ui.closeNinaChat === true && typeof window.closeNinaChat === 'function') {
+        window.closeNinaChat();
+    }
     
     // Handle different message types
     const type = msg.type || 'bot';
@@ -75,23 +86,7 @@ function displayMessage(msg) {
         ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
         : {};
 
-    const explicitScope = typeof msg.chat_scope === 'string' ? msg.chat_scope.trim().toLowerCase() : '';
-    const activeScope = (typeof window.getActiveChatScope === 'function')
-        ? window.getActiveChatScope()
-        : 'public';
-    const senderKey = String(msg.character || '').trim().toLowerCase();
-    let chatScope = explicitScope || activeScope || 'public';
-    if (!explicitScope && type === 'character') {
-        // Keep only active private character replies in private scope; everything else is public.
-        const expectedPrivateScope = senderKey ? `private:${senderKey}` : '';
-        if (!expectedPrivateScope || !chatScope.startsWith('private:') || chatScope !== expectedPrivateScope) {
-            chatScope = 'public';
-        } else {
-            chatScope = expectedPrivateScope;
-        }
-    } else if (!explicitScope && type !== 'user') {
-        chatScope = 'public';
-    }
+    const chatScope = resolveMessageChatScope(msg, type);
     messageOptions.chatScope = chatScope;
 
     if (type === 'character' && senderAvatar && typeof window.openCharacterProfile === 'function') {
@@ -218,13 +213,83 @@ function displayMessage(msg) {
 }
 
 async function displayMessagesSequentially(messages, delay = 0) {
-    // Display all messages immediately without delay
-    for (const msg of messages) {
+    const interMessageDelay = Number.isFinite(delay) && delay > 0 ? delay : 350;
+
+    for (let i = 0; i < messages.length; i += 1) {
+        const msg = messages[i];
+        const typingCharacter = resolveTypingCharacterFromMessage(msg);
+        if (typingCharacter) {
+            const msgType = msg?.type || 'bot';
+            const typingScope = resolveMessageChatScope(msg, msgType);
+            const typingIndicator = showTypingIndicator(typingCharacter, { chatScope: typingScope });
+            await sleep(getTypingDurationMs(msg));
+            if (typingIndicator && typeof typingIndicator.remove === 'function') {
+                typingIndicator.remove();
+            }
+        }
+
         displayMessage(msg);
+
+        if (i < messages.length - 1) {
+            await sleep(interMessageDelay);
+        }
     }
     if (typeof window.applyChatScopeVisibility === 'function') {
         window.applyChatScopeVisibility();
     }
+}
+
+function resolveMessageChatScope(msg, type = (msg?.type || 'bot')) {
+    const explicitScope = typeof msg?.chat_scope === 'string' ? msg.chat_scope.trim().toLowerCase() : '';
+    const activeScope = (typeof window.getActiveChatScope === 'function')
+        ? window.getActiveChatScope()
+        : 'public';
+    const senderKey = String(msg?.character || '').trim().toLowerCase();
+    let chatScope = explicitScope || activeScope || 'public';
+
+    if (!explicitScope && type === 'character') {
+        // Keep only active private character replies in private scope; everything else is public.
+        const expectedPrivateScope = senderKey ? `private:${senderKey}` : '';
+        if (!expectedPrivateScope || !chatScope.startsWith('private:') || chatScope !== expectedPrivateScope) {
+            chatScope = 'public';
+        } else {
+            chatScope = expectedPrivateScope;
+        }
+    } else if (!explicitScope && type !== 'user') {
+        chatScope = 'public';
+    }
+
+    return chatScope;
+}
+
+function resolveTypingCharacterFromMessage(msg) {
+    if (!msg || msg.type !== 'character') {
+        return null;
+    }
+
+    const fallbackName = msg.character_name || msg.character || 'Character';
+    const senderKey = String(msg.character || '').trim().toLowerCase();
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const matchedStageCharacter = stageCharacters.find((character) => {
+        return (character?.key || '').trim().toLowerCase() === senderKey;
+    });
+
+    const image = msg.character_image || matchedStageCharacter?.image || null;
+    const name = msg.character_name || matchedStageCharacter?.full_name || fallbackName;
+
+    return { name, image, key: senderKey || undefined };
+}
+
+function getTypingDurationMs(msg) {
+    const contentLength = String(msg?.content || '').trim().length;
+    if (!contentLength) {
+        return 450;
+    }
+    return Math.min(1600, 400 + Math.floor(contentLength * 10));
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Export to window

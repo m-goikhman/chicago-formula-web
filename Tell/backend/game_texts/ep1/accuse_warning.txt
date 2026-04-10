@@ -1,3 +1,6 @@
 🤔 Are you sure you want to make an accusation now?
 
 It's better to get all the evidence and speak with every suspect before deciding. You only have *2 chances* to find the correct attacker.
+[buttons]
+I'm sure|accuse_nina_enters
+I need more time to think|show_main_menu

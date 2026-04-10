@@ -217,10 +217,15 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_mode_public,
         handle_menu_evidence,
         handle_clue_examination,
-        handle_make_accusation,
         handle_accuse_offer_declined,
         handle_accuse_offer_accepted,
         handle_accuse_open_menu,
+        handle_accuse_nina_enters,
+        handle_accuse_nina_to_public,
+        handle_accuse_select_target,
+        handle_accuse_explain_cancel,
+        handle_accuse_explain_ready,
+        handle_accuse_reason_message,
         handle_reveal_ep1_killer,
         handle_share_usb_with_james,
         handle_language_menu_difficulty,
@@ -268,9 +273,17 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_accuse_offer_accepted(participant_code)
     elif request.action == "accuse_open_menu":
         messages = await handle_accuse_open_menu(participant_code)
+    elif request.action == "accuse_nina_enters":
+        messages = await handle_accuse_nina_enters(participant_code)
+    elif request.action == "accuse_nina_to_public":
+        messages = await handle_accuse_nina_to_public(participant_code)
+    elif request.action == "accuse_explain_cancel":
+        messages = await handle_accuse_explain_cancel(participant_code)
+    elif request.action == "accuse_explain_ready":
+        messages = await handle_accuse_explain_ready(participant_code)
     elif request.action.startswith("accuse_"):
         accused_key = request.action.split("_", 1)[1]
-        messages = await handle_make_accusation(participant_code, accused_key)
+        messages = await handle_accuse_select_target(participant_code, accused_key)
     elif request.action == "reveal_ep1_killer":
         messages = await handle_reveal_ep1_killer(participant_code)
     elif request.action == "share_usb_with_james":
@@ -312,45 +325,71 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     """Send a message in the game."""
     participant_code = current_user["participant_code"]
     logger.info(f"Message from {participant_code}: {request.text}")
-    
-    from config import GAME_STATE
-    from game_handlers import (
-        handle_private_message,
-        handle_public_message,
-        handle_nina_message,
-        analyze_and_log_user_text,
-        handle_test_chat_command,
-    )
-    
-    state = GAME_STATE.get(participant_code, {})
-    mode = state.get("mode", "public")
 
-    # Hidden test-only chat command(s), e.g. /pauline to jump to Pauline appearance in EP1.
-    command_messages = await handle_test_chat_command(participant_code, request.text)
-    if command_messages is not None:
-        if command_messages:
-            state = GAME_STATE.get(participant_code)
-            if state is not None:
-                episode = state.get("current_stage", 1)
-                episode_messages = state.get("episode_messages", {})
-                episode_messages.setdefault(str(episode), []).extend(command_messages)
-                state["episode_messages"] = episode_messages
-                await game_state_manager.save_game_state(participant_code, state)
-        return {"messages": command_messages}
-    
-    # Automatically analyze user's text for grammar errors (background task)
-    # Don't await to avoid blocking the response
     try:
-        # Run analysis in background (fire and forget)
-        # In production, you might want to use background tasks
-        import asyncio
-        asyncio.create_task(analyze_and_log_user_text(participant_code, request.text))
-    except Exception as e:
-        logger.warning(f"Failed to schedule text analysis: {e}")
-    
-    # Handle private conversation mode
-    if mode == "private":
-        messages = await handle_private_message(participant_code, request.text)
+        from config import GAME_STATE
+        from game_handlers import (
+            handle_private_message,
+            handle_public_message,
+            handle_nina_message,
+            handle_accuse_reason_message,
+            analyze_and_log_user_text,
+            handle_test_chat_command,
+        )
+
+        state = GAME_STATE.get(participant_code, {})
+        mode = state.get("mode", "public")
+
+        # Hidden test-only chat command(s), e.g. /pauline to jump to Pauline appearance in EP1.
+        command_messages = await handle_test_chat_command(participant_code, request.text)
+        if command_messages is not None:
+            if command_messages:
+                state = GAME_STATE.get(participant_code)
+                if state is not None:
+                    episode = state.get("current_stage", 1)
+                    episode_messages = state.get("episode_messages", {})
+                    episode_messages.setdefault(str(episode), []).extend(command_messages)
+                    state["episode_messages"] = episode_messages
+                    await game_state_manager.save_game_state(participant_code, state)
+            return {"messages": command_messages}
+
+        # Automatically analyze user's text for grammar errors (background task)
+        # Don't await to avoid blocking the response
+        try:
+            # Run analysis in background (fire and forget)
+            # In production, you might want to use background tasks
+            import asyncio
+            asyncio.create_task(analyze_and_log_user_text(participant_code, request.text))
+        except Exception as e:
+            logger.warning(f"Failed to schedule text analysis: {e}")
+
+        # Handle private conversation mode
+        if mode == "private":
+            messages = await handle_private_message(participant_code, request.text)
+            if messages:
+                state = GAME_STATE.get(participant_code)
+                if state is not None:
+                    episode = state.get("current_stage", 1)
+                    episode_messages = state.get("episode_messages", {})
+                    episode_messages.setdefault(str(episode), []).extend(messages)
+                    state["episode_messages"] = episode_messages
+                    await game_state_manager.save_game_state(participant_code, state)
+            return {"messages": messages}
+
+        if state.get("accuse_waiting_for_reason", False) and state.get("current_stage", 1) == 1:
+            messages = await handle_accuse_reason_message(participant_code, request.text)
+            if messages:
+                state = GAME_STATE.get(participant_code)
+                if state is not None:
+                    episode = state.get("current_stage", 1)
+                    episode_messages = state.get("episode_messages", {})
+                    episode_messages.setdefault(str(episode), []).extend(messages)
+                    state["episode_messages"] = episode_messages
+                    await game_state_manager.save_game_state(participant_code, state)
+            return {"messages": messages}
+
+        # Handle public mode with director logic
+        messages = await handle_public_message(participant_code, request.text)
         if messages:
             state = GAME_STATE.get(participant_code)
             if state is not None:
@@ -360,18 +399,12 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
                 state["episode_messages"] = episode_messages
                 await game_state_manager.save_game_state(participant_code, state)
         return {"messages": messages}
-    
-    # Handle public mode with director logic
-    messages = await handle_public_message(participant_code, request.text)
-    if messages:
-        state = GAME_STATE.get(participant_code)
-        if state is not None:
-            episode = state.get("current_stage", 1)
-            episode_messages = state.get("episode_messages", {})
-            episode_messages.setdefault(str(episode), []).extend(messages)
-            state["episode_messages"] = episode_messages
-            await game_state_manager.save_game_state(participant_code, state)
-    return {"messages": messages}
+    except Exception as e:
+        logger.exception(f"Unhandled error in /api/game/message for {participant_code}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process game message. Check backend logs for details."
+        )
 
 
 @app.post("/api/game/nina")

@@ -1,5 +1,5 @@
 [from: nina]
 Ok, but why?
 [buttons]
-Actually, I'm not sure (cancel accusation)|inline::nina>>All right, take your time!
-Let me explain you!|
+Actually, I'm not sure (cancel accusation)|accuse_explain_cancel
+Let me explain|accuse_explain_ready

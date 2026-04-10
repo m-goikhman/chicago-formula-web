@@ -1,0 +1,5 @@
+[from: system]
+Nina is now in the main dialogue.
+----
+[from: nina]
+So, who did it?

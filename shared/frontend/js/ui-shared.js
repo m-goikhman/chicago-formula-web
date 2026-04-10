@@ -188,10 +188,11 @@
         messageContent.className = 'message-content';
         messageContent.appendChild(contentWrapper);
 
+        const scopeFromOptions = typeof options.chatScope === 'string' ? options.chatScope.trim() : '';
         const activeScope = (typeof global.getActiveChatScope === 'function')
             ? global.getActiveChatScope()
             : 'public';
-        typingDiv.dataset.chatScope = activeScope || 'public';
+        typingDiv.dataset.chatScope = scopeFromOptions || activeScope || 'public';
 
         typingDiv.appendChild(messageContent);
         chatArea.appendChild(typingDiv);

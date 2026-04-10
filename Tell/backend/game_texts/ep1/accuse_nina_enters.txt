@@ -1,0 +1,4 @@
+[from: nina]
+Ok, so you're ready to do this! Turn the speaker on — I want to hear what they say.
+[buttons]
+Ok|accuse_nina_to_public
