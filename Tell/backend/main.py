@@ -376,7 +376,16 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
                     await game_state_manager.save_game_state(participant_code, state)
             return {"messages": messages}
 
-        if state.get("accuse_waiting_for_reason", False) and state.get("current_stage", 1) == 1:
+        # During EP1 accusation rationale step, keep all free-text inside the
+        # accusation pipeline. This includes the explicit "let me explain why"
+        # path and the case where player types rationale immediately.
+        if (
+            state.get("current_stage", 1) == 1
+            and (
+                state.get("accuse_waiting_for_reason", False)
+                or bool(str(state.get("accuse_pending_target") or "").strip())
+            )
+        ):
             messages = await handle_accuse_reason_message(participant_code, request.text)
             if messages:
                 state = GAME_STATE.get(participant_code)
@@ -615,7 +624,8 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         "available_stages": available_stages,
         "current_stage": current_stage,
         "stages_completed": stages_completed,
-        "stages_info": stages_info
+        "stages_info": stages_info,
+        "game_completed": bool(GAME_STATE.get(participant_code, {}).get("game_completed", False)),
     }
 
 

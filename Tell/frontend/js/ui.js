@@ -129,7 +129,7 @@ function showClueDetail(clueId, content, imageUrl, clueButtons = [], buttonNote 
         clueButtons.forEach(btn => {
             const button = document.createElement('button');
             button.textContent = btn.text;
-            button.onclick = () => handleAction(btn.action);
+            button.onclick = () => handleAction(btn.action, true, btn.text);
             buttonRow.appendChild(button);
         });
 
@@ -192,11 +192,20 @@ function populateCharactersDrawer() {
         : []
     ).concat(privateCharacters);
 
+    const ep1CaseClosed = Number(window.currentStageNumber || 1) === 1 && Boolean(window.ep1GameCompleted);
+
     charactersList.innerHTML = '';
     list.forEach(char => {
         const item = document.createElement('div');
         item.className = 'drawer-item';
         item.classList.add(char.action === 'mode_public' ? 'chat-target-public' : 'chat-target-private');
+        const isPrivateLocked = ep1CaseClosed && char.action !== 'mode_public';
+        if (isPrivateLocked) {
+            item.classList.add('drawer-item-disabled');
+            item.style.opacity = '0.45';
+            item.style.pointerEvents = 'none';
+            item.setAttribute('aria-disabled', 'true');
+        }
         let iconHTML = '';
         const characterImageUrl = buildImageUrl(char.image);
         if (characterImageUrl) {
@@ -212,24 +221,26 @@ function populateCharactersDrawer() {
                 <div class="status">${char.status}</div>
             </div>
         `;
-        item.onclick = async () => {
-            document.querySelectorAll('.drawer-item').forEach(el => el.classList.remove('active'));
-            item.classList.add('active');
-            
-            if (char.name === 'Everyone') {
-                currentCharacter = null;
-            } else {
-                const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
-                    ? String(char.action).slice(5).toLowerCase()
-                    : null;
-                currentCharacter = { name: char.name, image: char.image, key: keyFromAction };
-            }
-            updatePrivateModeControls();
-            
-            const isMobile = window.innerWidth <= 767;
-            if (isMobile) closeLeftDrawer();
-            await handleAction(char.action, !isMobile);
-        };
+        if (!isPrivateLocked) {
+            item.onclick = async () => {
+                document.querySelectorAll('.drawer-item').forEach(el => el.classList.remove('active'));
+                item.classList.add('active');
+                
+                if (char.name === 'Everyone') {
+                    currentCharacter = null;
+                } else {
+                    const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
+                        ? String(char.action).slice(5).toLowerCase()
+                        : null;
+                    currentCharacter = { name: char.name, image: char.image, key: keyFromAction };
+                }
+                updatePrivateModeControls();
+                
+                const isMobile = window.innerWidth <= 767;
+                if (isMobile) closeLeftDrawer();
+                await handleAction(char.action, !isMobile);
+            };
+        }
         charactersList.appendChild(item);
     });
 
@@ -330,6 +341,7 @@ function updatePrivateModeControls() {
     const navigationBar = document.getElementById('navigationBar');
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
     const shouldShowEp1PublicAvatar = currentStage === 1 && hasInvestigationStarted;
+    const ep1CaseClosed = currentStage === 1 && Boolean(window.ep1GameCompleted);
 
     privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
     if (backToCommonDialogueBtn) {
@@ -362,9 +374,17 @@ function updatePrivateModeControls() {
             : 'Public chat (Everyone)';
     }
     if (inputElement) {
-        inputElement.placeholder = isPrivateModeActive
-            ? `Message ${privateCharacterLabel}...`
-            : 'Type a message to everyone...';
+        if (ep1CaseClosed && isInputVisible) {
+            inputElement.disabled = true;
+            inputElement.placeholder = 'The case is closed — you can read the chat above.';
+        } else {
+            inputElement.disabled = false;
+            if (isInputVisible) {
+                inputElement.placeholder = isPrivateModeActive
+                    ? `Message ${privateCharacterLabel}...`
+                    : 'Type a message to everyone...';
+            }
+        }
     }
     if (mainChatArea) {
         mainChatArea.classList.toggle('chat-mode-private', isPrivateModeActive);
@@ -404,8 +424,9 @@ function populateCaseMaterialsDrawer() {
                 { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
             ];
 
-    // EP1 simplification: Arrest Order is always available in Case Materials.
-    if (showAccusationButton) {
+    // EP1 simplification: Arrest Order is available until the episode is definitively closed.
+    const ep1Finished = showAccusationButton && Boolean(window.ep1GameCompleted);
+    if (showAccusationButton && !ep1Finished) {
         if (Array.isArray(materials)) {
             materials.push({ emoji: '⚖️', name: 'Arrest Order', action: 'accuse_open_menu' });
         }
@@ -605,6 +626,12 @@ function closeCharacterProfile() {
     document.body.style.overflow = '';
 }
 
+function applyEp1CaseClosedUi() {
+    if (typeof populateCharactersDrawer === 'function') populateCharactersDrawer();
+    if (typeof populateCaseMaterialsDrawer === 'function') populateCaseMaterialsDrawer();
+    if (typeof updatePrivateModeControls === 'function') updatePrivateModeControls();
+}
+
 // Export to window
 window.toggleLeftDrawer = toggleLeftDrawer;
 window.openLeftDrawer = openLeftDrawer;
@@ -637,3 +664,4 @@ window.renderTypewriterText = renderTypewriterText;
 window.autoResizeTextarea = autoResizeTextarea;
 window.getActiveChatScope = getActiveChatScope;
 window.applyChatScopeVisibility = applyChatScopeVisibility;
+window.applyEp1CaseClosedUi = applyEp1CaseClosedUi;

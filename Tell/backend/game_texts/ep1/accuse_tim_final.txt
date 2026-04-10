@@ -1,0 +1,15 @@
+What do you want me to say? It was me. Are you happy now?
+-----
+I owe Ronnie a lot of money. I couldn't pay.
+------
+I heard Alex and Pauline talking about some formula. How much money it was making. I thought if I could get that drive, I could fix everything.
+-----
+I went to the office first, but Pauline got there before me. I waited in my car until Pauline left. Went in. Alex was in the bathroom. I hit him. I took the drive.
+------
+I wasn't trying to kill him. I just needed the drive.
+------
+And then I couldn't even get into my own car. The keys were inside. I was standing there in the snow like an idiot when Ronnie showed up.
+-----
+I have the drive. Here. Take it.
+[buttons]
+Take the drive|inline::nina>>Ok, take it and keep in the case materials!

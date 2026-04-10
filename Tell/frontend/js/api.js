@@ -340,9 +340,17 @@ async function loadGame() {
     }
 }
 
-async function handleAction(action, closeDrawersOnSuccess = true) {
+async function handleAction(action, closeDrawersOnSuccess = true, selectedOptionText = '') {
     console.log('Handling action:', action);
     const normalizedAction = String(action || '').trim().toLowerCase();
+    const normalizedSelectedOptionText = String(selectedOptionText || '').trim();
+
+    if (normalizedAction.startsWith('accuse_') && normalizedSelectedOptionText) {
+        const currentChatScope = (typeof window.getActiveChatScope === 'function')
+            ? window.getActiveChatScope()
+            : 'public';
+        addMessage('user', 'You', normalizedSelectedOptionText, null, null, false, { chatScope: currentChatScope });
+    }
 
     if (normalizedAction === 'mode_public') {
         currentCharacter = null;
@@ -667,6 +675,11 @@ async function sendMessage() {
             return;
         }
 
+        if (typingMsg) {
+            typingMsg.remove();
+            typingMsg = null;
+        }
+
         if (data && data.messages && Array.isArray(data.messages)) {
             await displayMessagesSequentially(data.messages);
         } else if (data && data.message) {
@@ -682,6 +695,9 @@ async function sendMessage() {
 
 async function explainWord(wordOrPhrase, originalText) {
     try {
+        const activeChatScope = (typeof window.getActiveChatScope === 'function')
+            ? window.getActiveChatScope()
+            : 'public';
         const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/explain', {
             action: 'word',
             word: wordOrPhrase,
@@ -701,8 +717,15 @@ async function explainWord(wordOrPhrase, originalText) {
         }
 
         if (data && data.messages && data.messages.length > 0) {
+            const scopedMessages = data.messages.map((msg) => {
+                if (!msg || typeof msg !== 'object') {
+                    return msg;
+                }
+                const hasExplicitScope = typeof msg.chat_scope === 'string' && msg.chat_scope.trim().length > 0;
+                return hasExplicitScope ? msg : { ...msg, chat_scope: activeChatScope };
+            });
             window.getSelection().removeAllRanges();
-            await displayMessagesSequentially(data.messages, 0);
+            await displayMessagesSequentially(scopedMessages, 0);
         } else if (data && data.error) {
             addMessage('error', 'Error', data.error);
         }
@@ -1106,6 +1129,7 @@ async function loadEpisodeSelector() {
         const currentStage = data.current_stage || 1;
         const availableStages = data.available_stages || [1];
         window.currentStageNumber = currentStage;
+        window.ep1GameCompleted = Boolean(data.game_completed);
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
@@ -1114,6 +1138,7 @@ async function loadEpisodeSelector() {
         window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
         if (window.populateCharactersDrawer) window.populateCharactersDrawer();
         if (window.populateCaseMaterialsDrawer) window.populateCaseMaterialsDrawer();
+        if (typeof window.applyEp1CaseClosedUi === 'function') window.applyEp1CaseClosedUi();
         if (window.renderLocationSwitcher) {
             window.renderLocationSwitcher(currentStageInfo || { stage: currentStage, locations: [] });
         }

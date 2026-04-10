@@ -87,14 +87,13 @@
         const contentWrapper = document.createElement('div');
         contentWrapper.className = 'message-content-wrapper';
 
-        const renderedContent = typewriterStyle ? renderTypewriterText(content) : renderMarkdown(content);
-        contentWrapper.innerHTML = `
-            ${options.hideSender ? '' : `<div class="message-sender">${sender}</div>`}
-            <div class="message-text">${renderedContent}</div>
-        `;
-
         const clueImageUrl = buildImageUrl(imageUrl);
-        if (clueImageUrl) {
+        const imageFirst = Boolean(options.imageFirst);
+
+        function appendMessageImage() {
+            if (!clueImageUrl) {
+                return;
+            }
             const imageDiv = document.createElement('div');
             const img = document.createElement('img');
             img.src = clueImageUrl;
@@ -113,6 +112,20 @@
             };
             imageDiv.appendChild(img);
             contentWrapper.appendChild(imageDiv);
+        }
+
+        if (imageFirst) {
+            appendMessageImage();
+        }
+
+        const renderedContent = typewriterStyle ? renderTypewriterText(content) : renderMarkdown(content);
+        contentWrapper.insertAdjacentHTML('beforeend', `
+            ${options.hideSender ? '' : `<div class="message-sender">${sender}</div>`}
+            <div class="message-text">${renderedContent}</div>
+        `);
+
+        if (!imageFirst) {
+            appendMessageImage();
         }
 
         const messageContent = document.createElement('div');
@@ -159,6 +172,10 @@
             console.warn(`Chat area #${chatAreaId} not found`);
             return null;
         }
+
+        // Keep only one typing indicator per chat area to avoid duplicates.
+        const existingTypingIndicators = chatArea.querySelectorAll('.typing-message');
+        existingTypingIndicators.forEach((indicator) => indicator.remove());
 
         const typingDiv = document.createElement('div');
         typingDiv.className = 'message character typing-message';

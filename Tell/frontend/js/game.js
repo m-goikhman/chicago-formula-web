@@ -89,6 +89,10 @@ function displayMessage(msg) {
     const chatScope = resolveMessageChatScope(msg, type);
     messageOptions.chatScope = chatScope;
 
+    if (msg.ui && msg.ui.imageFirst === true) {
+        messageOptions.imageFirst = true;
+    }
+
     if (type === 'character' && senderAvatar && typeof window.openCharacterProfile === 'function') {
         messageOptions.onAvatarClick = () => window.openCharacterProfile({
             name: sender,
@@ -111,6 +115,18 @@ function displayMessage(msg) {
         window.caseMaterialsAccusationAvailable = msg.ui.caseMaterialsAccusationAvailable;
         if (typeof window.populateCaseMaterialsDrawer === 'function') {
             window.populateCaseMaterialsDrawer();
+        }
+    }
+    if (msg.ui && msg.ui.ep1GameCompleted === true) {
+        window.ep1GameCompleted = true;
+        if (typeof currentCharacter !== 'undefined') {
+            currentCharacter = null;
+        }
+        if (typeof window.setActiveCharacterDrawerItem === 'function') {
+            window.setActiveCharacterDrawerItem(null);
+        }
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
         }
     }
     if (msg.ui && msg.ui.switchToPublicMode === true) {
@@ -190,7 +206,7 @@ function displayMessage(msg) {
             } else {
                 button.onclick = () => {
                     disableButtonRowOnce();
-                    handleAction(btn.action);
+                    handleAction(btn.action, true, btn.text);
                 };
             }
             buttonRow.appendChild(button);
@@ -213,10 +229,27 @@ function displayMessage(msg) {
 }
 
 async function displayMessagesSequentially(messages, delay = 0) {
+    const queueMessages = Array.isArray(messages) ? [...messages] : [];
+    window.__tellMessageRenderQueue = window.__tellMessageRenderQueue || Promise.resolve();
+
+    const renderTask = async () => {
+        await runDisplayMessagesSequentially(queueMessages, delay);
+    };
+
+    const nextRun = window.__tellMessageRenderQueue.then(renderTask, renderTask);
+    window.__tellMessageRenderQueue = nextRun.catch(() => {});
+    return nextRun;
+}
+
+async function runDisplayMessagesSequentially(messages, delay = 0) {
     const interMessageDelay = Number.isFinite(delay) && delay > 0 ? delay : 350;
 
     for (let i = 0; i < messages.length; i += 1) {
         const msg = messages[i];
+        const preDelay = Number(msg?.ui?.preDisplayDelayMs);
+        if (Number.isFinite(preDelay) && preDelay > 0) {
+            await sleep(preDelay);
+        }
         const typingCharacter = resolveTypingCharacterFromMessage(msg);
         if (typingCharacter) {
             const msgType = msg?.type || 'bot';
