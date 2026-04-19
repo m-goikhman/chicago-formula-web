@@ -3098,6 +3098,33 @@ def _build_ep1_accusation_buttons(state: Dict, include_back: bool = True) -> Lis
     return buttons
 
 
+def _build_ep1_accuse_tim_finale_messages(participant_code: str) -> List[Dict]:
+    """Tim's scripted confession + Take the drive CTA (correct EP1 accusation or Nina-assisted finale)."""
+    accused_key = EP1_ACCUSATION_CORRECT_KEY
+    win_text = load_system_prompt(get_game_text_path("accuse_tim_final.txt", 1))
+    win_body, win_buttons = _extract_buttons_from_text(win_text)
+    win_blocks = _extract_scripted_message_blocks(win_body, default_sender=accused_key)
+    if not win_blocks:
+        win_blocks = [("narrator", win_text)]
+
+    win_messages: List[Dict] = []
+    for _index, (block_sender, block_text) in enumerate(win_blocks):
+        msg = _build_character_message_for_sender(
+            participant_code=participant_code,
+            text=block_text,
+            sender_key=block_sender or accused_key,
+        )
+        msg["show_explain"] = False
+        msg["ui"] = {"caseMaterialsAccusationAvailable": False}
+        win_messages.append(msg)
+
+    if win_buttons and win_messages:
+        win_messages[-1]["buttons"] = win_buttons
+        win_messages[-1]["image"] = "ep1/plane-drive.png"
+
+    return win_messages
+
+
 def _build_ep1_accusation_warning_message(state: Dict) -> Dict:
     """Build the "Are you sure?" accusation warning; buttons come from accuse_warning.txt."""
     raw = load_system_prompt(get_game_text_path("accuse_warning.txt", 1))
@@ -3188,10 +3215,7 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
             {
                 "type": "system",
                 "content": "You already used all accusation attempts.",
-                "buttons": [
-                    {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
-                    {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
-                ],
+                "buttons": [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}],
                 "show_explain": False,
                 "ui": {"caseMaterialsAccusationAvailable": False},
             }
@@ -3246,10 +3270,7 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             {
                 "type": "system",
                 "content": "You already used all accusation attempts.",
-                "buttons": [
-                    {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
-                    {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
-                ],
+                "buttons": [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}],
                 "show_explain": False,
                 "ui": {"caseMaterialsAccusationAvailable": False},
             }
@@ -3293,31 +3314,8 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         state["accuse_unlocked"] = False
         state["accuse_in_case_materials"] = False
 
-        win_text = load_system_prompt(get_game_text_path("accuse_tim_final.txt", 1))
-        win_body, win_buttons = _extract_buttons_from_text(win_text)
-        win_blocks = _extract_scripted_message_blocks(win_body, default_sender=accused_key)
-        if not win_blocks:
-            win_blocks = [("narrator", win_text)]
-
-        win_messages: List[Dict] = []
-        for _index, (block_sender, block_text) in enumerate(win_blocks):
-            msg = _build_character_message_for_sender(
-                participant_code=participant_code,
-                text=block_text,
-                sender_key=block_sender or accused_key,
-            )
-            msg["show_explain"] = False
-            msg["ui"] = {"caseMaterialsAccusationAvailable": False}
-            win_messages.append(msg)
-
-        # [buttons] in accuse_tim_final.txt belong to Tim's last line (e.g. "Take the drive").
-        if win_buttons and win_messages:
-            win_messages[-1]["buttons"] = win_buttons
-            # Same USB visual as clue 4 (Case Materials) — shown on Tim's final line and in the clue drawer.
-            win_messages[-1]["image"] = "ep1/plane-drive.png"
-
         # Win outro chain: USB -> outro_nina.txt -> narrator (handle_ep1_outro_narrator) -> questionnaire (outro_questionnaire).
-        return win_messages
+        return _build_ep1_accuse_tim_finale_messages(participant_code)
 
     # Wrong accusation -> attempts & defense
     max_attempts = _get_ep1_accusation_max_attempts(state)
@@ -3360,7 +3358,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
 
     attempts_left = max(0, max_attempts - attempts)
     accused_name = CHARACTER_DATA.get(accused_key, {}).get("full_name", accused_key.title())
-    if attempts_left == 1:
+    if attempts_left == 0:
+        attempts_left_text = "**no attempts**"
+    elif attempts_left == 1:
         attempts_left_text = "**1 more attempt**"
     else:
         attempts_left_text = f"**{attempts_left} more attempts**"
@@ -3372,30 +3372,33 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
     }
 
-    # If attempts are exhausted -> lose outro, then questionnaire (same pipeline as a correct accusation).
+    # If attempts are exhausted -> Nina nudge, then Tim's finale (same USB / outro chain as a correct accusation).
     if attempts >= max_attempts:
         state["game_completed"] = True
         state["accuse_unlocked"] = False
         state["accuse_in_case_materials"] = False
-        outro_lose = load_system_prompt(get_game_text_path("outro_lose.txt", 1))
-        lose_msg = {
-            "type": "system",
-            "content": outro_lose,
-            "show_explain": False,
-            "ui": {"caseMaterialsAccusationAvailable": False},
-        }
-        outro_q = _ep1_outro_questionnaire_message()
-        outro_q["buttons"] = [
-            {"text": "Reveal who really did it", "action": "reveal_ep1_killer"},
-            {"text": "⬅️ Back to Main Menu", "action": "show_main_menu"},
-        ]
-        return [*defense_messages, wrong_accusation_msg, lose_msg, outro_q]
+        state["accused_character"] = EP1_ACCUSATION_CORRECT_KEY
+        nina_hint_text = _load_game_text_optional("outro_lose_nina_hint.txt", 1)
+        nina_hint_body, _nina_hint_buttons = _extract_buttons_from_text(nina_hint_text or "")
+        nina_hint_blocks = _extract_scripted_message_blocks(nina_hint_body, default_sender="nina")
+        nina_hint_messages: List[Dict] = []
+        for _idx, (block_sender, block_text) in enumerate(nina_hint_blocks):
+            n_msg = _build_character_message_for_sender(
+                participant_code=participant_code,
+                text=block_text,
+                sender_key=block_sender or "nina",
+            )
+            n_msg["show_explain"] = False
+            n_msg["ui"] = {"caseMaterialsAccusationAvailable": False}
+            nina_hint_messages.append(n_msg)
+        tim_finale = _build_ep1_accuse_tim_finale_messages(participant_code)
+        return [*defense_messages, wrong_accusation_msg, *nina_hint_messages, *tim_finale]
 
     return [*defense_messages, wrong_accusation_msg]
 
 
 async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:
-    """Reveal final killer + supporting evidence for EP1."""
+    """Legacy: concatenate EP1 `reveal_*.txt` (kept for API compatibility; normal play uses Tim finale)."""
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]

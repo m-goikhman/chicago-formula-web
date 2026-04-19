@@ -98,7 +98,7 @@ Route: `POST /api/game/action` → `request.action`.
 
 | action | Purpose |
 |--------|---------|
-| `reveal_ep1_killer` | Reveal the killer in EP1. |
+| `reveal_ep1_killer` | Legacy: dumps `reveal_*.txt` in EP1. Not used in normal play (failed accusations go to Nina → Tim finale instead). |
 | `share_usb_with_james` | Show USB to James (EP2). |
 
 ### Language difficulty menu
