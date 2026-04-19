@@ -55,6 +55,12 @@ EP1_ACCUSATION_SUSPECT_KEYS = ["tim", "ronnie", "fiona", "pauline"]
 EP1_ACCUSATION_CORRECT_KEY = "tim"
 EP1_ACCUSATION_MAX_ATTEMPTS_AFTER_PAULINE = 2
 EP1_ACCUSATION_MAX_ATTEMPTS_BEFORE_PAULINE = 1
+EP1_ACCUSATION_REASON_MIN_WORDS = 4
+
+
+def _word_count_whitespace(text: str) -> int:
+    """Count whitespace-separated tokens (punctuation stays attached to words)."""
+    return len([w for w in (text or "").strip().split() if w])
 
 
 def _is_test_participant(participant_code: str) -> bool:
@@ -1175,7 +1181,7 @@ async def handle_accuse_explain_ready(participant_code: str) -> List[Dict]:
     ]
 
 
-async def handle_accuse_reason_message(participant_code: str, _message_text: str) -> List[Dict]:
+async def handle_accuse_reason_message(participant_code: str, message_text: str) -> List[Dict]:
     """Use player's next public message as rationale and execute pending accusation."""
     state = GAME_STATE.get(participant_code)
     if not state:
@@ -1185,6 +1191,20 @@ async def handle_accuse_reason_message(participant_code: str, _message_text: str
     if not pending_target:
         state["accuse_waiting_for_reason"] = False
         return [{"type": "system", "content": "Choose who you want to accuse first."}]
+
+    if _word_count_whitespace(message_text) < EP1_ACCUSATION_REASON_MIN_WORDS:
+        state["accuse_waiting_for_reason"] = True
+        return [
+            {
+                "type": "character",
+                "character": "nina",
+                "character_name": CHARACTER_DATA.get("nina", {}).get("full_name", "Nina"),
+                "character_image": CHARACTER_DATA.get("nina", {}).get("image"),
+                "content": "Huh? What do you mean?",
+                "show_explain": False,
+                "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
+            }
+        ]
 
     state["accuse_waiting_for_reason"] = False
     state["accuse_pending_target"] = None

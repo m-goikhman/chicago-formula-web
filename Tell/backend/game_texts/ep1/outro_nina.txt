@@ -1,6 +1,8 @@
 Good work, Detective. Congratulations!
 ----
-The hospital says Alex is stable for now — that's the best news we're getting tonight.
+The drive goes into evidence. We'll take a proper look after the holidays; right now the lab is locked up and half the city is on vacation.
+----
+Also, some good news for Fiona: the hospital says Alex is stable for now.
 ----
 Now, go and get some rest. I'll see you in a week.
 [buttons]

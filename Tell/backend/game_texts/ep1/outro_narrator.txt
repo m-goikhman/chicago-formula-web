@@ -2,7 +2,7 @@ Outside, Chicago's tall buildings still rose into the fog. The windows still glo
 
 Somewhere in it, Alex was in a hospital bed, Fiona on her way there. Tim in the back of a patrol car. Nina still at the police station, with all the paperwork and liters of coffee.
 
-The little airplane-shaped drive was safe at the station now, in a box with the other evidence. You wonder what's on it -- maybe, you'll find it out after the winter break.
+The little airplane-shaped drive is safe at the station now, in a box with the other evidence. You wonder what's on it -- maybe, you'll find it out after the winter break.
 
 [buttons]
-Maybe I will|outro_questionnaire
+For now, the job is done|outro_questionnaire
