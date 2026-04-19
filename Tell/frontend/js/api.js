@@ -8,6 +8,28 @@ function shouldShowNinaFloatingButton() {
     return (window.currentStageNumber || 1) === 1;
 }
 
+function hasNinaPublicDialogueStarted() {
+    return Boolean(window.ninaPublicDialogueStarted);
+}
+
+function syncNinaFloatingButtonVisibility() {
+    const ninaButton = document.getElementById('ninaFloatingButton');
+    const navigationBar = document.getElementById('navigationBar');
+    const inputArea = document.getElementById('inputArea');
+    if (!ninaButton) return;
+
+    const navigationVisible = Boolean(navigationBar && navigationBar.style.display !== 'none');
+    const inputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
+    // Intro is considered finished once either the bottom input is shown
+    // or the navigation bar is already unlocked.
+    const introCompleted = inputVisible || navigationVisible || Boolean(window.inputAreaShown);
+    const shouldShow = shouldShowNinaFloatingButton()
+        && introCompleted
+        && !window.ep1GameCompleted
+        && !hasNinaPublicDialogueStarted();
+    ninaButton.style.display = shouldShow ? 'flex' : 'none';
+}
+
 function isUnauthorizedResponse(response) {
     return response && response.status === 401;
 }
@@ -170,10 +192,99 @@ function setNavigationUnlocked(unlocked) {
     }
 }
 
+const TELL_CHAT_SCROLL_PREFIX = 'tell_chat_scroll_v1:';
+
+function tellChatScrollStorageKey() {
+    const code = (participantCode || localStorage.getItem('participantCode') || '').trim().toUpperCase();
+    return code ? `${TELL_CHAT_SCROLL_PREFIX}${code}` : '';
+}
+
+function clearTellChatScrollPosition() {
+    const key = tellChatScrollStorageKey();
+    if (key) {
+        sessionStorage.removeItem(key);
+    }
+}
+
+function saveTellChatScrollPosition() {
+    const key = tellChatScrollStorageKey();
+    if (!key) {
+        return;
+    }
+    const chatArea = document.getElementById('chatArea');
+    if (!chatArea) {
+        return;
+    }
+    const max = chatArea.scrollHeight - chatArea.clientHeight;
+    if (max <= 0) {
+        sessionStorage.setItem(key, JSON.stringify({ atBottom: true }));
+        return;
+    }
+    const atBottom = chatArea.scrollTop >= max - 8;
+    if (atBottom) {
+        sessionStorage.setItem(key, JSON.stringify({ atBottom: true }));
+        return;
+    }
+    sessionStorage.setItem(key, JSON.stringify({ atBottom: false, ratio: chatArea.scrollTop / max }));
+}
+
+function restoreTellChatScrollPosition() {
+    const key = tellChatScrollStorageKey();
+    const chatArea = document.getElementById('chatArea');
+    if (!chatArea) {
+        return;
+    }
+    if (!key) {
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return;
+    }
+    let parsed = null;
+    try {
+        parsed = JSON.parse(sessionStorage.getItem(key) || '');
+    } catch {
+        parsed = null;
+    }
+    const max = Math.max(0, chatArea.scrollHeight - chatArea.clientHeight);
+    if (!parsed || parsed.atBottom) {
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return;
+    }
+    if (typeof parsed.ratio === 'number' && Number.isFinite(parsed.ratio)) {
+        chatArea.scrollTop = Math.min(max, Math.max(0, Math.round(parsed.ratio * max)));
+    } else {
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+}
+
+let tellChatScrollSaveTimer = null;
+function scheduleTellChatScrollSave() {
+    if (tellChatScrollSaveTimer) {
+        clearTimeout(tellChatScrollSaveTimer);
+    }
+    tellChatScrollSaveTimer = setTimeout(() => {
+        tellChatScrollSaveTimer = null;
+        saveTellChatScrollPosition();
+    }, 200);
+}
+
+function initTellChatScrollPersistence() {
+    const chatArea = document.getElementById('chatArea');
+    if (!chatArea || chatArea.dataset.tellScrollListen === '1') {
+        return;
+    }
+    chatArea.dataset.tellScrollListen = '1';
+    chatArea.addEventListener('scroll', scheduleTellChatScrollSave, { passive: true });
+}
+
+window.addEventListener('pagehide', () => {
+    saveTellChatScrollPosition();
+});
+
 function updateNavigationBarVisibility() {
     const navigationBar = document.getElementById('navigationBar');
     if (!navigationBar) return;
     navigationBar.style.display = isNavigationUnlocked() ? 'flex' : 'none';
+    syncNinaFloatingButtonVisibility();
 }
 
 function resolveCharacterFromTalkAction(action) {
@@ -253,6 +364,8 @@ async function login() {
             
             // Show navigation only after first main-menu choice
             updateNavigationBarVisibility();
+            window.ninaPublicDialogueStarted = false;
+            syncNinaFloatingButtonVisibility();
             
             // Show Nina floating button after investigation starts
             // It will be shown when investigation actually begins
@@ -327,16 +440,22 @@ async function loadGame() {
         // Remove the loading message
         removeLoadingMessage();
         
-        // Display all messages from backend
+        // Display all messages from backend (instant: full history from server, e.g. after reload)
         if (data.messages && Array.isArray(data.messages)) {
-            await displayMessagesSequentially(data.messages);
+            await displayMessagesSequentially(data.messages, 0, { instant: true });
+            restoreTellChatScrollPosition();
+            requestAnimationFrame(() => {
+                restoreTellChatScrollPosition();
+            });
         } else {
             addMessage('bot', 'System', 'Game started!');
         }
+        syncNinaFloatingButtonVisibility();
     } catch (error) {
         console.error('Error loading game:', error);
         removeLoadingMessage();
         addMessage('bot', 'Error', 'Failed to load game: ' + error.message);
+        syncNinaFloatingButtonVisibility();
     }
 }
 
@@ -345,7 +464,28 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     const normalizedAction = String(action || '').trim().toLowerCase();
     const normalizedSelectedOptionText = String(selectedOptionText || '').trim();
 
+    // Frontend-only: show the button label as the player's line; no API or other side effects.
+    if (normalizedAction === 'say_as_user') {
+        if (normalizedSelectedOptionText) {
+            const currentChatScope = (typeof window.getActiveChatScope === 'function')
+                ? window.getActiveChatScope()
+                : 'public';
+            addMessage('user', 'You', normalizedSelectedOptionText, null, null, false, { chatScope: currentChatScope });
+        }
+        return;
+    }
+
     if (normalizedAction.startsWith('accuse_') && normalizedSelectedOptionText) {
+        const currentChatScope = (typeof window.getActiveChatScope === 'function')
+            ? window.getActiveChatScope()
+            : 'public';
+        addMessage('user', 'You', normalizedSelectedOptionText, null, null, false, { chatScope: currentChatScope });
+    }
+
+    if (
+        (normalizedAction === 'ep1_outro_narrator' || normalizedAction === 'outro_questionnaire')
+        && normalizedSelectedOptionText
+    ) {
         const currentChatScope = (typeof window.getActiveChatScope === 'function')
             ? window.getActiveChatScope()
             : 'public';
@@ -367,6 +507,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     if (action === 'menu_talk') {
         setNavigationUnlocked(true);
         updateNavigationBarVisibility();
+        syncNinaFloatingButtonVisibility();
         if (typeof window.openLeftDrawer === 'function') {
             window.openLeftDrawer();
         } else if (typeof window.toggleLeftDrawer === 'function') {
@@ -378,6 +519,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     if (action === 'menu_evidence') {
         setNavigationUnlocked(true);
         updateNavigationBarVisibility();
+        syncNinaFloatingButtonVisibility();
         if (typeof window.openRightDrawer === 'function') {
             window.openRightDrawer();
         } else if (typeof window.toggleRightDrawer === 'function') {
@@ -413,6 +555,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             if (chatArea) {
                 chatArea.innerHTML = '';
             }
+            clearTellChatScrollPosition();
             window.inputAreaShown = false;
             const inputArea = document.getElementById('inputArea');
             if (inputArea) {
@@ -550,10 +693,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             (action === 'case_intro_next' && data.messages && data.messages.some(m => m.type === 'menu'))
         );
         if (investigationJustStarted && shouldShowNinaFloatingButton()) {
-            const ninaButton = document.getElementById('ninaFloatingButton');
-            if (ninaButton) {
-                ninaButton.style.display = 'flex';
-            }
+            syncNinaFloatingButtonVisibility();
         }
 
         // Some actions can change available characters inside the same episode.
@@ -587,6 +727,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             // Handle error messages from backend
             addMessage('error', 'Error', data.detail);
         }
+        syncNinaFloatingButtonVisibility();
     } catch (error) {
         // If it was a language adjustment, restore the old message
         if (isLanguageAdjustment && oldIntroMessage) {
@@ -612,6 +753,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         }
         console.error('Error handling action:', error);
         addMessage('error', 'Error', 'Failed to process action');
+        syncNinaFloatingButtonVisibility();
     }
 }
 
@@ -744,6 +886,7 @@ function logout() {
     localStorage.removeItem('participantCode');
     if (previousParticipantCode) {
         localStorage.removeItem(`navigation_unlocked_${previousParticipantCode.toUpperCase()}`);
+        sessionStorage.removeItem(`${TELL_CHAT_SCROLL_PREFIX}${previousParticipantCode.toUpperCase()}`);
     }
     
     // Clear session variables
@@ -768,6 +911,7 @@ function logout() {
     if (ninaButton) {
         ninaButton.style.display = 'none';
     }
+    window.ninaPublicDialogueStarted = false;
     
     // Close Nina chat if open
     closeNinaChat();
@@ -834,6 +978,7 @@ async function restoreSession() {
             
             // Show navigation only after first main-menu choice
             updateNavigationBarVisibility();
+            syncNinaFloatingButtonVisibility();
             
             // Populate drawers
             if (window.populateCharactersDrawer) {
@@ -856,20 +1001,7 @@ async function restoreSession() {
             
             // Load game
             await loadGame();
-            
-            // Show Nina floating button only if investigation has started.
-            // Intro in ep1 has character messages before start, so use menu as the signal.
-            const ninaButton = document.getElementById('ninaFloatingButton');
-            const navigationBar = document.getElementById('navigationBar');
-            if (ninaButton && navigationBar && navigationBar.style.display !== 'none' && shouldShowNinaFloatingButton()) {
-                const chatArea = document.getElementById('chatArea');
-                if (chatArea) {
-                    const hasMenuMessage = chatArea.querySelectorAll('.message.menu').length > 0;
-                    if (hasMenuMessage) {
-                        ninaButton.style.display = 'flex';
-                    }
-                }
-            }
+            syncNinaFloatingButtonVisibility();
             
             return true;
         } else {
@@ -1038,13 +1170,20 @@ function appendNinaModalMessage(msg = {}) {
     if (!messagesContainer) return;
 
     const ninaMessageDiv = document.createElement('div');
-    ninaMessageDiv.className = 'nina-chat-message nina';
+    const isUserMessage = String(msg.type || '').toLowerCase() === 'user';
+    ninaMessageDiv.className = `nina-chat-message ${isUserMessage ? 'user' : 'nina'}`;
 
     const content = renderMarkdownForNina(msg.content || '');
-    ninaMessageDiv.innerHTML = `
-        <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-        <div class="nina-chat-message-content">${content}</div>
-    `;
+    if (isUserMessage) {
+        ninaMessageDiv.innerHTML = `
+            <div class="nina-chat-message-content">${content}</div>
+        `;
+    } else {
+        ninaMessageDiv.innerHTML = `
+            <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
+            <div class="nina-chat-message-content">${content}</div>
+        `;
+    }
 
     const buttons = Array.isArray(msg.buttons) ? msg.buttons : [];
     if (buttons.length > 0) {
@@ -1068,7 +1207,7 @@ function appendNinaModalMessage(msg = {}) {
                 button.textContent = btn.text;
                 button.onclick = () => {
                     disableButtonRowOnce();
-                    handleAction(btn.action);
+                    handleAction(btn.action, true, btn.text);
                 };
                 buttonRow.appendChild(button);
             });
@@ -1130,6 +1269,7 @@ async function loadEpisodeSelector() {
         const availableStages = data.available_stages || [1];
         window.currentStageNumber = currentStage;
         window.ep1GameCompleted = Boolean(data.game_completed);
+        window.ep1UsbDriveUnlocked = Boolean(data.ep1_usb_drive_unlocked);
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
@@ -1256,12 +1396,14 @@ async function switchEpisode(stageNumber) {
         
         // Reload episode selector
         await loadEpisodeSelector();
+        window.ninaPublicDialogueStarted = false;
         
         // Clear chat so only the selected episode's messages will be shown
         const chatArea = document.getElementById('chatArea');
         if (chatArea) {
             chatArea.innerHTML = '';
         }
+        clearTellChatScrollPosition();
         // Show loading while fetching episode messages
         const loadingMessage = document.createElement('div');
         loadingMessage.id = 'loadingMessage';
@@ -1292,3 +1434,5 @@ window.sendNinaMessage = sendNinaMessage;
 window.appendNinaModalMessage = appendNinaModalMessage;
 window.loadEpisodeSelector = loadEpisodeSelector;
 window.switchEpisode = switchEpisode;
+window.syncNinaFloatingButtonVisibility = syncNinaFloatingButtonVisibility;
+window.initTellChatScrollPersistence = initTellChatScrollPersistence;

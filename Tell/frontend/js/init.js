@@ -2,7 +2,11 @@
 // Initialize application
 document.addEventListener('DOMContentLoaded', async function() {
     // Header no longer has background image - removed for performance
-    
+
+    if (typeof window.initTellChatScrollPersistence === 'function') {
+        window.initTellChatScrollPersistence();
+    }
+
     // Try to restore session from localStorage
     const sessionRestored = await restoreSession();
     

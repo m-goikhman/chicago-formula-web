@@ -12,4 +12,4 @@ And then I couldn't even get into my own car. The keys were inside. I was standi
 -----
 I have the drive. Here. Take it.
 [buttons]
-Take the drive|inline::nina>>Ok, take it and keep in the case materials!
+Take the drive|ep1_usb_received

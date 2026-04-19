@@ -412,11 +412,17 @@ function populateCaseMaterialsDrawer() {
     const materials = currentStage === 2
         ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep2_clue_1' }]
         : currentStage === 1
-            ? [
-                { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-                { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-                { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
-            ]
+            ? (() => {
+                const base = [
+                    { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
+                    { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
+                    { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
+                ];
+                if (window.ep1UsbDriveUnlocked) {
+                    return [{ emoji: '🔍', name: 'The USB Drive', action: 'examine_clue_4' }, ...base];
+                }
+                return base;
+            })()
             : [
                 { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
                 { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },

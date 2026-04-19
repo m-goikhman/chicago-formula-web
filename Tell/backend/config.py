@@ -29,7 +29,7 @@ STAGE_CONFIG = {
             "Med Report & Personal Items",
             "The Weapon",
             "The Note",
-            "The Apartment",
+            "The USB Drive",
         ],
         "characters": ["tim", "pauline", "fiona", "ronnie"],
         "default_location": "part1_ep1",

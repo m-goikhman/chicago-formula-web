@@ -234,6 +234,9 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_language_menu_back,
         handle_game_text_action,
         handle_inline_button_action,
+        handle_ep1_usb_received,
+        handle_ep1_outro_narrator,
+        handle_ep1_outro_questionnaire,
     )
     
     # Route actions to appropriate handlers
@@ -261,6 +264,12 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_mode_public(participant_code)
     elif request.action == "menu_evidence":
         messages = await handle_menu_evidence(participant_code)
+    elif request.action == "ep1_usb_received":
+        messages = await handle_ep1_usb_received(participant_code)
+    elif request.action == "ep1_outro_narrator":
+        messages = await handle_ep1_outro_narrator(participant_code)
+    elif request.action == "outro_questionnaire":
+        messages = await handle_ep1_outro_questionnaire(participant_code)
     elif request.action.startswith("examine_ep2_clue_"):
         clue_id = request.action.split("_", 3)[3]
         messages = await handle_clue_examination(participant_code, clue_id, forced_stage=2)
@@ -425,12 +434,34 @@ async def send_message_to_nina(request: MessageRequest, current_user=Depends(get
     from game_handlers import handle_nina_message
     
     messages = await handle_nina_message(participant_code, request.text)
-    if messages:
+
+    # Persist modal conversation separately so restore keeps it out of public chat.
+    modal_history_messages = []
+    request_text = str(request.text or "").strip()
+    if request_text:
+        modal_history_messages.append({
+            "type": "user",
+            "content": request_text,
+            "ui": {
+                "ninaModalMessage": True
+            }
+        })
+    for msg in messages or []:
+        if not isinstance(msg, dict):
+            continue
+        merged_ui = dict(msg.get("ui", {}))
+        merged_ui["ninaModalMessage"] = True
+        modal_history_messages.append({
+            **msg,
+            "ui": merged_ui
+        })
+
+    if modal_history_messages:
         state = GAME_STATE.get(participant_code)
         if state is not None:
             episode = state.get("current_stage", 1)
             episode_messages = state.get("episode_messages", {})
-            episode_messages.setdefault(str(episode), []).extend(messages)
+            episode_messages.setdefault(str(episode), []).extend(modal_history_messages)
             state["episode_messages"] = episode_messages
             await game_state_manager.save_game_state(participant_code, state)
     return {"messages": messages}
@@ -626,6 +657,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         "stages_completed": stages_completed,
         "stages_info": stages_info,
         "game_completed": bool(GAME_STATE.get(participant_code, {}).get("game_completed", False)),
+        "ep1_usb_drive_unlocked": bool(GAME_STATE.get(participant_code, {}).get("ep1_usb_drive_unlocked", False)),
     }
 
 

@@ -39,15 +39,25 @@ function displayMessage(msg) {
         return null; // Don't add to chat
     }
 
+    const isNinaModalTaggedMessage = Boolean(msg?.ui && msg.ui.ninaModalMessage === true);
+    const shouldRouteNinaToModal = isNinaModalTaggedMessage;
+
+    if (msg.ui && msg.ui.closeNinaChat === true) {
+        window.ninaPublicDialogueStarted = true;
+        if (typeof window.closeNinaChat === 'function') {
+            window.closeNinaChat();
+        }
+    }
+
     if (msg.ui && msg.ui.openNinaChat === true && typeof window.openNinaChat === 'function') {
         window.openNinaChat();
     }
-    if (msg.ui && msg.ui.ninaModalMessage === true && typeof window.appendNinaModalMessage === 'function') {
+    if (shouldRouteNinaToModal && typeof window.appendNinaModalMessage === 'function') {
         window.appendNinaModalMessage(msg);
+        if (typeof window.syncNinaFloatingButtonVisibility === 'function') {
+            window.syncNinaFloatingButtonVisibility();
+        }
         return null;
-    }
-    if (msg.ui && msg.ui.closeNinaChat === true && typeof window.closeNinaChat === 'function') {
-        window.closeNinaChat();
     }
     
     // Handle different message types
@@ -81,8 +91,16 @@ function displayMessage(msg) {
             (typeof msg.character_name === 'string' && msg.character_name.toLowerCase().trim() === 'narrator')
         )
     );
+    const isNarratorStyleRemark = (
+        isNarratorMessage ||
+        (
+            type === 'system' &&
+            typeof msg.message_style === 'string' &&
+            msg.message_style.toLowerCase() === 'narrator'
+        )
+    );
 
-    const messageOptions = isNarratorMessage
+    const messageOptions = isNarratorStyleRemark
         ? { messageClass: 'narrator-message', hideSender: true, hideAvatar: true }
         : {};
 
@@ -119,6 +137,7 @@ function displayMessage(msg) {
     }
     if (msg.ui && msg.ui.ep1GameCompleted === true) {
         window.ep1GameCompleted = true;
+        window.ninaPublicDialogueStarted = true;
         if (typeof currentCharacter !== 'undefined') {
             currentCharacter = null;
         }
@@ -129,7 +148,14 @@ function displayMessage(msg) {
             window.applyEp1CaseClosedUi();
         }
     }
+    if (msg.ui && msg.ui.ep1UsbDriveUnlocked === true) {
+        window.ep1UsbDriveUnlocked = true;
+        if (typeof window.populateCaseMaterialsDrawer === 'function') {
+            window.populateCaseMaterialsDrawer();
+        }
+    }
     if (msg.ui && msg.ui.switchToPublicMode === true) {
+        window.ninaPublicDialogueStarted = true;
         if (typeof currentCharacter !== 'undefined') {
             currentCharacter = null;
         }
@@ -139,6 +165,9 @@ function displayMessage(msg) {
         if (typeof window.updatePrivateModeControls === 'function') {
             window.updatePrivateModeControls();
         }
+    }
+    if (typeof window.syncNinaFloatingButtonVisibility === 'function') {
+        window.syncNinaFloatingButtonVisibility();
     }
     
     // Check if we need to show input area and tutorial
@@ -228,12 +257,12 @@ function displayMessage(msg) {
     return messageDiv;
 }
 
-async function displayMessagesSequentially(messages, delay = 0) {
+async function displayMessagesSequentially(messages, delay = 0, options = {}) {
     const queueMessages = Array.isArray(messages) ? [...messages] : [];
     window.__tellMessageRenderQueue = window.__tellMessageRenderQueue || Promise.resolve();
 
     const renderTask = async () => {
-        await runDisplayMessagesSequentially(queueMessages, delay);
+        await runDisplayMessagesSequentially(queueMessages, delay, options);
     };
 
     const nextRun = window.__tellMessageRenderQueue.then(renderTask, renderTask);
@@ -241,29 +270,34 @@ async function displayMessagesSequentially(messages, delay = 0) {
     return nextRun;
 }
 
-async function runDisplayMessagesSequentially(messages, delay = 0) {
-    const interMessageDelay = Number.isFinite(delay) && delay > 0 ? delay : 350;
+async function runDisplayMessagesSequentially(messages, delay = 0, options = {}) {
+    const instant = Boolean(options && options.instant);
+    const interMessageDelay = instant
+        ? 0
+        : (Number.isFinite(delay) && delay > 0 ? delay : 350);
 
     for (let i = 0; i < messages.length; i += 1) {
         const msg = messages[i];
-        const preDelay = Number(msg?.ui?.preDisplayDelayMs);
-        if (Number.isFinite(preDelay) && preDelay > 0) {
-            await sleep(preDelay);
-        }
-        const typingCharacter = resolveTypingCharacterFromMessage(msg);
-        if (typingCharacter) {
-            const msgType = msg?.type || 'bot';
-            const typingScope = resolveMessageChatScope(msg, msgType);
-            const typingIndicator = showTypingIndicator(typingCharacter, { chatScope: typingScope });
-            await sleep(getTypingDurationMs(msg));
-            if (typingIndicator && typeof typingIndicator.remove === 'function') {
-                typingIndicator.remove();
+        if (!instant) {
+            const preDelay = Number(msg?.ui?.preDisplayDelayMs);
+            if (Number.isFinite(preDelay) && preDelay > 0) {
+                await sleep(preDelay);
+            }
+            const typingCharacter = resolveTypingCharacterFromMessage(msg);
+            if (typingCharacter) {
+                const msgType = msg?.type || 'bot';
+                const typingScope = resolveMessageChatScope(msg, msgType);
+                const typingIndicator = showTypingIndicator(typingCharacter, { chatScope: typingScope });
+                await sleep(getTypingDurationMs(msg));
+                if (typingIndicator && typeof typingIndicator.remove === 'function') {
+                    typingIndicator.remove();
+                }
             }
         }
 
         displayMessage(msg);
 
-        if (i < messages.length - 1) {
+        if (!instant && i < messages.length - 1) {
             await sleep(interMessageDelay);
         }
     }

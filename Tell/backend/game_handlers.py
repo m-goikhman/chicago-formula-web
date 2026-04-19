@@ -401,8 +401,11 @@ def _build_ep1_pauline_entrance_message(participant_code: str) -> Optional[Dict]
     return message
 
 
-def get_clues_count_for_stage(stage_number: int) -> int:
-    """Get number of clues configured for a specific stage."""
+def get_clues_count_for_stage(stage_number: int, state: Optional[Dict] = None) -> int:
+    """Get number of clues configured for a specific stage.
+
+    Episode 1 clue 4 (USB) exists on disk but stays hidden until ``ep1_usb_drive_unlocked``.
+    """
     stage_config = STAGE_CONFIG.get(stage_number, {})
     stage_clues_count = stage_config.get("clues_count")
     candidate_max = stage_clues_count if isinstance(stage_clues_count, int) and stage_clues_count > 0 else TOTAL_CLUES
@@ -411,6 +414,9 @@ def get_clues_count_for_stage(stage_number: int) -> int:
     # We treat a clue id as "available" iff Clue{N}.txt or clue{N}.txt exists for this episode.
     existing = 0
     for i in range(1, int(candidate_max) + 1):
+        if stage_number == 1 and i == 4:
+            if not (state and bool(state.get("ep1_usb_drive_unlocked"))):
+                continue
         for basename in (f"Clue{i}.txt", f"clue{i}.txt"):
             rel_path = get_game_text_path(basename, stage_number)
             abs_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
@@ -1185,6 +1191,121 @@ async def handle_accuse_reason_message(participant_code: str, _message_text: str
     return await handle_make_accusation(participant_code, pending_target)
 
 
+async def handle_ep1_usb_received(participant_code: str) -> List[Dict]:
+    """After Tim's finale: unlock USB clue in Case Materials, then EP1 win outro (Nina lines from file)."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != 1:
+        return [{"type": "system", "content": "This action is available in Episode 1."}]
+
+    if (
+        not state.get("game_completed")
+        or state.get("accused_character") != EP1_ACCUSATION_CORRECT_KEY
+    ):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if state.get("ep1_usb_drive_unlocked"):
+        msg = _build_character_message_for_sender(
+            participant_code,
+            "We already logged that drive — it's in your Case Materials.",
+            "nina",
+        )
+        msg["show_explain"] = False
+        return [msg]
+
+    state["ep1_usb_drive_unlocked"] = True
+
+    raw_nina = load_system_prompt(get_game_text_path("outro_nina.txt", 1))
+    nina_body, nina_buttons = _extract_buttons_from_text(raw_nina)
+    nina_blocks = _extract_scripted_message_blocks(nina_body, default_sender="nina")
+    if not nina_blocks:
+        nina_blocks = [("nina", nina_body.strip() or raw_nina)]
+
+    outro_messages: List[Dict] = []
+    for index, (block_sender, block_text) in enumerate(nina_blocks):
+        msg = _build_character_message_for_sender(
+            participant_code, block_text, block_sender or "nina"
+        )
+        msg["show_explain"] = False
+        ui: Dict = {"caseMaterialsAccusationAvailable": False}
+        if index == 0:
+            ui["ep1UsbDriveUnlocked"] = True
+        msg["ui"] = ui
+        if index == len(nina_blocks) - 1 and nina_buttons:
+            msg["buttons"] = nina_buttons
+        outro_messages.append(msg)
+
+    await game_state_manager.save_game_state(participant_code, state)
+    return outro_messages
+
+
+async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
+    """After Nina's win outro: show narrator block (typewriter + image) like intro-B1."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != 1:
+        return [{"type": "system", "content": "This action is available in Episode 1."}]
+
+    if not state.get("game_completed") or state.get("accused_character") != EP1_ACCUSATION_CORRECT_KEY:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if not state.get("ep1_usb_drive_unlocked"):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if state.get("ep1_outro_narrator_shown"):
+        return []
+
+    raw = load_system_prompt(get_game_text_path("outro_narrator.txt", 1))
+    narrator_body, narrator_buttons = _extract_buttons_from_text(raw)
+    narrator_body = narrator_body.strip()
+    if not narrator_body:
+        return [{"type": "system", "content": "Outro text is missing.", "show_explain": False}]
+
+    state["ep1_outro_narrator_shown"] = True
+
+    log_message("system", narrator_body, participant_code)
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, narrator_body)
+    msg = {
+        "type": "system",
+        "content": narrator_body,
+        "message_id": message_id,
+        "show_explain": True,
+        "typewriter_style": True,
+        "image": "ep1/jason-steele-vj6ywmAj0pI-unsplash.jpg",
+        "buttons": narrator_buttons,
+        "ui": {"caseMaterialsAccusationAvailable": False},
+    }
+    await game_state_manager.save_game_state(participant_code, state)
+    return [msg]
+
+
+async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
+    """Show post-game questionnaire after the narrator outro button (same payload as former USB tail)."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != 1:
+        return [{"type": "system", "content": "This action is available in Episode 1."}]
+
+    if not state.get("ep1_outro_narrator_shown"):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if state.get("ep1_outro_questionnaire_shown"):
+        return []
+
+    state["ep1_outro_questionnaire_shown"] = True
+    outro = _ep1_outro_questionnaire_message()
+    outro["buttons"] = [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}]
+    await game_state_manager.save_game_state(participant_code, state)
+    return [outro]
+
+
 async def handle_inline_button_action(participant_code: str, action: str) -> Optional[List[Dict]]:
     """
     Handle inline button script without creating a separate file.
@@ -1312,6 +1433,9 @@ def initialize_game_state(participant_code: str) -> Dict:
         "accuse_waiting_for_reason": False,
         "topic_memory": {"topic": "Initial greeting", "spoken": [], "predefined_used": []},
         "game_completed": False,
+        "ep1_usb_drive_unlocked": False,
+        "ep1_outro_narrator_shown": False,
+        "ep1_outro_questionnaire_shown": False,
         "participant_code": participant_code,
         # TEST participant gets debug output by default.
         "debug_mode": is_test_mode,
@@ -1419,6 +1543,9 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         state.setdefault("accused_wrong_keys", set())
     state.setdefault("accuse_pending_target", None)
     state.setdefault("accuse_waiting_for_reason", False)
+    state.setdefault("ep1_usb_drive_unlocked", False)
+    state.setdefault("ep1_outro_narrator_shown", False)
+    state.setdefault("ep1_outro_questionnaire_shown", False)
     
     return state
 
@@ -2058,7 +2185,7 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
     buttons = []
     if not _ep1_dialogs_closed(state):
         buttons.append({"text": "Talk to Someone", "action": "menu_talk"})
-    buttons.append({"text": "Examine Evidence", "action": "menu_evidence"})
+    buttons.append({"text": "Open Case Materials", "action": "menu_evidence"})
     
     messages.append({
         "type": "menu",
@@ -2763,7 +2890,7 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
             }
         ]
     
-    mode_text = "💬 You're now speaking with everyone in public. Ask your questions!"
+    mode_text = "You're now speaking with everyone in public. Ask your questions!"
     
     # Log system message
     log_message("system", mode_text, participant_code)
@@ -2771,6 +2898,7 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
     messages.append({
         "type": "system",
         "content": mode_text,
+        "message_style": "narrator",
     })
     
     # Save state
@@ -2788,11 +2916,21 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
     
     current_stage = state.get("current_stage", 1)
-    clues_count = get_clues_count_for_stage(current_stage)
+    clues_count = get_clues_count_for_stage(current_stage, state)
 
     buttons = []
-    for i in range(1, clues_count + 1):
-        clue_id = str(i)
+    if current_stage == 1 and state.get("ep1_usb_drive_unlocked"):
+        clue_ids = ["4", "1", "2", "3"]
+    else:
+        clue_ids = [str(i) for i in range(1, clues_count + 1)]
+
+    for clue_id in clue_ids:
+        try:
+            clue_num = int(clue_id)
+        except (TypeError, ValueError):
+            continue
+        if clue_num < 1 or clue_num > clues_count:
+            continue
         clue_name = get_clue_name_for_stage(current_stage, clue_id)
         buttons.append({
             "text": f"🔍 {clue_name}",
@@ -2824,11 +2962,14 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
         return [{"type": "error", "content": "Game not initialized."}]
     
     episode = forced_stage if isinstance(forced_stage, int) and forced_stage > 0 else state.get("current_stage", 1)
-    clues_count = get_clues_count_for_stage(episode)
+    clues_count = get_clues_count_for_stage(episode, state)
     try:
         clue_number = int(clue_id)
     except (TypeError, ValueError):
         return [{"type": "error", "content": "Invalid clue id."}]
+
+    if episode == 1 and clue_number == 4 and not state.get("ep1_usb_drive_unlocked"):
+        return [{"type": "system", "content": "You don't have that evidence yet.", "show_explain": False}]
 
     if clue_number < 1 or clue_number > clues_count:
         return [{"type": "error", "content": "This clue is not available in the current episode."}]
@@ -2851,12 +2992,16 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     # Log clue examination
     log_message("clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
     
+    clue_image = f"ep{episode}/clue{clue_id}.png"
+    if episode == 1 and clue_id == "4":
+        clue_image = "ep1/plane-drive.png"
+
     clue_message = {
         "type": "clue",
         "clue_id": clue_id,
         "clue_name": get_clue_name_for_stage(episode, clue_id),
         "content": clue_text,
-        "image": f"ep{episode}/clue{clue_id}.png"
+        "image": clue_image,
     }
 
     current_location = get_stage_location(state, episode)
@@ -3148,10 +3293,11 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         # [buttons] in accuse_tim_final.txt belong to Tim's last line (e.g. "Take the drive").
         if win_buttons and win_messages:
             win_messages[-1]["buttons"] = win_buttons
+            # Same USB visual as clue 4 (Case Materials) — shown on Tim's final line and in the clue drawer.
+            win_messages[-1]["image"] = "ep1/plane-drive.png"
 
-        outro = _ep1_outro_questionnaire_message()
-        outro["buttons"] = [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}]
-        return win_messages + [outro]
+        # Win outro chain: USB -> outro_nina.txt -> narrator (handle_ep1_outro_narrator) -> questionnaire (outro_questionnaire).
+        return win_messages
 
     # Wrong accusation -> attempts & defense
     max_attempts = _get_ep1_accusation_max_attempts(state)

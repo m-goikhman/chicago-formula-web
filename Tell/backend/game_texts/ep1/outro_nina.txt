@@ -1,0 +1,7 @@
+Good work, Detective. Congratulations!
+----
+The hospital says Alex is stable for now — that's the best news we're getting tonight.
+----
+Now, go and get some rest. I'll see you in a week.
+[buttons]
+See you!|ep1_outro_narrator
