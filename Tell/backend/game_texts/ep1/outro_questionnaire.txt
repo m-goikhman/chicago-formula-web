@@ -1,6 +1,5 @@
 Thanks for playing!
 The game will continue next week.
 
-Please answer this questionnaire: 
-{{QUESTIONNAIRE_LINK}}
+Please answer this [questionnaire:]({{QUESTIONNAIRE_LINK}}) (the link will take you to Google Forms).
 It will take about 3-5 minutes of your time.

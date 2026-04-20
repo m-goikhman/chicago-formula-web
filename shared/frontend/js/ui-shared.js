@@ -8,12 +8,39 @@
         return div.innerHTML;
     }
 
+    function extractMarkdownLinks(text) {
+        const links = [];
+        const textWithTokens = text.replace(
+            /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+            (_, label, url) => {
+                const token = `%%MDLINK${links.length}%%`;
+                links.push({ token, label, url });
+                return token;
+            }
+        );
+        return { textWithTokens, links };
+    }
+
+    function restoreMarkdownLinks(text, links) {
+        let restored = text;
+        for (const link of links) {
+            restored = restored.replace(
+                link.token,
+                `<a href="${link.url}" target="_blank" rel="noopener noreferrer">${link.label}</a>`
+            );
+        }
+        return restored;
+    }
+
     function renderMarkdown(text) {
         let html = escapeHtml(text);
+        const { textWithTokens, links } = extractMarkdownLinks(html);
+        html = textWithTokens;
 
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
         html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+        html = restoreMarkdownLinks(html, links);
         html = html.replace(/\n/g, '<br>');
 
         return html;
@@ -21,10 +48,13 @@
 
     function renderTypewriterText(text) {
         let html = escapeHtml(text);
+        const { textWithTokens, links } = extractMarkdownLinks(html);
+        html = textWithTokens;
 
         html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/\*([^*]+)\*/g, '<strong>$1</strong>');
         html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+        html = restoreMarkdownLinks(html, links);
 
         const paragraphs = html.split(/\n\s*\n/).filter(p => p.trim());
         return paragraphs

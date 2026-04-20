@@ -67,6 +67,13 @@ WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
 )
 WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = "1171438860"
 WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = "1690586821"
+ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK = "{{ONBOARDING_QUESTIONNAIRE_LINK}}"
+ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK = "https://forms.gle/hghifvApKXPU1TjK6"
+ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
+    "https://docs.google.com/forms/d/e/"
+    "1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform"
+)
+ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = "326737977"
 
 
 def _word_count_whitespace(text: str) -> int:
@@ -94,6 +101,68 @@ def _build_weekly_questionnaire_link(participant_code: str, state: Optional[Dict
         f"entry.{WEEKLY_QUESTIONNAIRE_WEEK_ENTRY}": str(week),
     }
     return f"{WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
+
+
+def _build_onboarding_questionnaire_link(participant_code: str) -> str:
+    params = {
+        "usp": "pp_url",
+        f"entry.{ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY}": participant_code,
+    }
+    return f"{ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
+
+
+def _personalize_questionnaire_links_in_text(
+    text: str, participant_code: str, state: Optional[Dict]
+) -> str:
+    if not text:
+        return text
+
+    onboarding_link = _build_onboarding_questionnaire_link(participant_code)
+    weekly_link = _build_weekly_questionnaire_link(participant_code, state)
+    result = text
+
+    # Preferred template tokens
+    result = result.replace(ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK, onboarding_link)
+    result = result.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, weekly_link)
+
+    # Backward compatibility for older static links
+    result = result.replace(ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK, onboarding_link)
+    result = result.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, weekly_link)
+
+    # Backward compatibility for already-expanded docs URLs (possibly stale query params)
+    result = re.sub(
+        r"https://docs\.google\.com/forms/d/e/1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform(?:\?[^\s)]*)?",
+        onboarding_link,
+        result,
+    )
+    result = re.sub(
+        r"https://docs\.google\.com/forms/d/e/1FAIpQLSf7wqiYQXAQZLF3I_lbItkm2iAG8ro6aYUhkj8z7bHt_Pj0WQ/viewform(?:\?[^\s)]*)?",
+        weekly_link,
+        result,
+    )
+    return result
+
+
+def _personalize_questionnaire_links_in_messages(
+    messages: List[Dict], participant_code: str, state: Optional[Dict]
+) -> Tuple[List[Dict], bool]:
+    changed = False
+    personalized: List[Dict] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            personalized.append(msg)
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            updated_content = _personalize_questionnaire_links_in_text(content, participant_code, state)
+            if updated_content != content:
+                updated_msg = dict(msg)
+                updated_msg["content"] = updated_content
+                personalized.append(updated_msg)
+                changed = True
+                continue
+        personalized.append(msg)
+    return personalized, changed
 
 
 def _is_test_participant(participant_code: str) -> bool:
@@ -1844,7 +1913,15 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     
     # Return stored messages when user returns to an already-visited episode
     if stored:
-        return stored
+        personalized_stored, changed = _personalize_questionnaire_links_in_messages(
+            stored, participant_code, state
+        )
+        if changed:
+            stored_key = episode if episode in episode_messages else ep_key
+            episode_messages[stored_key] = personalized_stored
+            state["episode_messages"] = episode_messages
+            await game_state_manager.save_game_state(participant_code, state)
+        return personalized_stored
     
     # Onboarding (welcome + language level) only for episode 1. Episodes 2+ start with case intro.
     if episode != 1:
@@ -1856,6 +1933,7 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     
     # Start with welcome message (episode 1 only)
     welcome_text = load_system_prompt(get_game_text_path("onboarding_1_welcome.txt", episode))
+    welcome_text = _personalize_questionnaire_links_in_text(welcome_text, participant_code, state)
     
     # Log system message
     log_message("system", welcome_text, participant_code)
@@ -3396,19 +3474,18 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
 
     attempts_left = max(0, max_attempts - attempts)
     accused_name = CHARACTER_DATA.get(accused_key, {}).get("full_name", accused_key.title())
-    if attempts_left == 0:
-        attempts_left_text = "**no attempts**"
-    elif attempts_left == 1:
-        attempts_left_text = "**1 more attempt**"
-    else:
-        attempts_left_text = f"**{attempts_left} more attempts**"
-
-    wrong_accusation_msg = {
-        "type": "system",
-        "content": f"❌ This is not {accused_name}. You have {attempts_left_text} left.",
-        "show_explain": False,
-        "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
-    }
+    wrong_accusation_msg = None
+    if attempts_left > 0:
+        if attempts_left == 1:
+            wrong_content = f"❌ This is not {accused_name}. You have **1 more attempt** left."
+        else:
+            wrong_content = f"❌ This is not {accused_name}."
+        wrong_accusation_msg = {
+            "type": "system",
+            "content": wrong_content,
+            "show_explain": False,
+            "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
+        }
 
     # If attempts are exhausted -> Nina nudge, then Tim's finale (same USB / outro chain as a correct accusation).
     if attempts >= max_attempts:
@@ -3435,9 +3512,10 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             first_ui = dict(first_tim.get("ui") or {})
             first_ui["preDisplayDelayMs"] = EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS
             first_tim["ui"] = first_ui
-        return [*defense_messages, wrong_accusation_msg, *nina_hint_messages, *tim_finale]
+        return [*defense_messages, *nina_hint_messages, *tim_finale]
 
-    return [*defense_messages, wrong_accusation_msg]
+    wrong_messages = [wrong_accusation_msg] if wrong_accusation_msg else []
+    return [*defense_messages, *wrong_messages]
 
 
 async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:
