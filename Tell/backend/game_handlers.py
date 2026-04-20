@@ -10,6 +10,7 @@ import os
 import re
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
+from urllib.parse import urlencode
 
 import bootstrap  # noqa: F401
 
@@ -56,11 +57,43 @@ EP1_ACCUSATION_CORRECT_KEY = "tim"
 EP1_ACCUSATION_MAX_ATTEMPTS_AFTER_PAULINE = 2
 EP1_ACCUSATION_MAX_ATTEMPTS_BEFORE_PAULINE = 1
 EP1_ACCUSATION_REASON_MIN_WORDS = 4
+# Extra beat after Nina's lose-hint, before Tim's finale (only that branch; see `preDisplayDelayMs` in Tell/frontend/js/game.js).
+EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS = 4000
+WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK = "{{QUESTIONNAIRE_LINK}}"
+WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK = "https://forms.gle/hWc2Uedw8KkdCLhv6"
+WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
+    "https://docs.google.com/forms/d/e/"
+    "1FAIpQLSf7wqiYQXAQZLF3I_lbItkm2iAG8ro6aYUhkj8z7bHt_Pj0WQ/viewform"
+)
+WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = "1171438860"
+WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = "1690586821"
 
 
 def _word_count_whitespace(text: str) -> int:
     """Count whitespace-separated tokens (punctuation stays attached to words)."""
     return len([w for w in (text or "").strip().split() if w])
+
+
+def _resolve_questionnaire_week_number(state: Optional[Dict]) -> int:
+    """Map current game state to questionnaire week number (1..4)."""
+    if not state:
+        return 1
+    raw_week = state.get("questionnaire_week", state.get("current_stage", 1))
+    try:
+        week = int(raw_week)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(4, week))
+
+
+def _build_weekly_questionnaire_link(participant_code: str, state: Optional[Dict]) -> str:
+    week = _resolve_questionnaire_week_number(state)
+    params = {
+        "usp": "pp_url",
+        f"entry.{WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY}": participant_code,
+        f"entry.{WEEKLY_QUESTIONNAIRE_WEEK_ENTRY}": str(week),
+    }
+    return f"{WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
 
 
 def _is_test_participant(participant_code: str) -> bool:
@@ -1174,7 +1207,7 @@ async def handle_accuse_explain_ready(participant_code: str) -> List[Dict]:
             "character": "nina",
             "character_name": CHARACTER_DATA.get("nina", {}).get("full_name", "Nina"),
             "character_image": CHARACTER_DATA.get("nina", {}).get("image"),
-            "content": "Ok, I'm listening.",
+            "content": "Go on!",
             "show_explain": False,
             "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
         }
@@ -1320,7 +1353,7 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
         return []
 
     state["ep1_outro_questionnaire_shown"] = True
-    outro = _ep1_outro_questionnaire_message()
+    outro = _ep1_outro_questionnaire_message(participant_code, state)
     outro["buttons"] = [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}]
     await game_state_manager.save_game_state(participant_code, state)
     return [outro]
@@ -3044,8 +3077,13 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     return int(state.get("current_stage", 1)) == 1 and bool(state.get("game_completed", False))
 
 
-def _ep1_outro_questionnaire_message() -> Dict:
+def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", 1))
+    personalized_link = _build_weekly_questionnaire_link(participant_code, state)
+    if WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK in text:
+        text = text.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, personalized_link)
+    else:
+        text = text.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalized_link)
     return {
         "type": "system",
         "content": text,
@@ -3392,6 +3430,11 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             n_msg["ui"] = {"caseMaterialsAccusationAvailable": False}
             nina_hint_messages.append(n_msg)
         tim_finale = _build_ep1_accuse_tim_finale_messages(participant_code)
+        if tim_finale:
+            first_tim = tim_finale[0]
+            first_ui = dict(first_tim.get("ui") or {})
+            first_ui["preDisplayDelayMs"] = EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS
+            first_tim["ui"] = first_ui
         return [*defense_messages, wrong_accusation_msg, *nina_hint_messages, *tim_finale]
 
     return [*defense_messages, wrong_accusation_msg]

@@ -1,6 +1,6 @@
-🎭 Thanks for playing!
+Thanks for playing!
 The game will continue next week.
 
 Please answer this questionnaire: 
-[LINK PLACEHOLDER]
+{{QUESTIONNAIRE_LINK}}
 It will take about 3-5 minutes of your time.

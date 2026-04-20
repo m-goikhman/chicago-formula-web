@@ -1,1 +1,5 @@
-After a while, the intercom stops buzzing.
+[from: fiona]
+I'll get it. Someone's been buzzing for five minutes.
+----
+[from: narrator]
+She presses the button to let the visitor in without waiting for your reaction.
