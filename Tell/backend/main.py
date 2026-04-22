@@ -14,7 +14,7 @@ import time
 import random
 import bootstrap  # noqa: F401
 
-from shared.backend.auth import validate_session_token, login_participant
+from shared.backend.auth import validate_session_token, login_participant, is_test_mode_participant
 from shared.backend.progress_manager import progress_manager  # used in some endpoints
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
 from utils import log_message, clear_chat_history_log
@@ -167,13 +167,13 @@ async def start_game(current_user=Depends(get_current_user)):
 
 @app.post("/api/game/reset", response_model=ResetGameResponse)
 async def reset_game(current_user=Depends(get_current_user)):
-    """Reset all game/chat history for TEST participant."""
+    """Reset all game/chat history for test-mode participant."""
     participant_code = current_user["participant_code"]
 
-    if participant_code.upper() != "TEST":
-        raise HTTPException(status_code=403, detail="Reset is available only for TEST participant")
+    if not is_test_mode_participant(participant_code):
+        raise HTTPException(status_code=403, detail="Reset is available only for TEST/ROBERTA participant")
 
-    logger.info("Reset requested for TEST participant")
+    logger.info("Reset requested for TEST/ROBERTA participant")
 
     # Clear in-memory state
     GAME_STATE.pop(participant_code, None)
@@ -605,8 +605,8 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     stages_completed = list(GAME_STATE.get(participant_code, {}).get("stages_completed", set()))
     stage_progress = GAME_STATE.get(participant_code, {}).get("stage_progress", {})
     
-    # Special test mode: for TEST participant, show all stages as available
-    is_test_mode = participant_code.upper() == "TEST"
+    # Special test mode: for TEST/ROBERTA participants, show all stages as available
+    is_test_mode = is_test_mode_participant(participant_code)
     
     # Build stage info
     stages_info = []

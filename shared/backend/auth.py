@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 # Session storage (in production, use Redis or database)
 SESSION_DB: Dict[str, Dict] = {}
+TEST_MODE_PARTICIPANT_CODES = frozenset({"TEST", "ROBERTA"})
+SPECIAL_PARTICIPANT_CODES = frozenset({"DEMO"}) | TEST_MODE_PARTICIPANT_CODES
 
 
 def create_session_token(participant_code: str) -> str:
@@ -50,10 +52,15 @@ def validate_session_token(token: str) -> Optional[Dict]:
 def is_valid_participant_code(code: str) -> bool:
     import re
     code = code.strip().upper()
-    if code in ("TEST", "DEMO"):
+    if code in SPECIAL_PARTICIPANT_CODES:
         return True
     # Participant code format: 2 uppercase letters + 4 digits (e.g. "HE2103")
     return bool(re.fullmatch(r"[A-Z]{2}\d{4}", code))
+
+
+def is_test_mode_participant(code: str) -> bool:
+    """Return True when participant should get TEST-mode privileges."""
+    return isinstance(code, str) and code.strip().upper() in TEST_MODE_PARTICIPANT_CODES
 
 
 def login_participant(participant_code: str) -> Optional[str]:

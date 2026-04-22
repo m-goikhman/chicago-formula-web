@@ -4,13 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Chicago Formula</title>
-    <meta http-equiv="refresh" content="0; url=./placeholder/index.html">
     <script>
-        window.location.replace('./placeholder/index.html');
+        (function () {
+            const params = new URLSearchParams(window.location.search);
+            const preview = (params.get('preview') || '').toLowerCase();
+            const destination = preview === 'portal' ? './portal.html' : './placeholder/index.html';
+            window.location.replace(destination);
+        })();
     </script>
 </head>
 <body>
-    <p>If you are not redirected automatically, open <a href="./placeholder/index.html">the placeholder page</a>.</p>
+    <p>
+        If you are not redirected automatically, open
+        <a href="./placeholder/index.html">the placeholder page</a>
+        or
+        <a href="./portal.html">the portal preview</a>.
+    </p>
 </body>
 </html>
 

@@ -18,6 +18,7 @@ from utils import load_system_prompt, combine_character_prompt, get_prompt_path,
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
 from game_state_manager import game_state_manager
 from shared.backend.progress_manager import progress_manager
+from shared.backend.auth import is_test_mode_participant
 from ai_services import ask_for_dialogue
 from scripted_messages import (
     extract_buttons_from_text as _sm_extract_buttons_from_text,
@@ -60,6 +61,7 @@ EP1_ACCUSATION_REASON_MIN_WORDS = 4
 # Extra beat after Nina's lose-hint, before Tim's finale (only that branch; see `preDisplayDelayMs` in Tell/frontend/js/game.js).
 EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS = 4000
 WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK = "{{QUESTIONNAIRE_LINK}}"
+NEXT_EPISODE_CALENDAR_TEMPLATE_LINK = "{{NEXT_EPISODE_CALENDAR_LINK}}"
 WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK = "https://forms.gle/hWc2Uedw8KkdCLhv6"
 WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
     "https://docs.google.com/forms/d/e/"
@@ -74,6 +76,12 @@ ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
     "1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform"
 )
 ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = "326737977"
+CALENDAR_REMINDER_TITLE = "Teach&Tell: Next episode unlock"
+CALENDAR_REMINDER_DETAILS = (
+    "Your next Teach&Tell episode is now unlocked. "
+    "Episodes unlock every week from your game start date. "
+    "Open the game: https://chicago-formula-n.web.app/"
+)
 
 
 def _word_count_whitespace(text: str) -> int:
@@ -109,6 +117,89 @@ def _build_onboarding_questionnaire_link(participant_code: str) -> str:
         f"entry.{ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY}": participant_code,
     }
     return f"{ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
+
+
+def _parse_iso_datetime(value: Optional[str], default_tz: Optional[datetime.tzinfo] = None) -> Optional[datetime]:
+    """Parse ISO datetime safely and attach timezone when missing."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None and default_tz is not None:
+        return default_tz.localize(dt) if hasattr(default_tz, "localize") else dt.replace(tzinfo=default_tz)
+    return dt
+
+
+def _build_stage_unlock_schedule_from_start(game_start_at: datetime) -> Dict[int, str]:
+    """Build absolute unlock dates for all stages from a fixed game start timestamp."""
+    schedule: Dict[int, str] = {}
+    for stage_num in range(1, TOTAL_STAGES + 1):
+        unlock_date = game_start_at + timedelta(days=STAGE_UNLOCK_DELAY_DAYS * (stage_num - 1))
+        schedule[stage_num] = unlock_date.isoformat()
+    return schedule
+
+
+def _ensure_absolute_stage_unlock_schedule(state: Dict) -> None:
+    """
+    Ensure stage unlock dates follow an absolute weekly schedule from game start.
+    This keeps unlock weekday stable even if a player finishes an episode later.
+    """
+    participant_code = str(state.get("participant_code", "") or "")
+    is_test_mode = is_test_mode_participant(participant_code)
+    cet_tz = pytz.timezone('Europe/Berlin')
+    now = datetime.now(cet_tz)
+
+    if is_test_mode:
+        state["game_start_at"] = now.isoformat()
+        state["stage_unlock_dates"] = {stage_num: now.isoformat() for stage_num in range(1, TOTAL_STAGES + 1)}
+        return
+
+    start_from_state = _parse_iso_datetime(state.get("game_start_at"), default_tz=cet_tz)
+    stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
+    stage1_unlock = _parse_iso_datetime(stage_unlock_dates.get(1), default_tz=cet_tz)
+    game_start_at = start_from_state or stage1_unlock or now
+
+    state["game_start_at"] = game_start_at.isoformat()
+    state["stage_unlock_dates"] = _build_stage_unlock_schedule_from_start(game_start_at)
+
+
+def _build_next_episode_calendar_link(state: Optional[Dict]) -> str:
+    """Create a Google Calendar template URL for the next unlock reminder."""
+    cet_tz = pytz.timezone('Europe/Berlin')
+    now = datetime.now(cet_tz)
+
+    current_stage = 1
+    if state:
+        try:
+            current_stage = max(1, min(TOTAL_STAGES, int(state.get("current_stage", 1))))
+        except (TypeError, ValueError):
+            current_stage = 1
+    next_stage = min(TOTAL_STAGES, current_stage + 1)
+
+    next_unlock_dt: Optional[datetime] = None
+    if state and isinstance(state, dict):
+        stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
+        next_unlock_dt = _parse_iso_datetime(stage_unlock_dates.get(next_stage), default_tz=cet_tz)
+        if next_unlock_dt is None:
+            working_state = dict(state)
+            _ensure_absolute_stage_unlock_schedule(working_state)
+            stage_unlock_dates = working_state.get("stage_unlock_dates", {}) or {}
+            next_unlock_dt = _parse_iso_datetime(stage_unlock_dates.get(next_stage), default_tz=cet_tz)
+
+    if next_unlock_dt is None:
+        next_unlock_dt = now + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
+
+    start_day = next_unlock_dt.strftime("%Y%m%d")
+    end_day = (next_unlock_dt + timedelta(days=1)).strftime("%Y%m%d")
+    params = {
+        "action": "TEMPLATE",
+        "text": CALENDAR_REMINDER_TITLE,
+        "dates": f"{start_day}/{end_day}",
+        "details": CALENDAR_REMINDER_DETAILS,
+    }
+    return f"https://calendar.google.com/calendar/render?{urlencode(params)}"
 
 
 def _personalize_questionnaire_links_in_text(
@@ -166,11 +257,11 @@ def _personalize_questionnaire_links_in_messages(
 
 
 def _is_test_participant(participant_code: str) -> bool:
-    return isinstance(participant_code, str) and participant_code.upper() == "TEST"
+    return is_test_mode_participant(participant_code)
 
 
 def _is_debug_mode_enabled(state: Dict, participant_code: str) -> bool:
-    """Enable verbose director diagnostics only for TEST participant."""
+    """Enable verbose director diagnostics only for test-mode participants."""
     return _is_test_participant(participant_code) and bool(state.get("debug_mode", False))
 
 
@@ -184,6 +275,32 @@ def _append_debug_message(messages: List[Dict], content: str) -> None:
             "show_explain": False,
         }
     )
+
+
+def _sync_last_public_responder_from_messages(state: Dict, messages: List[Dict]) -> None:
+    """Keep last public responder aligned with the latest character output."""
+    if not state or not messages:
+        return
+
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        if message.get("type") != "character":
+            continue
+
+        character_key = str(message.get("character") or "").strip().lower()
+        if character_key and character_key in CHARACTER_DATA:
+            state["last_public_responder"] = character_key
+            return
+
+
+def _sync_last_public_responder_for_public_mode(state: Dict, messages: List[Dict]) -> None:
+    """Sync responder only when current conversation mode is public."""
+    if not state:
+        return
+    if str(state.get("mode") or "").strip().lower() != "public":
+        return
+    _sync_last_public_responder_from_messages(state, messages)
 
 
 def _truncate_for_debug(value: str, max_len: int = 700) -> str:
@@ -471,6 +588,24 @@ def _update_ep1_private_progress(state: Dict, character_key: str) -> None:
     talked_characters = _normalize_character_set(state.get("ep1_private_characters", set()))
     talked_characters.add(character_key)
     state["ep1_private_characters"] = talked_characters
+
+
+def _has_private_history_for_character(state: Dict, character_key: str) -> bool:
+    """Return True when current episode already contains private chat with character."""
+    episode = state.get("current_stage", 1)
+    episode_messages = state.get("episode_messages", {})
+    stored_messages = episode_messages.get(episode, episode_messages.get(str(episode), []))
+    if not isinstance(stored_messages, list):
+        return False
+
+    expected_scope = f"private:{character_key}".strip().lower()
+    for msg in stored_messages:
+        if not isinstance(msg, dict):
+            continue
+        chat_scope = str(msg.get("chat_scope") or "").strip().lower()
+        if chat_scope == expected_scope:
+            return True
+    return False
 
 
 def _should_unlock_ep1_part2(state: Dict) -> bool:
@@ -791,6 +926,7 @@ async def _handle_ep2_scripted_public_message(
                 )
             else:
                 messages.append({"type": "system", "content": EP2_USB_EXPLANATION_FALLBACK})
+            _sync_last_public_responder_from_messages(state, messages)
             return messages
 
         ep2_state["usb_context_explained"] = True
@@ -1020,6 +1156,7 @@ async def _handle_ep2_scripted_public_message(
                         }
                     )
 
+    _sync_last_public_responder_from_messages(state, messages)
     return messages
 
 
@@ -1152,6 +1289,7 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
             message["buttons"] = buttons
         messages.append(message)
 
+    _sync_last_public_responder_for_public_mode(state, messages)
     return messages
 
 
@@ -1247,7 +1385,7 @@ async def handle_accuse_explain_cancel(participant_code: str) -> List[Dict]:
 
     state["accuse_pending_target"] = None
     state["accuse_waiting_for_reason"] = False
-    return [
+    messages = [
         {
             "type": "character",
             "character": "nina",
@@ -1258,6 +1396,8 @@ async def handle_accuse_explain_cancel(participant_code: str) -> List[Dict]:
             "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
         }
     ]
+    _sync_last_public_responder_for_public_mode(state, messages)
+    return messages
 
 
 async def handle_accuse_explain_ready(participant_code: str) -> List[Dict]:
@@ -1270,7 +1410,7 @@ async def handle_accuse_explain_ready(participant_code: str) -> List[Dict]:
         return [{"type": "system", "content": "Choose who you want to accuse first."}]
 
     state["accuse_waiting_for_reason"] = True
-    return [
+    messages = [
         {
             "type": "character",
             "character": "nina",
@@ -1281,6 +1421,8 @@ async def handle_accuse_explain_ready(participant_code: str) -> List[Dict]:
             "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
         }
     ]
+    _sync_last_public_responder_for_public_mode(state, messages)
+    return messages
 
 
 async def handle_accuse_reason_message(participant_code: str, message_text: str) -> List[Dict]:
@@ -1296,7 +1438,7 @@ async def handle_accuse_reason_message(participant_code: str, message_text: str)
 
     if _word_count_whitespace(message_text) < EP1_ACCUSATION_REASON_MIN_WORDS:
         state["accuse_waiting_for_reason"] = True
-        return [
+        messages = [
             {
                 "type": "character",
                 "character": "nina",
@@ -1307,6 +1449,8 @@ async def handle_accuse_reason_message(participant_code: str, message_text: str)
                 "ui": {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))},
             }
         ]
+        _sync_last_public_responder_for_public_mode(state, messages)
+        return messages
 
     state["accuse_waiting_for_reason"] = False
     state["accuse_pending_target"] = None
@@ -1460,7 +1604,7 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
         return [{"type": "error", "content": "Game not initialized."}]
 
     if not _is_test_participant(participant_code):
-        return [{"type": "system", "content": "This command is available only for TEST mode."}]
+        return [{"type": "system", "content": "This command is available only for TEST/ROBERTA mode."}]
 
     if is_debug_command:
         command_parts = normalized.split()
@@ -1473,7 +1617,7 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
         state["debug_mode_user_override"] = True
         await game_state_manager.save_game_state(participant_code, state)
         status_text = "enabled" if debug_enabled else "disabled"
-        return [{"type": "system", "content": f"Debug mode {status_text} for TEST."}]
+        return [{"type": "system", "content": f"Debug mode {status_text} for TEST/ROBERTA."}]
 
     if state.get("current_stage", 1) != 1:
         return [{"type": "system", "content": "Switch to Episode 1 first, then run /pauline."}]
@@ -1505,8 +1649,8 @@ def initialize_game_state(participant_code: str) -> Dict:
     from datetime import datetime
     import pytz
     
-    # Special test mode: for TEST participant, set current stage to 4 and unlock all stages
-    is_test_mode = participant_code.upper() == "TEST"
+    # Special test mode: for TEST/ROBERTA participants, unlock all stages immediately.
+    is_test_mode = is_test_mode_participant(participant_code)
     
     # Initialize stage progress for all stages
     stage_progress = {}
@@ -1518,7 +1662,7 @@ def initialize_game_state(participant_code: str) -> Dict:
             "completion_status": "not_started"  # "not_started", "in_progress", "completed", "skipped"
         }
     
-    # Stage 1 is always available, or all stages for TEST mode
+    # Stage 1 is always available, or all stages for test mode
     cet_tz = pytz.timezone('Europe/Berlin')
     now = datetime.now(cet_tz)
     stage_unlock_dates = {
@@ -1567,7 +1711,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "onboarding_step": "consent",
         "current_language_level": "B1",  # Default level
         # Multi-stage fields
-        "current_stage": 4 if is_test_mode else 1,  # Test mode starts at stage 4
+        "current_stage": 1,  # Default start episode for all participants (including test mode)
         "stages_completed": set(),
         "stage_unlock_dates": stage_unlock_dates,
         "stage_progress": stage_progress,
@@ -1580,11 +1724,11 @@ def initialize_game_state(participant_code: str) -> Dict:
 def migrate_legacy_game_state(state: Dict) -> Dict:
     """Migrate legacy game state to multi-stage format."""
     participant_code = state.get("participant_code", "")
-    is_test_mode = participant_code.upper() == "TEST"
+    is_test_mode = is_test_mode_participant(participant_code)
     
     # If state doesn't have multi-stage fields, initialize them
     if "current_stage" not in state:
-        state["current_stage"] = 4 if is_test_mode else 1
+        state["current_stage"] = 1
         
     if "stages_completed" not in state:
         # If game was completed, mark stage 1 as completed
@@ -1603,6 +1747,7 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         if is_test_mode:
             for stage_num in range(2, TOTAL_STAGES + 1):
                 state["stage_unlock_dates"][stage_num] = now.isoformat()
+    state.setdefault("game_start_at", state.get("stage_unlock_dates", {}).get(1))
     
     if "stage_progress" not in state:
         stage_progress = {}
@@ -1640,7 +1785,7 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     if "debug_mode_user_override" not in state:
         state["debug_mode_user_override"] = False
 
-    # For legacy TEST states, turn debug on by default unless user explicitly toggled it.
+    # For legacy test-mode states, turn debug on by default unless user explicitly toggled it.
     if is_test_mode and not state.get("debug_mode_user_override", False):
         state["debug_mode"] = True
 
@@ -1668,14 +1813,15 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     state.setdefault("ep1_usb_drive_unlocked", False)
     state.setdefault("ep1_outro_narrator_shown", False)
     state.setdefault("ep1_outro_questionnaire_shown", False)
+    _ensure_absolute_stage_unlock_schedule(state)
     
     return state
 
 
 def get_available_stages(participant_code: str) -> List[int]:
     """Get list of stages available to the player."""
-    # Special test mode: for TEST participant, all stages are always available
-    if participant_code.upper() == "TEST":
+    # Special test mode: for TEST/ROBERTA participants, all stages are always available
+    if is_test_mode_participant(participant_code):
         return list(range(1, TOTAL_STAGES + 1))
     
     state = GAME_STATE.get(participant_code)
@@ -1684,6 +1830,7 @@ def get_available_stages(participant_code: str) -> List[int]:
     
     # Ensure state is migrated
     state = migrate_legacy_game_state(state)
+    _ensure_absolute_stage_unlock_schedule(state)
     
     available = [1]  # Stage 1 is always available
     cet_tz = pytz.timezone('Europe/Berlin')
@@ -1710,13 +1857,13 @@ def get_available_stages(participant_code: str) -> List[int]:
                     # Invalid date format, unlock immediately if previous stage is done
                     available.append(stage_num)
             else:
-                # No unlock date set, check if we need to set it
-                if prev_status == "completed":
-                    # Set unlock date to 7 days from now
-                    unlock_date = now + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
-                    stage_unlock_dates[stage_num] = unlock_date.isoformat()
-                    state["stage_unlock_dates"] = stage_unlock_dates
-                    # Stage not yet available
+                # No unlock date set: rebuild absolute weekly schedule from game start.
+                _ensure_absolute_stage_unlock_schedule(state)
+                stage_unlock_dates = state.get("stage_unlock_dates", {})
+                unlock_date_str = stage_unlock_dates.get(stage_num)
+                unlock_date = _parse_iso_datetime(unlock_date_str, default_tz=cet_tz)
+                if unlock_date and now >= unlock_date:
+                    available.append(stage_num)
                 elif prev_status == "skipped":
                     # If skipped, unlock immediately
                     available.append(stage_num)
@@ -1761,15 +1908,8 @@ async def complete_stage(participant_code: str, stage_number: int) -> bool:
         if knowledge_entry not in state["global_knowledge"]:
             state["global_knowledge"].append(knowledge_entry)
     
-    # Set unlock date for next stage
-    if stage_number < TOTAL_STAGES:
-        next_stage = stage_number + 1
-        cet_tz = pytz.timezone('Europe/Berlin')
-        unlock_date = datetime.now(cet_tz) + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
-        
-        stage_unlock_dates = state.get("stage_unlock_dates", {})
-        stage_unlock_dates[next_stage] = unlock_date.isoformat()
-        state["stage_unlock_dates"] = stage_unlock_dates
+    # Keep unlock schedule anchored to game start (not completion moment).
+    _ensure_absolute_stage_unlock_schedule(state)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -1837,8 +1977,8 @@ async def switch_stage(participant_code: str, stage_number: int) -> bool:
     
     state = migrate_legacy_game_state(state)
     
-    # Special test mode: for TEST participant, allow switching to any stage
-    is_test_mode = participant_code.upper() == "TEST"
+    # Special test mode: for TEST/ROBERTA participants, allow switching to any stage
+    is_test_mode = is_test_mode_participant(participant_code)
     
     # Check if stage is available (or if in test mode, just check if stage number is valid)
     if not is_test_mode:
@@ -2239,6 +2379,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
             msg["image"] = entry["image"]
         messages.append(msg)
 
+    _sync_last_public_responder_for_public_mode(state, messages)
     await game_state_manager.save_game_state(participant_code, state)
     return messages
 
@@ -2251,6 +2392,10 @@ async def start_investigation(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
     
     state["onboarding_step"] = "investigation_started"
+    if not state.get("game_start_at"):
+        cet_tz = pytz.timezone('Europe/Berlin')
+        state["game_start_at"] = datetime.now(cet_tz).isoformat()
+    _ensure_absolute_stage_unlock_schedule(state)
     await game_state_manager.save_game_state(participant_code, state)
     
     return await handle_main_menu(participant_code)
@@ -2399,6 +2544,12 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     state["mode"] = "private"
     state["current_character"] = character_key
     _clear_public_followup_lock(state)
+
+    # Only send opening line once per character and episode.
+    # On subsequent returns to the same private chat, frontend reuses stored history.
+    if _has_private_history_for_character(state, character_key):
+        await game_state_manager.save_game_state(participant_code, state)
+        return []
 
     current_language_level = state.get("current_language_level", "B1")
     current_location = get_stage_location(state, current_stage)
@@ -3158,10 +3309,12 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
 def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", 1))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
+    calendar_link = _build_next_episode_calendar_link(state)
     if WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK in text:
         text = text.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, personalized_link)
     else:
         text = text.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalized_link)
+    text = text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
     return {
         "type": "system",
         "content": text,
@@ -3431,7 +3584,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         state["accuse_in_case_materials"] = False
 
         # Win outro chain: USB -> outro_nina.txt -> narrator (handle_ep1_outro_narrator) -> questionnaire (outro_questionnaire).
-        return _build_ep1_accuse_tim_finale_messages(participant_code)
+        messages = _build_ep1_accuse_tim_finale_messages(participant_code)
+        _sync_last_public_responder_for_public_mode(state, messages)
+        return messages
 
     # Wrong accusation -> attempts & defense
     max_attempts = _get_ep1_accusation_max_attempts(state)
@@ -3512,10 +3667,14 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             first_ui = dict(first_tim.get("ui") or {})
             first_ui["preDisplayDelayMs"] = EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS
             first_tim["ui"] = first_ui
-        return [*defense_messages, *nina_hint_messages, *tim_finale]
+        messages = [*defense_messages, *nina_hint_messages, *tim_finale]
+        _sync_last_public_responder_for_public_mode(state, messages)
+        return messages
 
     wrong_messages = [wrong_accusation_msg] if wrong_accusation_msg else []
-    return [*defense_messages, *wrong_messages]
+    messages = [*defense_messages, *wrong_messages]
+    _sync_last_public_responder_for_public_mode(state, messages)
+    return messages
 
 
 async def handle_reveal_ep1_killer(participant_code: str) -> List[Dict]:
@@ -3744,9 +3903,7 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
     save_message_to_cache(message_id, EP2_JAMES_USB_QUESTION, "james")
     log_message("character_james", EP2_JAMES_USB_QUESTION, participant_code)
 
-    await game_state_manager.save_game_state(participant_code, state)
-
-    return [
+    messages = [
         {
             "type": "character",
             "character": "james",
@@ -3757,6 +3914,9 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
             "show_explain": True,
         }
     ]
+    _sync_last_public_responder_for_public_mode(state, messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
 
 
 async def analyze_and_log_user_text(participant_code: str, text: str):

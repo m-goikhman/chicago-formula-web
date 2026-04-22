@@ -25,6 +25,12 @@ function checkAndShowInputArea(messageContent, msgObj) {
     }
 }
 
+function shouldPersistButtonRowAfterClick(action) {
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    // Keep intro game-menu shortcuts available after click.
+    return normalizedAction === 'menu_talk' || normalizedAction === 'menu_evidence';
+}
+
 function displayMessage(msg) {
     // Handle clue messages specially - show in detail drawer
     if (msg.type === 'clue') {
@@ -234,7 +240,9 @@ function displayMessage(msg) {
                 };
             } else {
                 button.onclick = () => {
-                    disableButtonRowOnce();
+                    if (!shouldPersistButtonRowAfterClick(btn.action)) {
+                        disableButtonRowOnce();
+                    }
                     handleAction(btn.action, true, btn.text);
                 };
             }

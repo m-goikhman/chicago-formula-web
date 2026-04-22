@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Writing Confidence Experiment · Participant Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/portal.css">
+</head>
+<body>
+    <div class="portal-container">
+        <header class="portal-header">
+            <h4>Building English Writing Confidence in Adult Learners through AI Text Detective Game</h4>
+        </header>
+
+        <main class="portal-content">
+            <section class="card card-consent" data-view="consent" id="consentView">
+                <h2>Before you participate</h2>
+                <p class="consent-intro">
+                    Please read both documents and confirm your consent.
+                </p>
+
+                <div class="consent-block">
+                    <button type="button" class="consent-toggle" aria-expanded="false" aria-controls="consentExpandable1" id="consentToggle1">
+                        <span class="consent-toggle-title">Study information sheet</span>
+                        <span class="consent-toggle-icon" aria-hidden="true"></span>
+                    </button>
+                    <div class="consent-expandable" id="consentExpandable1">
+                        <button type="button" class="consent-close" aria-label="Close">×</button>
+                        <div class="consent-body" id="consentBody1">
+                            <p>
+                                This study explores how AI-supported detective story activities can help adult English learners
+                                improve writing confidence and reduce writing anxiety.
+                            </p>
+                            <p>
+                                Participation is voluntary and takes about 4-5 total hours over four weeks.
+                                You can withdraw at any time without penalty.
+                            </p>
+                            <p>
+                                The full study information sheet is provided by the research team before participation.
+                            </p>
+                        </div>
+                        <label class="consent-checkbox-label">
+                            <input type="checkbox" class="consent-checkbox" id="consentCheck1" autocomplete="off">
+                            <span>I have read and accept the study information sheet.</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="consent-block">
+                    <button type="button" class="consent-toggle" aria-expanded="false" aria-controls="consentExpandable2" id="consentToggle2">
+                        <span class="consent-toggle-title">Privacy notice for research data processing</span>
+                        <span class="consent-toggle-icon" aria-hidden="true"></span>
+                    </button>
+                    <div class="consent-expandable" id="consentExpandable2">
+                        <button type="button" class="consent-close" aria-label="Close">×</button>
+                        <div class="consent-body" id="consentBody2">
+                            <p>
+                                Data is processed in line with GDPR and used only for research purposes.
+                                Published results are anonymized and cannot identify participants.
+                            </p>
+                            <p>
+                                Contact details are requested only for participants who opt into the optional interview and are
+                                removed after the study.
+                            </p>
+                            <p>
+                                Full version:
+                                <a href="consent_forms/INFORMATIVA%20SUL%20TRATTAMENTO%20DEI%20DATI%20PERSONALI%20PER%20FINALIT%C3%80%20DI%20RICERCA%20SCIENTIFICA.html" target="_blank" rel="noopener noreferrer">
+                                    open the privacy notice
+                                </a>.
+                            </p>
+                        </div>
+                        <label class="consent-checkbox-label">
+                            <input type="checkbox" class="consent-checkbox" id="consentCheck2" autocomplete="off">
+                            <span>I have read and accept the privacy notice.</span>
+                        </label>
+                    </div>
+                </div>
+
+                <button type="button" class="button primary" id="consentContinueButton" disabled>Continue</button>
+            </section>
+
+            <section class="card hidden" data-view="login" id="loginView">
+                <h2>Unlock Your Session</h2>
+                <p>Participant codes are provided by the research team. The same code works for both modes.</p>
+
+                <div class="input-group">
+                    <label for="participantCode">Participant code</label>
+                    <div class="input-row">
+                        <input type="text" id="participantCode" placeholder="Enter code (e.g., AN0842)" autocomplete="one-time-code">
+                        <button class="button primary" id="loginButton">Unlock access</button>
+                    </div>
+                </div>
+
+                <div class="status-text error" id="loginError"></div>
+                <div class="status-text" id="loginStatus"></div>
+            </section>
+
+            <section class="card" data-view="mode-select" id="modeSelectView">
+                <div class="session-chip">
+                    Active session · <span id="sessionCode">—</span>
+                </div>
+                <div class="mode-details">
+                    <h2>Select how you want to continue</h2>
+                    <p>Both modes use the same participant progress. You can switch at any time.</p>
+                </div>
+
+                <div class="mode-grid">
+                    <article class="mode-card">
+                        <div class="mode-details">
+                            <h3>Teach · Detective Reading Journey</h3>
+                            <p>Four-week storyline with guided reading, reflection notes, and mission-style tasks for each chapter.</p>
+                            <div class="mode-badges">
+                                <span class="badge">Weekly chapters</span>
+                                <span class="badge">Notes &amp; tasks</span>
+                                <span class="badge">Self-paced</span>
+                            </div>
+                        </div>
+                        <button class="button primary" data-action="enter-teach">Enter Teach</button>
+                    </article>
+
+                    <article class="mode-card">
+                        <div class="mode-details">
+                            <h3>Tell · Interactive Mystery</h3>
+                            <p>Chat with suspects, collect clues, and collaborate with the AI director to solve the Chicago Formula case.</p>
+                            <div class="mode-badges">
+                                <span class="badge">Live dialogue</span>
+                                <span class="badge">AI assistants</span>
+                                <span class="badge">Level adaptable</span>
+                            </div>
+                        </div>
+                        <button class="button primary" data-action="enter-tell">Enter Tell</button>
+                    </article>
+                </div>
+
+                <div class="actions-row">
+                    <button class="button secondary" id="switchCodeButton">Use a different participant code</button>
+                </div>
+
+                <div class="status-text" id="modeStatus"></div>
+            </section>
+        </main>
+
+        <footer class="portal-footer">
+            Need support? Contact the study coordinator or refresh the page to start over.
+        </footer>
+    </div>
+
+    <script>
+        window.portalDestinations = Object.assign({}, window.portalDestinations, {
+            tellProduction: 'https://chicago-formula-n.web.app/',
+            teachProduction: 'https://chicago-formula-t.web.app/',
+            tellLocal: '../../Tell/frontend/index.html',
+            teachLocal: '../../Teach/frontend/index.html'
+        });
+    </script>
+    <script src="js/portal.js"></script>
+</body>
+</html>

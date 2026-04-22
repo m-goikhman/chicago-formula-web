@@ -5,6 +5,8 @@ class HighlightManager {
     constructor() {
         this.highlights = new Map(); // messageId -> Set of highlighted words/phrases
         this.messageIdCounter = 0;
+        this.messageTextSelector = '.message-text, .nina-chat-message-content';
+        this.messageContainerSelector = '.message, .nina-chat-message';
         this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         this.selectionTimeout = null;
         this.selectionPending = false;
@@ -77,7 +79,7 @@ class HighlightManager {
                 const selection = window.getSelection();
                 const hasTextSelected = selection && selection.rangeCount > 0 && selection.toString().trim().length > 0;
 
-                if (hasTextSelected && e.target.closest('.message-text')) {
+                if (hasTextSelected && e.target.closest(this.messageTextSelector)) {
                     e.preventDefault();
                     e.stopPropagation();
                     return false;
@@ -119,7 +121,7 @@ class HighlightManager {
         // Track touch start (passive to not interfere with text selection)
         document.addEventListener('touchstart', (e) => {
             const highlight = e.target.closest('.highlight');
-            const messageText = e.target.closest('.message-text');
+            const messageText = e.target.closest(this.messageTextSelector);
 
             if (!highlight && messageText) {
                 touchStartTime = Date.now();
@@ -184,11 +186,11 @@ class HighlightManager {
         if (!container) return null;
 
         if (container.nodeType === Node.TEXT_NODE) {
-            return container.parentElement ? container.parentElement.closest('.message-text') : null;
+            return container.parentElement ? container.parentElement.closest(this.messageTextSelector) : null;
         }
 
         if (container.nodeType === Node.ELEMENT_NODE) {
-            return container.closest('.message-text');
+            return container.closest(this.messageTextSelector);
         }
 
         return null;
@@ -318,7 +320,11 @@ class HighlightManager {
     highlightSelection(range, messageText, selectedText) {
         try {
             // Get message ID (create if doesn't exist)
-            const messageDiv = messageText.closest('.message');
+            const messageDiv = messageText.closest(this.messageContainerSelector);
+            if (!messageDiv) {
+                window.getSelection().removeAllRanges();
+                return;
+            }
             let messageId = messageDiv.dataset.messageId;
             if (!messageId) {
                 messageId = this.generateMessageId();
@@ -464,10 +470,10 @@ class HighlightManager {
         if (highlight.classList.contains('loading')) return;
         
         // Get original message text
-        const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+        const messageDiv = document.querySelector(`${this.messageContainerSelector}[data-message-id="${messageId}"]`);
         if (!messageDiv) return;
         
-        const messageText = messageDiv.querySelector('.message-text');
+        const messageText = messageDiv.querySelector(this.messageTextSelector);
         if (!messageText) return;
         
         // Get original text (without HTML tags)
@@ -518,7 +524,7 @@ class HighlightManager {
             return;
         }
         
-        const messageText = messageDiv.querySelector('.message-text');
+        const messageText = messageDiv.querySelector(this.messageTextSelector);
         if (!messageText) return;
         
         const wordsToHighlight = this.highlights.get(messageId);

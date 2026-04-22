@@ -165,10 +165,15 @@ async function callWithSessionRecovery(requestFn) {
     return result;
 }
 
+function isTestModeParticipantCode(code) {
+    const normalizedCode = String(code || '').trim().toUpperCase();
+    return normalizedCode === 'TEST' || normalizedCode === 'ROBERTA';
+}
+
 function updateResetHistoryMenuVisibility() {
     const resetMenuItem = document.getElementById('resetHistoryMenuItem');
     if (!resetMenuItem) return;
-    resetMenuItem.style.display = (participantCode || '').toUpperCase() === 'TEST' ? 'block' : 'none';
+    resetMenuItem.style.display = isTestModeParticipantCode(participantCode) ? 'block' : 'none';
 }
 
 function getNavigationUnlockedStorageKey() {
@@ -324,6 +329,21 @@ function syncDialogueModeUI() {
     if (typeof window.setActiveCharacterDrawerItem === 'function') {
         window.setActiveCharacterDrawerItem(currentCharacter ? currentCharacter.name : null);
     }
+    if (typeof window.updatePrivateModeControls === 'function') {
+        window.updatePrivateModeControls();
+    }
+}
+
+function shouldPersistButtonRowAfterClick(action) {
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    return normalizedAction === 'menu_talk' || normalizedAction === 'menu_evidence';
+}
+
+function ensureMainInputVisible() {
+    const inputArea = document.getElementById('inputArea');
+    if (!inputArea) return;
+    inputArea.style.display = 'flex';
+    window.inputAreaShown = true;
     if (typeof window.updatePrivateModeControls === 'function') {
         window.updatePrivateModeControls();
     }
@@ -507,6 +527,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     if (action === 'menu_talk') {
         setNavigationUnlocked(true);
         updateNavigationBarVisibility();
+        ensureMainInputVisible();
         syncNinaFloatingButtonVisibility();
         if (typeof window.openLeftDrawer === 'function') {
             window.openLeftDrawer();
@@ -519,6 +540,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     if (action === 'menu_evidence') {
         setNavigationUnlocked(true);
         updateNavigationBarVisibility();
+        ensureMainInputVisible();
         syncNinaFloatingButtonVisibility();
         if (typeof window.openRightDrawer === 'function') {
             window.openRightDrawer();
@@ -530,7 +552,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
 
     if (action === 'reset_all_history') {
         const confirmed = window.confirm(
-            'This will delete all message history and progress across all episodes for TEST. Continue?'
+            'This will delete all message history and progress across all episodes for TEST/ROBERTA. Continue?'
         );
         if (!confirmed) {
             return;
@@ -835,11 +857,35 @@ async function sendMessage() {
     }
 }
 
+function isNinaChatModalOpen() {
+    const modal = document.getElementById('ninaChatModal');
+    return Boolean(modal && modal.style.display !== 'none');
+}
+
+function appendNinaExplainError(message) {
+    const messagesContainer = document.getElementById('ninaChatMessages');
+    if (!messagesContainer) {
+        addMessage('error', 'Error', message);
+        return;
+    }
+
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'nina-chat-message message tutor';
+    errorDiv.innerHTML = `
+        <div class="nina-chat-message-content message-text" style="color: #d32f2f;">
+            <strong>Tutor:</strong> ${message}
+        </div>
+    `;
+    messagesContainer.appendChild(errorDiv);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
 async function explainWord(wordOrPhrase, originalText) {
     try {
         const activeChatScope = (typeof window.getActiveChatScope === 'function')
             ? window.getActiveChatScope()
             : 'public';
+        const routeToNinaChat = isNinaChatModalOpen();
         const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/explain', {
             action: 'word',
             word: wordOrPhrase,
@@ -854,7 +900,11 @@ async function explainWord(wordOrPhrase, originalText) {
 
         if (!response.ok) {
             const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to get explanation';
-            addMessage('error', 'Error', errorMessage);
+            if (routeToNinaChat) {
+                appendNinaExplainError(`Error: ${errorMessage}`);
+            } else {
+                addMessage('error', 'Error', errorMessage);
+            }
             return;
         }
 
@@ -867,13 +917,35 @@ async function explainWord(wordOrPhrase, originalText) {
                 return hasExplicitScope ? msg : { ...msg, chat_scope: activeChatScope };
             });
             window.getSelection().removeAllRanges();
-            await displayMessagesSequentially(scopedMessages, 0);
+            if (routeToNinaChat) {
+                scopedMessages.forEach((msg) => {
+                    const isTutorMessage = (
+                        (typeof msg?.character === 'string' && msg.character.toLowerCase() === 'tutor') ||
+                        (typeof msg?.character_name === 'string' && msg.character_name.toLowerCase().includes('tutor')) ||
+                        (typeof msg?.type === 'string' && msg.type.toLowerCase() === 'language_tutor')
+                    );
+                    const modalMsg = isTutorMessage
+                        ? { ...msg, type: 'tutor', character_name: msg.character_name || 'Tutor' }
+                        : msg;
+                    appendNinaModalMessage(modalMsg);
+                });
+            } else {
+                await displayMessagesSequentially(scopedMessages, 0);
+            }
         } else if (data && data.error) {
-            addMessage('error', 'Error', data.error);
+            if (routeToNinaChat) {
+                appendNinaExplainError(`Error: ${data.error}`);
+            } else {
+                addMessage('error', 'Error', data.error);
+            }
         }
     } catch (error) {
         console.error('Error explaining word:', error);
-        addMessage('error', 'Error', 'Failed to get explanation');
+        if (isNinaChatModalOpen()) {
+            appendNinaExplainError('Error: Failed to get explanation');
+        } else {
+            addMessage('error', 'Error', 'Failed to get explanation');
+        }
     }
 }
 
@@ -1055,9 +1127,9 @@ async function sendNinaMessage() {
     
     // Show user message
     const userMessageDiv = document.createElement('div');
-    userMessageDiv.className = 'nina-chat-message user';
+    userMessageDiv.className = 'nina-chat-message message user';
     userMessageDiv.innerHTML = `
-        <div class="nina-chat-message-content">${text}</div>
+        <div class="nina-chat-message-content message-text">${text}</div>
     `;
     messagesContainer.appendChild(userMessageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1068,10 +1140,10 @@ async function sendNinaMessage() {
     
     // Show typing indicator
     const typingDiv = document.createElement('div');
-    typingDiv.className = 'nina-chat-message nina';
+    typingDiv.className = 'nina-chat-message message nina';
     typingDiv.innerHTML = `
         <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-        <div class="nina-chat-message-content">Nina is typing...</div>
+        <div class="nina-chat-message-content message-text">Nina is typing...</div>
     `;
     messagesContainer.appendChild(typingDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1090,10 +1162,10 @@ async function sendNinaMessage() {
         if (!response.ok) {
             const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to send message';
             const errorDiv = document.createElement('div');
-            errorDiv.className = 'nina-chat-message nina';
+            errorDiv.className = 'nina-chat-message message nina';
             errorDiv.innerHTML = `
                 <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-                <div class="nina-chat-message-content" style="color: #d32f2f;">Error: ${errorMessage}</div>
+                <div class="nina-chat-message-content message-text" style="color: #d32f2f;">Error: ${errorMessage}</div>
             `;
             messagesContainer.appendChild(errorDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1104,14 +1176,14 @@ async function sendNinaMessage() {
         if (data && data.messages && Array.isArray(data.messages)) {
             for (const msg of data.messages) {
                 const ninaMessageDiv = document.createElement('div');
-                ninaMessageDiv.className = 'nina-chat-message nina';
+                ninaMessageDiv.className = 'nina-chat-message message nina';
                 
                 // Render markdown content
                 const content = renderMarkdownForNina(msg.content || '');
                 
                 ninaMessageDiv.innerHTML = `
                     <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-                    <div class="nina-chat-message-content">${content}</div>
+                    <div class="nina-chat-message-content message-text">${content}</div>
                 `;
                 messagesContainer.appendChild(ninaMessageDiv);
             }
@@ -1122,10 +1194,10 @@ async function sendNinaMessage() {
         typingDiv.remove();
         
         const errorDiv = document.createElement('div');
-        errorDiv.className = 'nina-chat-message nina';
+        errorDiv.className = 'nina-chat-message message nina';
         errorDiv.innerHTML = `
             <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-            <div class="nina-chat-message-content" style="color: #d32f2f;">Error: Failed to send message</div>
+            <div class="nina-chat-message-content message-text" style="color: #d32f2f;">Error: Failed to send message</div>
         `;
         messagesContainer.appendChild(errorDiv);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -1170,18 +1242,30 @@ function appendNinaModalMessage(msg = {}) {
     if (!messagesContainer) return;
 
     const ninaMessageDiv = document.createElement('div');
-    const isUserMessage = String(msg.type || '').toLowerCase() === 'user';
-    ninaMessageDiv.className = `nina-chat-message ${isUserMessage ? 'user' : 'nina'}`;
+    const msgType = String(msg.type || '').toLowerCase();
+    const isUserMessage = msgType === 'user';
+    const isTutorMessage = (
+        msgType === 'tutor' ||
+        msgType === 'language_tutor' ||
+        (typeof msg.character === 'string' && msg.character.toLowerCase() === 'tutor') ||
+        (typeof msg.character_name === 'string' && msg.character_name.toLowerCase().includes('tutor'))
+    );
+    ninaMessageDiv.className = `nina-chat-message message ${isUserMessage ? 'user' : (isTutorMessage ? 'tutor' : 'nina')}`;
 
     const content = renderMarkdownForNina(msg.content || '');
     if (isUserMessage) {
         ninaMessageDiv.innerHTML = `
-            <div class="nina-chat-message-content">${content}</div>
+            <div class="nina-chat-message-content message-text">${content}</div>
+        `;
+    } else if (isTutorMessage) {
+        const tutorName = msg.character_name || 'Tutor';
+        ninaMessageDiv.innerHTML = `
+            <div class="nina-chat-message-content message-text"><strong>${tutorName}:</strong> ${content}</div>
         `;
     } else {
         ninaMessageDiv.innerHTML = `
             <img src="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/nina.png" alt="Nina" class="nina-chat-message-avatar">
-            <div class="nina-chat-message-content">${content}</div>
+            <div class="nina-chat-message-content message-text">${content}</div>
         `;
     }
 
@@ -1206,7 +1290,9 @@ function appendNinaModalMessage(msg = {}) {
                 const button = document.createElement('button');
                 button.textContent = btn.text;
                 button.onclick = () => {
-                    disableButtonRowOnce();
+                    if (!shouldPersistButtonRowAfterClick(btn.action)) {
+                        disableButtonRowOnce();
+                    }
                     handleAction(btn.action, true, btn.text);
                 };
                 buttonRow.appendChild(button);

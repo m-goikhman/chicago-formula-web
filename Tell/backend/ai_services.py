@@ -466,6 +466,92 @@ def _filter_history_for_character(history: list, character_key: str) -> list:
     
     return filtered
 
+
+def _build_character_aliases(character_key: str) -> set[str]:
+    """Return normalized aliases used to identify one character in history tags."""
+    if not character_key:
+        return set()
+
+    aliases = {character_key.strip().lower()}
+    try:
+        from config import CHARACTER_DATA  # Local import to avoid circular dependency
+
+        char_data = CHARACTER_DATA.get(character_key, {})
+        full_name = (char_data.get("full_name") or "").strip()
+        if full_name:
+            aliases.add(full_name.lower())
+            first_name = full_name.split()[0].strip().lower()
+            if first_name:
+                aliases.add(first_name)
+    except Exception:
+        # Keep a resilient fallback; key alias is enough for core behavior.
+        pass
+
+    return {alias for alias in aliases if alias}
+
+
+def _rewrite_history_for_active_character(history: list, character_key: Optional[str]) -> list:
+    """
+    Rewrite history tags from the active character perspective.
+    For the active character, replace explicit self references in tags with "you".
+    """
+    if not character_key:
+        return history
+
+    aliases = _build_character_aliases(character_key)
+    if not aliases:
+        return history
+
+    rewritten = []
+    detective_tag_pattern = re.compile(r"^\[Detective to ([^\]]+)\]:\s*(.*)$")
+    bracket_tag_pattern = re.compile(r"^\[([^\]]+)\]:\s*(.*)$")
+    detective_plain_prefix = "Detective to "
+
+    for msg in history:
+        role = msg.get("role", "")
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            rewritten.append(msg)
+            continue
+
+        new_content = content
+
+        detective_match = detective_tag_pattern.match(content)
+        if detective_match:
+            target = detective_match.group(1).strip().lower()
+            body = detective_match.group(2)
+            if target in aliases:
+                new_content = f"[Detective to you]: {body}"
+            rewritten.append({"role": role, "content": new_content})
+            continue
+
+        bracket_match = bracket_tag_pattern.match(content)
+        if bracket_match:
+            speaker = bracket_match.group(1).strip().lower()
+            body = bracket_match.group(2)
+            if speaker in aliases:
+                new_content = f"[you]: {body}"
+            rewritten.append({"role": role, "content": new_content})
+            continue
+
+        # Backward-compatible plain prefixes:
+        # "Detective to Tim: ..." -> "Detective to you: ..."
+        # "Tim: ..." -> "you: ..."
+        lowered_content = content.lower()
+        for alias in sorted(aliases, key=len, reverse=True):
+            detective_prefix = f"{detective_plain_prefix}{alias}: "
+            if lowered_content.startswith(detective_prefix):
+                new_content = f"{detective_plain_prefix}you: {content[len(detective_prefix):]}"
+                break
+            alias_prefix = f"{alias}: "
+            if lowered_content.startswith(alias_prefix):
+                new_content = f"you: {content[len(alias_prefix):]}"
+                break
+
+        rewritten.append({"role": role, "content": new_content})
+
+    return rewritten
+
 async def ask_for_dialogue(
     participant_code: str,
     user_message: str,
@@ -545,13 +631,14 @@ async def ask_for_dialogue(
     # For Nina, use filtered history (only her conversations with the user)
     # For other characters, use shared history so they can see what others have said
     if character_key == "nina":
-        character_history = _filter_history_for_character(user_histories[history_key], character_key)
-        messages = [{"role": "system", "content": enhanced_system_prompt}]
-        messages.extend(character_history[-10:])
+        base_history = _filter_history_for_character(user_histories[history_key], character_key)
     else:
         # Use shared conversation history so characters can see what others have said
-        messages = [{"role": "system", "content": enhanced_system_prompt}]
-        messages.extend(user_histories[history_key][-10:])
+        base_history = user_histories[history_key][-10:]
+
+    character_history = _rewrite_history_for_active_character(base_history[-10:], character_key)
+    messages = [{"role": "system", "content": enhanced_system_prompt}]
+    messages.extend(character_history)
     
     messages.append({"role": "user", "content": user_message})
     

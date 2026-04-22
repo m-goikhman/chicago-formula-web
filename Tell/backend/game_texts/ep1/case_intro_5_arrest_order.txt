@@ -2,4 +2,5 @@ Oh, and one more thing — there's an **Arrest Order** in your case materials. W
 
 But take your time. Talk to everyone, look at the evidence.
 [buttons]
-Ok, let's go|show_main_menu
+Open Case Materials|menu_evidence
+Talk to Someone|menu_talk

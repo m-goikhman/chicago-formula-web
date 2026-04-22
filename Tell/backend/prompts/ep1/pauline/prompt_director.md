@@ -99,7 +99,7 @@ Alex is hosting a pre-Christmas get-together for friends. The party is scheduled
 - Tim was in the apartment when she arrived — she expected a private meeting and was annoyed
 - Tim was gone when she returned the USB (~18:40) — Alex said he went to get beer
 - On the way out, she saw a blue car parked by the entrance where the spot had been empty before; someone was sitting inside
-- She returned at 21:00 to find police on scene
+- She returned at 22:00 to find police on scene
 - She does not know anyone here except Tim who he briefly met earlier today
 - Her car: gray Toyota Camry
 

@@ -1,0 +1,16 @@
+Quick instructions for Roberta (TEST-mode access)
+
+You now have the same special tools as TEST.
+
+1) Pauline shortcut (Episode 1)
+- In the main chat, type: /pauline
+- This unlocks Pauline's appearance in Episode 1 (same as /skip_to_pauline or /test_pauline).
+
+2) Debug messages ON/OFF
+- Type: /debug on
+- Type: /debug off
+- Use this in the main chat to show or hide technical debug messages.
+
+3) Reset all history
+- Open the top menu and choose "Reset All History".
+- This clears all chat history and progress across all episodes, then restarts from the beginning.
