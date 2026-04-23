@@ -1,16 +1,17 @@
 # Week 1: The Chicago Formula
 
-## Pre-Reading Vocabulary
+## Before Reading
 
-**New Words to Learn:**
-1. **wound** - an injury where the skin is broken, often from a hit or cut
-2. **alibi** - proof that you were somewhere else when a crime happened
-3. **contradict** - to say the opposite of what someone else said
-4. **motive** - a reason for doing something bad
-5. **evidence** - proof that something happened or that someone did something
-6. **confess** - to admit that you did something wrong
-7. **suspicious** - making you think something is wrong
+You are going to read a story called **Chicago Formula**.
+Here are some words you will often find in the story. You can click on the word to see its definition.
 
+### Word Cloud
+Explore the key words from the story (stop-words removed).
+Select any word to highlight it, then click the highlight to get a tutor comment.
+[wordcloud]
+
+### Exercise
+What do you think the story will be about?
 
 ### Exercise 1: Match the Words
 
@@ -184,6 +185,18 @@ Answer in complete sentences:
 
    _______________________________________________
 
+
+---
+
+## Suspects: Who Is Who?
+
+Look at the suspects again. Fiona's name is already on the picture.
+
+Drag the name cards to the correct people:
+- **Tim** = the man with glasses in the olive-green shirt
+- **Ronnie** = the tall man in the grey shirt
+
+When you finish, click **Check answers**.
 
 ---
 

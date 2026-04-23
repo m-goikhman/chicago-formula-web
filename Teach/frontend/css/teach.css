@@ -48,16 +48,8 @@
     background: #f5f3ef;
 }
 
-.horizontal-menu {
-    border-bottom: 1px solid rgba(26, 85, 99, 0.08);
-}
-
-.horizontal-menu-item.active {
-    background: rgba(26, 85, 99, 0.08);
-}
-
-.horizontal-menu-item.active::after {
-    opacity: 1;
+.teach-container .episode-display {
+    font-size: 0.85em;
 }
 
 .horizontal-menu-empty {
@@ -562,6 +554,209 @@
     color: #2e7d32;
 }
 
+.teach-suspects-exercise {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.teach-suspects-board {
+    position: relative;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid rgba(26, 85, 99, 0.16);
+    box-shadow: 0 12px 28px rgba(26, 85, 99, 0.12);
+    background: #ffffff;
+}
+
+.teach-suspects-board-image {
+    width: 100%;
+    display: block;
+    height: auto;
+}
+
+.teach-suspects-zones {
+    position: absolute;
+    inset: 0;
+}
+
+.teach-suspects-zone {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: min(180px, 34%);
+    min-height: 56px;
+    border: 2px dashed rgba(26, 85, 99, 0.45);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    color: rgba(26, 85, 99, 0.8);
+    font-size: 0.82rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 6px;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.teach-suspects-zone:hover,
+.teach-suspects-zone:active,
+.teach-suspects-zone:focus,
+.teach-suspects-zone:focus-visible,
+.teach-suspects-zone.drag-over {
+    transform: translate(-50%, -50%) !important;
+}
+
+.teach-suspects-zone.drag-over {
+    border-color: rgba(30, 106, 122, 0.85);
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.teach-suspects-zone.filled {
+    padding: 0;
+    overflow: hidden;
+}
+
+.teach-suspects-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.teach-suspects-card {
+    border: 2px solid rgba(26, 85, 99, 0.3);
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 4px;
+    cursor: grab;
+    transition: transform 0.15s ease, border-color 0.2s ease;
+}
+
+.teach-suspects-card:hover {
+    border-color: rgba(30, 106, 122, 0.6);
+    transform: translateY(-1px);
+}
+
+.teach-suspects-card.selected {
+    border-color: rgba(30, 106, 122, 0.8);
+    box-shadow: 0 0 0 2px rgba(30, 106, 122, 0.15);
+}
+
+.teach-suspects-card.dragging {
+    opacity: 0.7;
+}
+
+.teach-suspects-card img {
+    width: 130px;
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+.teach-suspects-card.dropped {
+    border: none;
+    padding: 0;
+    background: transparent;
+    cursor: default;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.teach-suspects-zone .teach-suspects-card.dropped img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+}
+
+.teach-suspects-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.teach-suspects-button {
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+}
+
+.teach-suspects-button.primary {
+    background: linear-gradient(135deg, #1e6a7a, #1a5563);
+    color: #ffffff;
+}
+
+.teach-suspects-button.secondary {
+    background: rgba(26, 85, 99, 0.12);
+    color: #1a5563;
+}
+
+.teach-suspects-result {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #1a5563;
+}
+
+.teach-suspects-result.success {
+    color: #2e7d32;
+}
+
+.teach-suspects-result.error {
+    color: #c62828;
+}
+
+.teach-suspects-result.warning {
+    color: #d35400;
+}
+
+.teach-section-message.teach-wordcloud-message .message-content {
+    max-width: none;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.teach-section-message.teach-wordcloud-message .message-content-wrapper {
+    width: 100%;
+}
+
+.teach-wordcloud-message .message-sender {
+    margin-bottom: 10px;
+}
+
+.teach-wordcloud {
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px 0 4px;
+    line-height: 2.2;
+}
+
+.teach-wordcloud-word {
+    display: inline-block;
+    margin: 2px 10px 2px 0;
+    color: #1a5563;
+    font-weight: 600;
+    cursor: text;
+    user-select: text;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.teach-wordcloud-word:hover {
+    color: #1e6a7a;
+    transform: translateY(-1px);
+}
+
 .burger-button {
     border: 1px solid rgba(255, 255, 255, 0.35);
 }
@@ -622,6 +817,16 @@
 
     .teach-sentence-overall {
         text-align: left;
+    }
+
+    .teach-suspects-zone {
+        width: min(160px, 42%);
+        min-height: 48px;
+        font-size: 0.76rem;
+    }
+
+    .teach-suspects-card img {
+        width: 110px;
     }
 
     .teach-blank-input {

@@ -19,6 +19,71 @@
 
     const defaultLoginButtonLabel = loginButton ? loginButton.textContent : 'Start Reading Journey';
 
+    function formatPercent(completed, total) {
+        if (!total) {
+            return '0%';
+        }
+        return `${Math.round((completed / total) * 100)}%`;
+    }
+
+    function showProgressReport() {
+        const weeks = TeachState.getWeeks();
+        const lines = weeks.map((week, index) => {
+            const progress = TeachState.getWeekProgress(week.id);
+            return `Episode ${index + 1}: ${progress.completed}/${progress.total} tasks (${formatPercent(progress.completed, progress.total)})`;
+        });
+        const overall = TeachState.getOverallProgress();
+        lines.push(`Overall: ${overall.completed}/${overall.total} tasks (${formatPercent(overall.completed, overall.total)})`);
+        window.alert(lines.join('\n'));
+    }
+
+    function showTeachHelp() {
+        window.alert(
+            [
+                'How to use Teach mode:',
+                '1. Pick an episode from the dropdown under the title.',
+                '2. Read sections and complete tasks step-by-step.',
+                '3. Mark tasks complete to track progress.',
+                '4. Add reflection notes at the end of each episode.'
+            ].join('\n')
+        );
+    }
+
+    function resetTeachHistory() {
+        const confirmed = window.confirm('Reset all Teach progress and notes for all episodes?');
+        if (!confirmed) {
+            return;
+        }
+        localStorage.removeItem(window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY);
+        window.location.reload();
+    }
+
+    function handleHorizontalMenuAction(action) {
+        TeachUI.closeMenu();
+        switch (action) {
+            case 'language_menu_difficulty':
+                window.alert('Language Level controls are not yet available in Teach mode.');
+                break;
+            case 'language_menu_progress':
+                showProgressReport();
+                break;
+            case 'help':
+                showTeachHelp();
+                break;
+            case 'reset_all_history':
+                resetTeachHistory();
+                break;
+            case 'logout':
+                if (TeachAuth && typeof TeachAuth.logout === 'function') {
+                    TeachAuth.logout();
+                }
+                window.location.reload();
+                break;
+            default:
+                break;
+        }
+    }
+
     function updateNotesStatus(statusText = 'Autosaved') {
         if (notesStatusEl) {
             notesStatusEl.textContent = statusText;
@@ -72,7 +137,7 @@
         const weeks = TeachState.getWeeks();
         const currentWeek = TeachState.getCurrentWeek();
 
-        TeachUI.renderWeekMenu(menuEl, weeks, TeachState.getCurrentWeekId(), {
+        TeachUI.renderWeekSelector(weeks, TeachState.getCurrentWeekId(), {
             onSelect: handleWeekSelect
         });
 
@@ -219,6 +284,20 @@
         if (burgerButton && TeachUI.toggleMenu) {
             burgerButton.addEventListener('click', () => {
                 TeachUI.toggleMenu();
+            });
+        }
+
+        if (menuEl) {
+            menuEl.addEventListener('click', (event) => {
+                const menuItem = event.target.closest('[data-menu-action]');
+                if (!menuItem) {
+                    return;
+                }
+                const action = menuItem.dataset.menuAction;
+                if (!action) {
+                    return;
+                }
+                handleHorizontalMenuAction(action);
             });
         }
 

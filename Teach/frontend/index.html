@@ -14,7 +14,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./shared/css/styles.css">
     <link rel="stylesheet" href="./shared/css/components.css">
-    <link rel="stylesheet" href="css/teach.css">
+    <link rel="stylesheet" href="css/teach.css?v=20260423-wordcloud-v1">
 </head>
 <body>
     <div class="container teach-container">
@@ -28,7 +28,12 @@
             </button>
             <div class="header-title-container">
                 <h1>The Chicago Formula</h1>
-                <p>Detective Reading Game · 4 Weeks</p>
+                <div id="episodeSelector" class="episode-selector">
+                    <span id="episodeDisplay" class="episode-display">Episode 1</span>
+                    <div id="episodeDropdown" class="episode-dropdown" style="display: none;">
+                        <!-- Week list will be populated here -->
+                    </div>
+                </div>
             </div>
             <div class="header-actions">
                 <span class="progress-chip" id="overallProgressChip">Overall completion · 0%</span>
@@ -47,7 +52,28 @@
         </div>
 
         <div id="teachApp" class="teach-app">
-            <div class="horizontal-menu" id="horizontalMenu"></div>
+            <div class="horizontal-menu" id="horizontalMenu">
+                <div class="horizontal-menu-item" data-menu-action="language_menu_difficulty">
+                    <div class="horizontal-menu-item-name">Language Level</div>
+                    <div class="horizontal-menu-item-description">Adjust difficulty</div>
+                </div>
+                <div class="horizontal-menu-item" data-menu-action="language_menu_progress">
+                    <div class="horizontal-menu-item-name">Progress Report</div>
+                    <div class="horizontal-menu-item-description">View learning stats</div>
+                </div>
+                <div class="horizontal-menu-item" data-menu-action="help">
+                    <div class="horizontal-menu-item-name">Help</div>
+                    <div class="horizontal-menu-item-description">How to use Teach mode</div>
+                </div>
+                <div class="horizontal-menu-item" id="resetHistoryMenuItem" data-menu-action="reset_all_history" style="display: none;">
+                    <div class="horizontal-menu-item-name">Reset All History</div>
+                    <div class="horizontal-menu-item-description">Test only: clear all weeks progress</div>
+                </div>
+                <div class="horizontal-menu-item" data-menu-action="logout">
+                    <div class="horizontal-menu-item-name">Log Out</div>
+                    <div class="horizontal-menu-item-description">Sign out and return to login</div>
+                </div>
+            </div>
 
             <div id="imageModalOverlay" class="image-modal-overlay" onclick="closeImageModal()">
                 <button class="image-modal-close" onclick="closeImageModal()">✕</button>
@@ -80,7 +106,7 @@
     <script src="js/auth.js?v=20251110"></script>
     <script src="js/state.js?v=20251110"></script>
     <script src="js/content-loader.js?v=20251110"></script>
-    <script src="js/ui.js?v=20251110"></script>
+    <script src="js/ui.js?v=20260423-wordcloud-v1"></script>
     <script src="js/explain.js?v=20251110"></script>
     <script src="js/app.js?v=20251110"></script>
 </body>

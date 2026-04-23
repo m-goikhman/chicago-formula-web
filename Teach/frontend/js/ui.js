@@ -304,20 +304,6 @@ const TeachUI = (() => {
         return 'Continue';
     }
 
-    function ensureMenuInitialState(menuEl) {
-        if (!menuEl || menuEl.dataset.initialized === 'true') {
-            return;
-        }
-        if (window.innerWidth >= 1024) {
-            menuEl.classList.add('active');
-            const burger = document.getElementById('burgerButton');
-            if (burger) {
-                burger.classList.add('active');
-            }
-        }
-        menuEl.dataset.initialized = 'true';
-    }
-
     function closeMenu() {
         const menu = document.getElementById('horizontalMenu');
         const button = document.getElementById('burgerButton');
@@ -342,49 +328,105 @@ const TeachUI = (() => {
         menu.dataset.userToggled = 'true';
     }
 
-    function createMenuItem(week, isActive, onSelect) {
-        const item = document.createElement('div');
-        item.className = 'horizontal-menu-item';
-        if (isActive) {
-            item.classList.add('active');
-        }
-
-        item.innerHTML = `
-            <div class="horizontal-menu-item-name">${week.title}</div>
-            <div class="horizontal-menu-item-description">
-                ${week.sections?.length ?? 0} sections · ${week.tasks?.length ?? 0} tasks
-            </div>
-        `;
-
-        item.addEventListener('click', () => {
-            onSelect?.(week.id);
-            closeMenu();
-        });
-
-        return item;
+    function getWeekEpisodeMeta(week, index) {
+        const fallbackNumber = index + 1;
+        const title = String(week?.title || '').trim();
+        const match = title.match(/^week\s*(\d+)\s*(?:[·:-]\s*)?(.*)$/i);
+        const number = match ? Number(match[1]) : fallbackNumber;
+        const name = match ? String(match[2] || '').trim() : title;
+        return {
+            number,
+            title: name || title || `Week ${fallbackNumber}`
+        };
     }
 
-    function renderWeekMenu(menuEl, weeks, currentWeekId, callbacks = {}) {
-        if (!menuEl) {
+    function closeWeekSelectorDropdown() {
+        const selector = document.getElementById('episodeSelector');
+        const dropdown = document.getElementById('episodeDropdown');
+        if (!selector || !dropdown) {
             return;
         }
-        if (menuEl.dataset.userToggled !== 'true') {
-            ensureMenuInitialState(menuEl);
+        selector.classList.remove('dropdown-open');
+        dropdown.style.display = 'none';
+    }
+
+    function renderWeekSelector(weeks, currentWeekId, callbacks = {}) {
+        const selector = document.getElementById('episodeSelector');
+        const display = document.getElementById('episodeDisplay');
+        const dropdown = document.getElementById('episodeDropdown');
+        if (!selector || !display || !dropdown) {
+            return;
         }
-        menuEl.innerHTML = '';
 
         if (!weeks || weeks.length === 0) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'horizontal-menu-empty';
-            placeholder.textContent = 'No weeks available yet.';
-            menuEl.appendChild(placeholder);
+            selector.classList.remove('has-dropdown', 'dropdown-open');
+            display.textContent = 'Episode';
+            dropdown.style.display = 'none';
+            dropdown.innerHTML = '';
             return;
         }
 
-        weeks.forEach((week) => {
-            const item = createMenuItem(week, week.id === currentWeekId, callbacks.onSelect);
-            menuEl.appendChild(item);
+        const currentWeekIndex = Math.max(
+            0,
+            weeks.findIndex((week) => week.id === currentWeekId)
+        );
+        const currentWeek = weeks[currentWeekIndex] || weeks[0];
+        const currentMeta = getWeekEpisodeMeta(currentWeek, currentWeekIndex);
+        display.textContent = `Episode ${currentMeta.number}`;
+
+        closeWeekSelectorDropdown();
+        dropdown.innerHTML = '';
+
+        weeks.forEach((week, index) => {
+            const item = document.createElement('div');
+            item.className = 'episode-dropdown-item';
+
+            if (week.id === currentWeekId) {
+                item.classList.add('current');
+            }
+
+            const meta = getWeekEpisodeMeta(week, index);
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'episode-name';
+            nameSpan.textContent = `Episode ${meta.number}: ${meta.title}`;
+
+            const statusSpan = document.createElement('span');
+            statusSpan.className = 'episode-status';
+            statusSpan.textContent = week.id === currentWeekId ? 'Current' : 'Available';
+
+            item.appendChild(nameSpan);
+            item.appendChild(statusSpan);
+
+            item.addEventListener('click', () => {
+                callbacks.onSelect?.(week.id);
+                closeWeekSelectorDropdown();
+            });
+
+            dropdown.appendChild(item);
         });
+
+        if (weeks.length <= 1) {
+            selector.classList.remove('has-dropdown');
+            display.style.cursor = 'default';
+            return;
+        }
+
+        selector.classList.add('has-dropdown');
+        display.style.cursor = 'pointer';
+        display.onclick = (event) => {
+            event.stopPropagation();
+            const isOpen = selector.classList.toggle('dropdown-open');
+            dropdown.style.display = isOpen ? 'block' : 'none';
+        };
+
+        if (document.body.dataset.teachSelectorOutsideHandlerBound !== 'true') {
+            document.addEventListener('click', (event) => {
+                if (!selector.contains(event.target)) {
+                    closeWeekSelectorDropdown();
+                }
+            });
+            document.body.dataset.teachSelectorOutsideHandlerBound = 'true';
+        }
     }
 
     function setChatLoading(chatArea, message = 'Loading your weekly materials…') {
@@ -832,6 +874,364 @@ const TeachUI = (() => {
         continueActions.appendChild(continueButton);
         container.appendChild(continueActions);
 
+        contentEl.appendChild(container);
+    }
+
+    function renderChicagoWordCloud(messageEl, section) {
+        if (!messageEl || messageEl.querySelector('.teach-wordcloud')) {
+            return;
+        }
+
+        const contentEl = messageEl.querySelector('.message-content');
+        const messageText = contentEl?.querySelector('.message-text');
+        if (!contentEl || !messageText) {
+            return;
+        }
+
+        const wordData = [
+            { word: 'nina', count: 27 }, { word: 'alex', count: 21 }, { word: 'tim', count: 17 },
+            { word: 'bathroom', count: 14 }, { word: 'fiona', count: 13 }, { word: 'ronnie', count: 13 },
+            { word: 'looks', count: 12 }, { word: 'around', count: 12 }, { word: 'back', count: 11 },
+            { word: 'arrived', count: 11 }, { word: 'says', count: 10 }, { word: 'something', count: 9 },
+            { word: 'seven', count: 9 }, { word: 'pauline', count: 9 }, { word: 'car', count: 8 },
+            { word: 'apartment', count: 8 }, { word: 'room', count: 8 }, { word: 'office', count: 8 },
+            { word: 'university', count: 8 }, { word: 'came', count: 8 }, { word: 'formula', count: 7 },
+            { word: 'found', count: 7 }, { word: 'way', count: 7 }, { word: 'inside', count: 7 },
+            { word: 'pauses', count: 7 }, { word: 'five', count: 7 }, { word: 'evening', count: 7 },
+            { word: 'outside', count: 6 }, { word: 'door', count: 6 }, { word: 'drive', count: 6 },
+            { word: 'nothing', count: 6 }, { word: "didn't", count: 6 }, { word: 'keys', count: 6 },
+            { word: 'pay', count: 5 }, { word: 'like', count: 5 }, { word: 'mean', count: 5 },
+            { word: 'past', count: 5 }, { word: 'intercom', count: 5 }, { word: 'six', count: 5 },
+            { word: 'left', count: 5 }, { word: 'yes', count: 5 }, { word: 'chicago', count: 4 },
+            { word: 'part', count: 4 }, { word: 'sitting', count: 4 }, { word: 'man', count: 4 },
+            { word: 'student', count: 4 }, { word: 'small', count: 4 }, { word: 'floor', count: 4 },
+            { word: 'card', count: 4 }, { word: 'trophy', count: 4 }, { word: 'three', count: 4 },
+            { word: 'woman', count: 4 }, { word: 'answer', count: 4 }, { word: 'went', count: 4 },
+            { word: "don't", count: 4 }, { word: 'know', count: 4 }, { word: 'moment', count: 4 },
+            { word: "doesn't", count: 4 }, { word: 'work', count: 4 }, { word: 'tonight', count: 4 },
+            { word: 'thought', count: 4 }, { word: 'earlier', count: 4 }, { word: 'bit', count: 4 },
+            { word: 'someone', count: 4 }, { word: 'blue', count: 4 }, { word: 'said', count: 4 },
+            { word: 'locked', count: 4 }, { word: 'voice', count: 4 }, { word: 'twenty', count: 4 },
+            { word: 'thinks', count: 4 }, { word: 'police', count: 3 }, { word: 'phone', count: 3 },
+            { word: 'young', count: 3 }, { word: 'already', count: 3 }, { word: 'behind', count: 3 },
+            { word: 'without', count: 3 }, { word: 'die', count: 3 }, { word: 'stands', count: 3 },
+            { word: 'kind', count: 3 }, { word: 'takes', count: 3 }, { word: 'notebook', count: 3 },
+            { word: 'hair', count: 3 }, { word: 'across', count: 3 }, { word: 'staring', count: 3 },
+            { word: 'let', count: 3 }, { word: "o'clock", count: 3 }, { word: 'gave', count: 3 },
+            { word: 'buzzed', count: 3 }, { word: 'drove', count: 3 }, { word: 'seen', count: 3 }
+        ];
+
+        messageEl.classList.add('teach-wordcloud-message');
+        messageEl.dataset.sectionType = 'reading';
+
+        messageText.innerHTML = `
+            <p>Word cloud from <strong>The Chicago Formula</strong> (stop-words removed).</p>
+            <p>Select any word to highlight it, then tap it to ask the tutor for an explanation.</p>
+        `;
+
+        const cloud = document.createElement('div');
+        cloud.className = 'teach-wordcloud';
+        cloud.setAttribute('aria-label', section?.heading || 'Word cloud');
+
+        const counts = wordData.map((item) => item.count);
+        const min = Math.min(...counts);
+        const max = Math.max(...counts);
+        const spread = Math.max(1, max - min);
+
+        wordData.forEach(({ word, count }) => {
+            const ratio = (count - min) / spread;
+            const sizeRem = 0.9 + ratio * 2.2;
+            const wordEl = document.createElement('span');
+            wordEl.className = 'teach-wordcloud-word';
+            wordEl.style.fontSize = `${sizeRem.toFixed(2)}rem`;
+            wordEl.title = `${word}: ${count}`;
+            wordEl.textContent = word;
+            cloud.appendChild(wordEl);
+            cloud.appendChild(document.createTextNode(' '));
+        });
+
+        messageText.appendChild(cloud);
+    }
+
+    function renderSuspectsDragExercise(messageEl) {
+        if (!messageEl || messageEl.querySelector('.teach-suspects-exercise')) {
+            return;
+        }
+
+        const contentEl = messageEl.querySelector('.message-content');
+        if (!contentEl) {
+            return;
+        }
+
+        const messageText = contentEl.querySelector('.message-text');
+        if (messageText) {
+            messageText.innerHTML =
+                '<p>Drag each name card to the correct suspect in the image, then check your answers.</p>';
+        }
+
+        const boardImageUrl = 'images/suspects_names_to_add.png';
+        const cardConfigs = [
+            {
+                id: 'tim',
+                label: 'Tim',
+                image: 'images/Tim_name.png'
+            },
+            {
+                id: 'ronnie',
+                label: 'Ronnie',
+                image: 'images/Ronnie_name.png'
+            }
+        ];
+        const zoneConfigs = [
+            { id: 'ronnie', label: 'Ronnie slot', left: '48%', top: '42%' },
+            { id: 'tim', label: 'Tim slot', left: '70%', top: '72%' }
+        ];
+        const correctPlacements = { tim: 'tim', ronnie: 'ronnie' };
+        const placements = { tim: null, ronnie: null };
+        let selectedCardId = null;
+
+        const container = document.createElement('div');
+        container.className = 'teach-suspects-exercise';
+
+        const board = document.createElement('div');
+        board.className = 'teach-suspects-board';
+
+        const boardImage = document.createElement('img');
+        boardImage.className = 'teach-suspects-board-image';
+        boardImage.src = boardImageUrl;
+        boardImage.alt = 'Suspects image with missing names';
+        board.appendChild(boardImage);
+
+        const zonesLayer = document.createElement('div');
+        zonesLayer.className = 'teach-suspects-zones';
+        board.appendChild(zonesLayer);
+
+        const cards = document.createElement('div');
+        cards.className = 'teach-suspects-cards';
+
+        const actions = document.createElement('div');
+        actions.className = 'teach-suspects-actions';
+
+        const checkButton = document.createElement('button');
+        checkButton.type = 'button';
+        checkButton.className = 'teach-suspects-button primary';
+        checkButton.textContent = 'Check answers';
+        actions.appendChild(checkButton);
+
+        const resetButton = document.createElement('button');
+        resetButton.type = 'button';
+        resetButton.className = 'teach-suspects-button secondary';
+        resetButton.textContent = 'Reset';
+        actions.appendChild(resetButton);
+
+        const continueButton = document.createElement('button');
+        continueButton.type = 'button';
+        continueButton.className = 'teach-suspects-button continue';
+        continueButton.textContent = 'Continue';
+        continueButton.addEventListener('click', () => {
+            const nextButton = messageEl.querySelector('.teach-next-button');
+            if (nextButton && !nextButton.disabled) {
+                nextButton.click();
+            } else {
+                const event = new CustomEvent('teach-continue-next', {
+                    bubbles: true,
+                    detail: { messageEl }
+                });
+                messageEl.dispatchEvent(event);
+            }
+        });
+        actions.appendChild(continueButton);
+
+        const result = document.createElement('div');
+        result.className = 'teach-suspects-result';
+
+        function getZoneByCard(cardId) {
+            return Object.entries(placements).find(([, assignedCard]) => assignedCard === cardId)?.[0] ?? null;
+        }
+
+        function clearResult() {
+            result.textContent = '';
+            result.classList.remove('success', 'error', 'warning');
+        }
+
+        function placeCard(cardId, zoneId) {
+            if (!cardId || !zoneId) {
+                return;
+            }
+
+            const previousZone = getZoneByCard(cardId);
+            if (previousZone) {
+                placements[previousZone] = null;
+            }
+
+            const cardAlreadyInTarget = placements[zoneId];
+            if (cardAlreadyInTarget && cardAlreadyInTarget !== cardId) {
+                const occupiedZone = getZoneByCard(cardAlreadyInTarget);
+                if (occupiedZone) {
+                    placements[occupiedZone] = null;
+                }
+            }
+
+            placements[zoneId] = cardId;
+            selectedCardId = null;
+            clearResult();
+            render();
+        }
+
+        function createCardButton(card) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'teach-suspects-card';
+            button.dataset.cardId = card.id;
+            button.draggable = true;
+            button.setAttribute('aria-label', `Card ${card.label}`);
+
+            const image = document.createElement('img');
+            image.src = card.image;
+            image.alt = `${card.label} name card`;
+            button.appendChild(image);
+
+            if (selectedCardId === card.id) {
+                button.classList.add('selected');
+            }
+
+            button.addEventListener('click', () => {
+                selectedCardId = selectedCardId === card.id ? null : card.id;
+                render();
+            });
+
+            button.addEventListener('dragstart', (event) => {
+                event.dataTransfer?.setData('text/plain', card.id);
+                event.dataTransfer.effectAllowed = 'move';
+                selectedCardId = card.id;
+                button.classList.add('dragging');
+            });
+
+            button.addEventListener('dragend', () => {
+                button.classList.remove('dragging');
+                selectedCardId = null;
+                render();
+            });
+
+            return button;
+        }
+
+        function createDroppedCardElement(cardId) {
+            const card = cardConfigs.find((item) => item.id === cardId);
+            if (!card) {
+                return null;
+            }
+
+            const dropped = document.createElement('div');
+            dropped.className = 'teach-suspects-card dropped';
+
+            const image = document.createElement('img');
+            image.src = card.image;
+            image.alt = `${card.label} name card`;
+            dropped.appendChild(image);
+
+            return dropped;
+        }
+
+        function createZone(zone) {
+            const zoneEl = document.createElement('button');
+            zoneEl.type = 'button';
+            zoneEl.className = 'teach-suspects-zone';
+            zoneEl.dataset.zoneId = zone.id;
+            zoneEl.style.left = zone.left;
+            zoneEl.style.top = zone.top;
+            zoneEl.setAttribute('aria-label', `Drop zone for ${zone.label}`);
+
+            const assignedCardId = placements[zone.id];
+            if (assignedCardId) {
+                zoneEl.classList.add('filled');
+                const droppedCard = createDroppedCardElement(assignedCardId);
+                if (droppedCard) {
+                    zoneEl.appendChild(droppedCard);
+                }
+            } else {
+                zoneEl.textContent = 'Drop card here';
+            }
+
+            zoneEl.addEventListener('click', () => {
+                if (selectedCardId) {
+                    placeCard(selectedCardId, zone.id);
+                }
+            });
+
+            zoneEl.addEventListener('dragover', (event) => {
+                event.preventDefault();
+                zoneEl.classList.add('drag-over');
+            });
+
+            zoneEl.addEventListener('dragleave', () => {
+                zoneEl.classList.remove('drag-over');
+            });
+
+            zoneEl.addEventListener('drop', (event) => {
+                event.preventDefault();
+                zoneEl.classList.remove('drag-over');
+                const droppedCardId = event.dataTransfer?.getData('text/plain') || selectedCardId;
+                placeCard(droppedCardId, zone.id);
+            });
+
+            return zoneEl;
+        }
+
+        function validate() {
+            const allPlaced = Object.values(placements).every(Boolean);
+            if (!allPlaced) {
+                result.textContent = 'Place both cards before checking.';
+                result.classList.remove('success', 'error');
+                result.classList.add('warning');
+                return;
+            }
+
+            const isCorrect = Object.entries(correctPlacements).every(
+                ([zoneId, expectedCardId]) => placements[zoneId] === expectedCardId
+            );
+
+            if (isCorrect) {
+                result.textContent = 'Excellent! You identified both suspects correctly.';
+                result.classList.remove('warning', 'error');
+                result.classList.add('success');
+            } else {
+                result.textContent = 'Not quite. Check who is standing and who is sitting, then try again.';
+                result.classList.remove('warning', 'success');
+                result.classList.add('error');
+            }
+        }
+
+        function reset() {
+            placements.tim = null;
+            placements.ronnie = null;
+            selectedCardId = null;
+            clearResult();
+            render();
+        }
+
+        function render() {
+            cards.innerHTML = '';
+            zonesLayer.innerHTML = '';
+
+            const unplacedCards = cardConfigs.filter((card) => !getZoneByCard(card.id));
+            unplacedCards.forEach((card) => {
+                cards.appendChild(createCardButton(card));
+            });
+
+            zoneConfigs.forEach((zone) => {
+                zonesLayer.appendChild(createZone(zone));
+            });
+        }
+
+        checkButton.addEventListener('click', validate);
+        resetButton.addEventListener('click', reset);
+
+        render();
+        container.appendChild(board);
+        container.appendChild(cards);
+        container.appendChild(actions);
+        container.appendChild(result);
         contentEl.appendChild(container);
     }
 
@@ -1345,7 +1745,9 @@ const TeachUI = (() => {
 
     const interactiveSectionRenderers = {
         'week1-exercise-1-match-the-words': renderMatchWordsExercise,
-        'week1-exercise-2-write-your-own-sentences': renderSentenceExercise
+        'week1-exercise-2-write-your-own-sentences': renderSentenceExercise,
+        'week1-word-cloud': renderChicagoWordCloud,
+        'week1-suspects-who-is-who': renderSuspectsDragExercise
     };
 
     function decorateHeading(messageEl) {
@@ -1434,6 +1836,14 @@ const TeachUI = (() => {
             if (typeof specificRenderer === 'function') {
                 specificRenderer(messageEl, section);
             } else {
+                const isWordCloudSection =
+                    /word\s*cloud/i.test(section.heading || '') ||
+                    /\[wordcloud\]/i.test(section.content || '');
+                if (isWordCloudSection) {
+                    renderChicagoWordCloud(messageEl, section);
+                    return messageEl;
+                }
+
                 // Auto-detect fill-in-the-blanks exercises or "Choose and Write" exercises
                 const hasBlanks = /_{3,}/.test(section.content || '');
                 const isChooseAndWrite = /choose and write/i.test(section.heading || '');
@@ -1514,10 +1924,27 @@ const TeachUI = (() => {
             summaryText,
             `_${weekProgress.completed}/${weekProgress.total} missions completed for this week._`
         ];
+        const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
         const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
+        if (isFirstWeek) {
+            const suspectsExerciseId = 'week1-suspects-who-is-who';
+            const suspectsIndex = orderedSections.findIndex((section) => section.id === suspectsExerciseId);
+            const fionaIndex = orderedSections.findIndex((section) =>
+                /three suspects/i.test(section.heading || '') &&
+                /\*\*fiona\*\*/i.test(section.content || '')
+            );
+
+            if (
+                suspectsIndex >= 0 &&
+                fionaIndex >= 0 &&
+                suspectsIndex > fionaIndex
+            ) {
+                const [suspectsSection] = orderedSections.splice(suspectsIndex, 1);
+                orderedSections.splice(fionaIndex, 0, suspectsSection);
+            }
+        }
         const sequence = [];
         const participantCode = String(options.participantCode || '').trim();
-        const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
         const onNotesReady = typeof options.onNotesReady === 'function' ? options.onNotesReady : null;
         let notesRefsResult = null;
 
@@ -1668,7 +2095,7 @@ const TeachUI = (() => {
     window.closeImageModal = closeImageModal;
 
     return {
-        renderWeekMenu,
+        renderWeekSelector,
         renderWeekContent,
         setChatLoading,
         closeMenu,
