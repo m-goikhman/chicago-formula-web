@@ -49,6 +49,11 @@
         <div id="teachApp" class="teach-app">
             <div class="horizontal-menu" id="horizontalMenu"></div>
 
+            <div id="imageModalOverlay" class="image-modal-overlay" onclick="closeImageModal()">
+                <button class="image-modal-close" onclick="closeImageModal()">✕</button>
+                <img id="imageModalContent" class="image-modal-content" src="" alt="Full size image" onclick="event.stopPropagation()" loading="eager" />
+            </div>
+
             <div class="main-chat-area teach-chat">
                 <div class="chat-area" id="chatArea">
                     <div class="message bot">

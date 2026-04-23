@@ -92,6 +92,7 @@
         TeachUI.renderWeekContent(chatArea, currentWeek, {
             isTaskCompleted: (taskId) => TeachState.isTaskCompleted(currentWeek.id, taskId),
             onTaskToggle: handleTaskToggle,
+            participantCode: TeachAuth?.getParticipantCode?.() || '',
             notesValue: TeachState.getNotes(currentWeek.id),
             weekProgress,
             onNotesReady: ({ notesTextarea, notesStatusEl: statusEl }) => {

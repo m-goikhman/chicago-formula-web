@@ -4,8 +4,43 @@ const TeachUI = (() => {
         throw new Error('uiShared must be loaded before Teach UI');
     }
 
-    const { addMessage } = shared;
+    const { addMessage, buildImageUrl } = shared;
+    const {
+        TEACH_ONBOARDING_WELCOME_TEMPLATE,
+        ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK,
+        ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
+        ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
+        ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY
+    } = window.TEACH_CONFIG || {};
     const stepProgressByWeek = new Map();
+
+    function buildOnboardingQuestionnaireLink(participantCode = '') {
+        const normalizedCode = String(participantCode || '').trim().toUpperCase();
+        if (!normalizedCode || !ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY || !ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL) {
+            return ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK;
+        }
+
+        const params = new URLSearchParams({
+            usp: 'pp_url',
+            [`entry.${ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY}`]: normalizedCode
+        });
+        return `${ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL}?${params.toString()}`;
+    }
+
+    function personalizeOnboardingQuestionnaireLink(text, participantCode = '') {
+        if (!text) {
+            return text;
+        }
+        const personalizedLink = buildOnboardingQuestionnaireLink(participantCode);
+        let result = String(text);
+        result = result.replace(ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK, personalizedLink);
+        result = result.replace(ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalizedLink);
+        result = result.replace(
+            /https:\/\/docs\.google\.com\/forms\/d\/e\/1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g\/viewform(?:\?[^\s)]*)?/g,
+            personalizedLink
+        );
+        return result;
+    }
 
     /**
      * Parses Answer Key from week section and returns an object with correct answers
@@ -165,6 +200,37 @@ const TeachUI = (() => {
 
         actions.appendChild(button);
         content.appendChild(actions);
+    }
+
+    function openImageModal(imageUrl = null) {
+        const overlay = document.getElementById('imageModalOverlay');
+        const content = document.getElementById('imageModalContent');
+        if (!overlay || !content) {
+            return;
+        }
+
+        const resolvedUrl = typeof buildImageUrl === 'function' ? buildImageUrl(imageUrl) : imageUrl;
+        if (!resolvedUrl) {
+            return;
+        }
+
+        content.src = resolvedUrl;
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeImageModal() {
+        const overlay = document.getElementById('imageModalOverlay');
+        const content = document.getElementById('imageModalContent');
+        if (!overlay) {
+            return;
+        }
+
+        overlay.classList.remove('active');
+        if (content) {
+            content.src = '';
+        }
+        document.body.style.overflow = '';
     }
 
     function resolveMessageElement(result) {
@@ -422,16 +488,16 @@ const TeachUI = (() => {
 
         const exerciseData = {
             words: [
-                { word: 'eavesdrop', answer: 'd' },
-                { word: 'deadline', answer: 'c' },
-                { word: 'suspicious', answer: 'a' },
-                { word: 'lurking', answer: 'b' }
+                { word: 'alibi', answer: 'b' },
+                { word: 'motive', answer: 'c' },
+                { word: 'evidence', answer: 'd' },
+                { word: 'contradict', answer: 'a' }
             ],
             choices: [
-                { letter: 'a', text: 'feeling something is wrong' },
-                { letter: 'b', text: 'hiding and watching secretly' },
-                { letter: 'c', text: 'the time by which you must finish' },
-                { letter: 'd', text: "listening to others' private conversation" }
+                { letter: 'a', text: 'to say the opposite of what someone else said' },
+                { letter: 'b', text: 'proof you were somewhere else during a crime' },
+                { letter: 'c', text: 'a reason for doing something bad' },
+                { letter: 'd', text: 'proof that something happened' }
             ]
         };
 
@@ -622,15 +688,15 @@ const TeachUI = (() => {
         const prompts = [
             {
                 word: 'suspicious',
-                example: 'Fiona grew suspicious when she saw Alex leave with Pauline.'
+                example: 'Nina became suspicious when Tim changed his story.'
             },
             {
-                word: 'deadline',
-                example: "Tim worried about the deadline Ronnie gave him for the money."
+                word: 'confess',
+                example: 'Tim finally decided to confess after Nina showed the evidence.'
             },
             {
-                word: 'lurking',
-                example: 'Someone was lurking near the stairwell during the argument.'
+                word: 'wound',
+                example: 'The paramedics treated the wound on the back of Alex\'s head.'
             }
         ];
 
@@ -1278,7 +1344,7 @@ const TeachUI = (() => {
     }
 
     const interactiveSectionRenderers = {
-        'week1-exercise-1-match-the-words-written': renderMatchWordsExercise,
+        'week1-exercise-1-match-the-words': renderMatchWordsExercise,
         'week1-exercise-2-write-your-own-sentences': renderSentenceExercise
     };
 
@@ -1287,6 +1353,31 @@ const TeachUI = (() => {
         if (headingEl) {
             headingEl.classList.add('teach-section-heading');
         }
+    }
+
+    function alignStoryImageWithTextStart(messageEl) {
+        if (!messageEl) {
+            return;
+        }
+
+        const contentWrapper = messageEl.querySelector('.message-content-wrapper');
+        const messageText = contentWrapper?.querySelector('.message-text');
+        const storyImage = contentWrapper?.querySelector('.message-image');
+
+        if (!messageText || !storyImage) {
+            return;
+        }
+
+        const imageContainer = storyImage.parentElement;
+        if (imageContainer && imageContainer !== messageText) {
+            imageContainer.removeChild(storyImage);
+            if (imageContainer.childElementCount === 0) {
+                imageContainer.remove();
+            }
+        }
+
+        storyImage.classList.add('teach-inline-story-image');
+        messageText.prepend(storyImage);
     }
 
     function addSectionMessage(chatArea, section, options = {}) {
@@ -1314,14 +1405,20 @@ const TeachUI = (() => {
             messageType,
             sender || 'Mentor',
             parts.join('\n\n'),
-            null,
+            section.image ?? null,
             null,
             isStorySection,
-            { sectionType: section.type }
+            {
+                sectionType: section.type,
+                imageFirst: isStorySection
+            }
         );
 
         if (messageEl) {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
+            if (isStorySection) {
+                alignStoryImageWithTextStart(messageEl);
+            }
             // Add data attribute to indicate if this is a reading section (for word highlighting)
             if (section.type === 'reading') {
                 messageEl.dataset.sectionType = 'reading';
@@ -1419,8 +1516,27 @@ const TeachUI = (() => {
         ];
         const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
         const sequence = [];
+        const participantCode = String(options.participantCode || '').trim();
+        const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
         const onNotesReady = typeof options.onNotesReady === 'function' ? options.onNotesReady : null;
         let notesRefsResult = null;
+
+        if (isFirstWeek && TEACH_ONBOARDING_WELCOME_TEMPLATE) {
+            sequence.push({
+                type: 'onboarding',
+                factory: () => {
+                    const onboardingText = personalizeOnboardingQuestionnaireLink(
+                        TEACH_ONBOARDING_WELCOME_TEMPLATE,
+                        participantCode
+                    );
+                    const onboardingMessage = addMessage('system', 'Mentor', onboardingText);
+                    if (onboardingMessage) {
+                        onboardingMessage.classList.add('tutor-message', 'teach-onboarding-message');
+                    }
+                    return onboardingMessage;
+                }
+            });
+        }
 
         sequence.push({
             type: 'summary',
@@ -1547,6 +1663,9 @@ const TeachUI = (() => {
         chatArea.scrollTop = chatArea.scrollHeight;
         return notesRefsResult ?? {};
     }
+
+    window.openImageModal = openImageModal;
+    window.closeImageModal = closeImageModal;
 
     return {
         renderWeekMenu,

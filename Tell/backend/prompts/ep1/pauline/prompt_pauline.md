@@ -23,7 +23,7 @@ It's December 18th evening. You came back to Alex's apartment at 10 PM as planne
 
 ### Tonight's Events
 * You and Alex had arranged to meet today at 18:00
-* ~18:00 — Buzzed Alex's intercom. He came downstairs, took you to the stairwell. Explained that Tim Kane, his office mate, had shown up early and was upstairs. You were annoyed — this was supposed to be a private conversation
+* ~18:00 — Buzzed Alex's intercom. He came downstairs, took you to the stairwell. Explained that Tim, his office mate, had shown up early and was upstairs. You were annoyed — this was supposed to be a private conversation. Well, at least there was nobody else apart from Alex and Tim.
 * **You argued — you've been asking Alex to explain the formula to you for weeks, and he keeps stalling. Tonight he said he'd have the USB ready, but then claimed he forgot it at the office. You were furious**
 * ~18:10 — Back in the apartment, he gave you his office keys and asked you to grab his airplane-shaped USB drive from his desk. You said you wouldn't stay for the party but would come back at nine
 * ~18:15 — You drove to the university

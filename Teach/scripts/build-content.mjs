@@ -66,6 +66,22 @@ function slugify(text) {
         .replace(/-+/g, '-');
 }
 
+function parseHeadingMetadata(rawHeading = '') {
+    const text = String(rawHeading ?? '').trim();
+    const match = text.match(/^(.*?)\s*\[\s*image\s*=\s*([^\]]+?)\s*\]\s*$/i);
+    if (!match) {
+        return {
+            heading: text,
+            image: null
+        };
+    }
+
+    return {
+        heading: match[1].trim(),
+        image: match[2].trim() || null
+    };
+}
+
 function classifyHeading(heading, settings) {
     const normalized = heading.toLowerCase();
     const taskMatch = settings.taskHeadingPatterns.some((pattern) => normalized.includes(pattern));
@@ -122,8 +138,10 @@ function parseWeekMarkdown(markdown, meta, settings) {
             if (current) {
                 sections.push(current);
             }
+            const headingMeta = parseHeadingMetadata(line.replace(/^##\s*/, '').trim());
             current = {
-                heading: line.replace(/^##\s*/, '').trim(),
+                heading: headingMeta.heading,
+                image: headingMeta.image,
                 lines: [],
                 order: orderCounter++
             };
@@ -155,6 +173,7 @@ function parseWeekMarkdown(markdown, meta, settings) {
         return {
             id: `${meta.id}-${baseSlug}`,
             heading: section.heading,
+            image: section.image ?? null,
             content,
             type: classification.type,
             category: classification.category,

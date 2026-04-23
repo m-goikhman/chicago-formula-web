@@ -10,6 +10,22 @@ const TeachContentLoader = (() => {
             .replace(/-+/g, '-');
     }
 
+    function parseHeadingMetadata(rawHeading = '') {
+        const text = String(rawHeading ?? '').trim();
+        const match = text.match(/^(.*?)\s*\[\s*image\s*=\s*([^\]]+?)\s*\]\s*$/i);
+        if (!match) {
+            return {
+                heading: text,
+                image: null
+            };
+        }
+
+        return {
+            heading: match[1].trim(),
+            image: match[2].trim() || null
+        };
+    }
+
     function classifyHeading(heading, settings, content = '') {
         const normalized = heading.toLowerCase();
         const taskMatch = settings.taskHeadingPatterns.some((pattern) => normalized.includes(pattern));
@@ -65,17 +81,20 @@ const TeachContentLoader = (() => {
         return sentences.slice(0, sentenceLimit).join(' ');
     }
 
-    function splitContentIntoSegments(defaultHeading, content) {
+    function splitContentIntoSegments(defaultHeading, content, defaultImage = null) {
         const lines = String(content ?? '').split(/\r?\n/);
         const segments = [];
         let activeHeading = defaultHeading;
+        let activeImage = defaultImage;
         let buffer = [];
+        const splitByDividerOnly = /part\s*2:\s*three suspects/i.test(defaultHeading);
 
         const flush = () => {
             const text = buffer.join('\n').trim();
             if (text) {
                 segments.push({
                     heading: activeHeading,
+                    image: activeImage,
                     content: text
                 });
             }
@@ -83,10 +102,16 @@ const TeachContentLoader = (() => {
         };
 
         lines.forEach((line) => {
+            if (splitByDividerOnly && /^---+\s*$/.test(line.trim())) {
+                flush();
+                return;
+            }
             const subHeadingMatch = line.match(/^###\s+(.*)$/);
             if (subHeadingMatch) {
                 flush();
-                activeHeading = subHeadingMatch[1].trim();
+                const headingMeta = parseHeadingMetadata(subHeadingMatch[1].trim());
+                activeHeading = headingMeta.heading;
+                activeImage = headingMeta.image;
                 return;
             }
             buffer.push(line);
@@ -97,6 +122,7 @@ const TeachContentLoader = (() => {
         if (segments.length === 0 && String(content ?? '').trim()) {
             segments.push({
                 heading: defaultHeading,
+                image: defaultImage,
                 content: String(content ?? '').trim()
             });
         }
@@ -104,8 +130,17 @@ const TeachContentLoader = (() => {
         return segments;
     }
 
-    function createSectionEntry(heading, content, meta, settings, slugCounts, orderCounterRef) {
-        const classification = classifyHeading(heading, settings, content);
+    function createSectionEntry(
+        heading,
+        content,
+        image,
+        meta,
+        settings,
+        slugCounts,
+        orderCounterRef,
+        classificationOverride = null
+    ) {
+        const classification = classificationOverride || classifyHeading(heading, settings, content);
         const defaultSlug = slugify(heading) || `section-${orderCounterRef.value}`;
         const existingCount = slugCounts.get(defaultSlug) ?? 0;
         slugCounts.set(defaultSlug, existingCount + 1);
@@ -115,6 +150,7 @@ const TeachContentLoader = (() => {
             id: `${meta.id}-${slug}`,
             heading,
             content,
+            image,
             type: classification.type,
             category: classification.category,
             order: orderCounterRef.value++
@@ -127,22 +163,33 @@ const TeachContentLoader = (() => {
         const expandedSections = [];
 
         (baseWeek.sections ?? []).forEach((section) => {
-            const segments = splitContentIntoSegments(section.heading, section.content);
+            const parentClassification = classifyHeading(section.heading, settings, section.content);
+            const segments = splitContentIntoSegments(section.heading, section.content, section.image);
             const segmentList = segments.length > 0
                 ? segments
                 : [{
                     heading: section.heading,
+                    image: section.image ?? null,
                     content: String(section.content ?? '').trim()
                 }];
 
             segmentList.forEach((segment) => {
+                const segmentClassification = classifyHeading(segment.heading, settings, segment.content);
+                const shouldInheritReading =
+                    parentClassification.type === 'reading' &&
+                    segmentClassification.type === 'info';
+
                 const entry = createSectionEntry(
                     segment.heading,
                     segment.content,
+                    segment.image ?? null,
                     meta,
                     settings,
                     slugCounts,
-                    orderCounterRef
+                    orderCounterRef,
+                    shouldInheritReading
+                        ? { type: 'reading', category: 'reading' }
+                        : segmentClassification
                 );
                 expandedSections.push(entry);
             });
@@ -183,8 +230,10 @@ const TeachContentLoader = (() => {
                 if (current) {
                     sections.push(current);
                 }
+                const headingMeta = parseHeadingMetadata(line.replace(/^##\s*/, '').trim());
                 current = {
-                    heading: line.replace(/^##\s*/, '').trim(),
+                    heading: headingMeta.heading,
+                    image: headingMeta.image,
                     lines: []
                 };
                 return;
@@ -206,6 +255,7 @@ const TeachContentLoader = (() => {
             source: meta.source,
             sections: sections.map((section) => ({
                 heading: section.heading,
+                image: section.image ?? null,
                 content: section.lines.join('\n')
             }))
         };

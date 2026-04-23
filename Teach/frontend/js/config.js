@@ -10,6 +10,24 @@ const API_URL = sharedTeachConfig.resolveApiBase({
 });
 
 const TEACH_PROGRESS_STORAGE_KEY = 'teach_mode_progress_v1';
+const ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK = '{{ONBOARDING_QUESTIONNAIRE_LINK}}';
+const ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK = 'https://forms.gle/hghifvApKXPU1TjK6';
+const ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
+    'https://docs.google.com/forms/d/e/'
+    + '1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform'
+);
+const ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = '326737977';
+const TEACH_ONBOARDING_WELCOME_TEMPLATE = [
+    'Hi! 👋',
+    'Thank you for participating in this experiment.',
+    '',
+    'We are exploring how interactive games can make learning English more fun and less stressful 🌱',
+    '',
+    'You will be one of the first to try our detective game, so your feedback is very important for our research ✨',
+    '',
+    'Before you start, please answer some questions in Google Forms, it will take 5-7 minutes:',
+    `[Open pre-game questionnaire](${ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK})`
+].join('\n');
 
 const TEACH_WEEKS = [
     {
@@ -61,7 +79,12 @@ window.TEACH_CONFIG = {
     teachIsLocalhost,
     TEACH_WEEKS,
     TEACH_PROGRESS_STORAGE_KEY,
-    TEACH_CONTENT_SETTINGS
+    TEACH_CONTENT_SETTINGS,
+    ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK,
+    ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
+    ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
+    ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY,
+    TEACH_ONBOARDING_WELCOME_TEMPLATE
 };
 
 if (typeof window !== 'undefined') {

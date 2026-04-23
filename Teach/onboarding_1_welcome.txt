@@ -1,0 +1,9 @@
+Hi! 👋 
+Thank you for participating in this experiment.
+
+We are exploring how interactive games can make learning English more fun and less stressful 🌱
+
+You will be one of the first to try our detective game, so your feedback is very important for our research ✨
+
+Before you start, please answer some questions in Google Forms, it will take 5-7 minutes:
+[Open pre-game questionnaire]({{ONBOARDING_QUESTIONNAIRE_LINK}})

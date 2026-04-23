@@ -40,7 +40,7 @@ Write one sentence using each of these words:
 
 ---
 
-## Part 1: The Call
+## Part 1: The Call [image=nina.png]
 
 It is 7:40 PM on Monday, December 18th. Snow is falling over Chicago.
 
@@ -53,11 +53,12 @@ When she arrives, the paramedics are already there. She shows her badge and foll
 The paramedics lift Alex onto a stretcher. "He's stable," one of them tells Nina. "We're taking him now."
 
 Nina nods. She stays behind.
-
+### The Card [image=ep1/clue3.png]
 In the hallway outside the bathroom, she crouches down. On the floor, near the bathroom door, there is a small card. She reads it without touching it.
 
 *"Pay up or die!"*
 
+### The Weapon [image=ep1/clue2.png]
 She stands up and looks around. On the bathroom floor, half under the sink, she can see a heavy gold-coloured object — a trophy of some kind, about thirty centimetres tall. There is blood on it.
 
 Near the base of the toilet, something small catches her eye. She crouches down again. It is a tiny plastic cap — the kind that covers the end of a USB drive. An unusual shape: it looks like the nose of a small plane, with a tiny propeller. It could have been there for days. It could mean nothing. But it is strange to find in a bathroom.
@@ -290,7 +291,7 @@ Nina looks at him steadily. "Pauline drove here at ten o'clock and buzzed the in
 
 Tim opens his mouth. Nothing comes out. Then, desperately: "And even if I wanted to — how would I have gotten in? I can't just walk into someone's apartment."
 
-From across the room, Fiona's voice cuts in, sharp and flat. "He has the building entry code — Alex gave it to everyone in the office. And the apartment door was unlocked. I found it that way when I arrived."
+From across the room, Fiona's voice cuts in, sharp and flat. "He has the building entry code — Alex gave it to everyone he had invited. And the apartment door was unlocked. I found it that way when I arrived."
 
 Nina leans forward. "You were in this building before the party. You had the entry code. You had the trophy. And you had twenty-five minutes alone with Alex that you have not mentioned once."
 

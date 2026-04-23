@@ -71,6 +71,15 @@ open http://localhost:8000/docs
 node Teach/scripts/build-content.mjs
 ```
 
+Teach markdown supports section images via heading metadata:
+
+```md
+## Part 1: The Call [image=teach/week1/part1_call.png]
+### Fiona Interview [image=teach/week1/fiona_intro.png]
+```
+
+The `image=...` value is optional and, when present, is attached to that rendered section.
+
 Production Firebase sites:
 
 - Portal → https://chicago-formula.web.app/
