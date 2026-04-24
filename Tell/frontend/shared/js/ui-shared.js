@@ -66,10 +66,27 @@
         if (!imageFile) {
             return null;
         }
-        if (global.API_URL) {
-            return `${global.API_URL}/api/images/${imageFile}`;
+        const normalizedImageFile = String(imageFile).trim();
+        if (!normalizedImageFile) {
+            return null;
         }
-        return imageFile;
+
+        if (/^(https?:)?\/\//i.test(normalizedImageFile) || /^(data|blob):/i.test(normalizedImageFile)) {
+            return normalizedImageFile;
+        }
+
+        if (/^\/?Teach\/images\//i.test(normalizedImageFile)) {
+            return `/${normalizedImageFile.replace(/^\/?Teach\/images\//i, 'images/')}`;
+        }
+
+        if (/^(?:\.{1,2}\/|\/|images\/)/i.test(normalizedImageFile)) {
+            return normalizedImageFile;
+        }
+
+        if (global.API_URL) {
+            return `${global.API_URL}/api/images/${normalizedImageFile}`;
+        }
+        return normalizedImageFile;
     }
 
     function addMessage(type, sender, content, imageUrl = null, senderAvatar = null, typewriterStyle = false, options = {}) {
@@ -131,6 +148,9 @@
             img.className = 'message-image';
             if (typeof imageUrl === 'string' && imageUrl.includes('detective_guide')) {
                 img.classList.add('message-image--detective-guide');
+            }
+            if (typeof imageUrl === 'string' && /(^|\/)nina\.(png|webp|jpg|jpeg)$/i.test(imageUrl.trim())) {
+                img.classList.add('message-image--no-shadow');
             }
             img.loading = 'lazy';
             img.onclick = () => {

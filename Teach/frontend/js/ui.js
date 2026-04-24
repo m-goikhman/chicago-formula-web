@@ -202,6 +202,27 @@ const TeachUI = (() => {
         content.appendChild(actions);
     }
 
+    function resolveFullscreenImageUrl(imageUrl) {
+        const raw = typeof imageUrl === 'string' ? imageUrl.trim() : '';
+        if (!raw) {
+            return imageUrl;
+        }
+
+        const replacementByFileName = {
+            'clue3.png': 'clue3_bg.png',
+            'nina.png': 'nina_bg.png'
+        };
+        const fileNameMatch = raw.match(/([^/?#]+)(\?[^#]*)?(#.*)?$/);
+        const fileName = fileNameMatch ? fileNameMatch[1].toLowerCase() : '';
+        const replacement = replacementByFileName[fileName];
+
+        if (!replacement) {
+            return imageUrl;
+        }
+
+        return raw.replace(/([^/?#]+)(\?[^#]*)?(#.*)?$/, `${replacement}$2$3`);
+    }
+
     function openImageModal(imageUrl = null) {
         const overlay = document.getElementById('imageModalOverlay');
         const content = document.getElementById('imageModalContent');
@@ -209,7 +230,8 @@ const TeachUI = (() => {
             return;
         }
 
-        const resolvedUrl = typeof buildImageUrl === 'function' ? buildImageUrl(imageUrl) : imageUrl;
+        const fullscreenUrl = resolveFullscreenImageUrl(imageUrl);
+        const resolvedUrl = typeof buildImageUrl === 'function' ? buildImageUrl(fullscreenUrl) : fullscreenUrl;
         if (!resolvedUrl) {
             return;
         }
@@ -280,6 +302,48 @@ const TeachUI = (() => {
         })();
 
         return { heading, displayHeading, isStorySection };
+    }
+
+    function isBeforeReadingSection(section) {
+        const heading = typeof section?.heading === 'string' ? section.heading : '';
+        const id = typeof section?.id === 'string' ? section.id : '';
+        return /before\s*reading/i.test(heading) || /before-reading/i.test(id);
+    }
+
+    function resolveBeforeReadingImageSrc(rawImagePath) {
+        const path = typeof rawImagePath === 'string' ? rawImagePath.trim() : '';
+        if (!path) {
+            return [];
+        }
+        const normalizedPath = path.replace(/^\/+/, '');
+        const fileName = normalizedPath.split('/').pop() || '';
+        const staticTeachPath = /^(?:teach\/images\/|images\/)/i.test(normalizedPath)
+            ? normalizedPath.replace(/^(?:teach\/images\/|images\/)/i, '')
+            : fileName;
+
+        const candidates = [
+            staticTeachPath ? `images/${staticTeachPath}` : '',
+            staticTeachPath ? `../images/${staticTeachPath}` : '',
+            staticTeachPath ? `/images/${staticTeachPath}` : '',
+            normalizedPath ? `/${normalizedPath}` : '',
+            path,
+            fileName ? buildImageUrl(fileName) : '',
+            normalizedPath ? buildImageUrl(normalizedPath) : ''
+        ];
+
+        const unique = [];
+        const seen = new Set();
+        candidates
+            .map((item) => String(item || '').trim())
+            .filter(Boolean)
+            .forEach((item) => {
+                if (!seen.has(item)) {
+                    seen.add(item);
+                    unique.push(item);
+                }
+            });
+
+        return unique;
     }
 
     function normaliseHeading(text) {
@@ -875,82 +939,6 @@ const TeachUI = (() => {
         container.appendChild(continueActions);
 
         contentEl.appendChild(container);
-    }
-
-    function renderChicagoWordCloud(messageEl, section) {
-        if (!messageEl || messageEl.querySelector('.teach-wordcloud')) {
-            return;
-        }
-
-        const contentEl = messageEl.querySelector('.message-content');
-        const messageText = contentEl?.querySelector('.message-text');
-        if (!contentEl || !messageText) {
-            return;
-        }
-
-        const wordData = [
-            { word: 'nina', count: 27 }, { word: 'alex', count: 21 }, { word: 'tim', count: 17 },
-            { word: 'bathroom', count: 14 }, { word: 'fiona', count: 13 }, { word: 'ronnie', count: 13 },
-            { word: 'looks', count: 12 }, { word: 'around', count: 12 }, { word: 'back', count: 11 },
-            { word: 'arrived', count: 11 }, { word: 'says', count: 10 }, { word: 'something', count: 9 },
-            { word: 'seven', count: 9 }, { word: 'pauline', count: 9 }, { word: 'car', count: 8 },
-            { word: 'apartment', count: 8 }, { word: 'room', count: 8 }, { word: 'office', count: 8 },
-            { word: 'university', count: 8 }, { word: 'came', count: 8 }, { word: 'formula', count: 7 },
-            { word: 'found', count: 7 }, { word: 'way', count: 7 }, { word: 'inside', count: 7 },
-            { word: 'pauses', count: 7 }, { word: 'five', count: 7 }, { word: 'evening', count: 7 },
-            { word: 'outside', count: 6 }, { word: 'door', count: 6 }, { word: 'drive', count: 6 },
-            { word: 'nothing', count: 6 }, { word: "didn't", count: 6 }, { word: 'keys', count: 6 },
-            { word: 'pay', count: 5 }, { word: 'like', count: 5 }, { word: 'mean', count: 5 },
-            { word: 'past', count: 5 }, { word: 'intercom', count: 5 }, { word: 'six', count: 5 },
-            { word: 'left', count: 5 }, { word: 'yes', count: 5 }, { word: 'chicago', count: 4 },
-            { word: 'part', count: 4 }, { word: 'sitting', count: 4 }, { word: 'man', count: 4 },
-            { word: 'student', count: 4 }, { word: 'small', count: 4 }, { word: 'floor', count: 4 },
-            { word: 'card', count: 4 }, { word: 'trophy', count: 4 }, { word: 'three', count: 4 },
-            { word: 'woman', count: 4 }, { word: 'answer', count: 4 }, { word: 'went', count: 4 },
-            { word: "don't", count: 4 }, { word: 'know', count: 4 }, { word: 'moment', count: 4 },
-            { word: "doesn't", count: 4 }, { word: 'work', count: 4 }, { word: 'tonight', count: 4 },
-            { word: 'thought', count: 4 }, { word: 'earlier', count: 4 }, { word: 'bit', count: 4 },
-            { word: 'someone', count: 4 }, { word: 'blue', count: 4 }, { word: 'said', count: 4 },
-            { word: 'locked', count: 4 }, { word: 'voice', count: 4 }, { word: 'twenty', count: 4 },
-            { word: 'thinks', count: 4 }, { word: 'police', count: 3 }, { word: 'phone', count: 3 },
-            { word: 'young', count: 3 }, { word: 'already', count: 3 }, { word: 'behind', count: 3 },
-            { word: 'without', count: 3 }, { word: 'die', count: 3 }, { word: 'stands', count: 3 },
-            { word: 'kind', count: 3 }, { word: 'takes', count: 3 }, { word: 'notebook', count: 3 },
-            { word: 'hair', count: 3 }, { word: 'across', count: 3 }, { word: 'staring', count: 3 },
-            { word: 'let', count: 3 }, { word: "o'clock", count: 3 }, { word: 'gave', count: 3 },
-            { word: 'buzzed', count: 3 }, { word: 'drove', count: 3 }, { word: 'seen', count: 3 }
-        ];
-
-        messageEl.classList.add('teach-wordcloud-message');
-        messageEl.dataset.sectionType = 'reading';
-
-        messageText.innerHTML = `
-            <p>Word cloud from <strong>The Chicago Formula</strong> (stop-words removed).</p>
-            <p>Select any word to highlight it, then tap it to ask the tutor for an explanation.</p>
-        `;
-
-        const cloud = document.createElement('div');
-        cloud.className = 'teach-wordcloud';
-        cloud.setAttribute('aria-label', section?.heading || 'Word cloud');
-
-        const counts = wordData.map((item) => item.count);
-        const min = Math.min(...counts);
-        const max = Math.max(...counts);
-        const spread = Math.max(1, max - min);
-
-        wordData.forEach(({ word, count }) => {
-            const ratio = (count - min) / spread;
-            const sizeRem = 0.9 + ratio * 2.2;
-            const wordEl = document.createElement('span');
-            wordEl.className = 'teach-wordcloud-word';
-            wordEl.style.fontSize = `${sizeRem.toFixed(2)}rem`;
-            wordEl.title = `${word}: ${count}`;
-            wordEl.textContent = word;
-            cloud.appendChild(wordEl);
-            cloud.appendChild(document.createTextNode(' '));
-        });
-
-        messageText.appendChild(cloud);
     }
 
     function renderSuspectsDragExercise(messageEl) {
@@ -1746,7 +1734,6 @@ const TeachUI = (() => {
     const interactiveSectionRenderers = {
         'week1-exercise-1-match-the-words': renderMatchWordsExercise,
         'week1-exercise-2-write-your-own-sentences': renderSentenceExercise,
-        'week1-word-cloud': renderChicagoWordCloud,
         'week1-suspects-who-is-who': renderSuspectsDragExercise
     };
 
@@ -1788,16 +1775,20 @@ const TeachUI = (() => {
         }
 
         const { heading, displayHeading, isStorySection } = getSectionHeadingInfo(section);
+        const isBeforeReading = isBeforeReadingSection(section);
+        const isStoryLike = isStorySection && !isBeforeReading;
 
         const sender =
             section.type === 'task'
                 ? 'Weekly Mission'
-                : isStorySection && displayHeading
+                : isBeforeReading
+                    ? 'Mentor'
+                    : isStoryLike && displayHeading
                     ? displayHeading
                     : 'Mentor';
-        const messageType = section.type === 'task' ? 'tutor-message' : 'bot';
+        const messageType = section.type === 'task' || isBeforeReading ? 'tutor-message' : 'bot';
         const parts = [];
-        if (heading && !isStorySection) {
+        if (heading && (!isStoryLike || isBeforeReading)) {
             parts.push(`**${heading}**`);
         }
         if (section.content) {
@@ -1807,23 +1798,82 @@ const TeachUI = (() => {
             messageType,
             sender || 'Mentor',
             parts.join('\n\n'),
-            section.image ?? null,
+            isBeforeReading ? null : section.image ?? null,
             null,
-            isStorySection,
+            isStoryLike,
             {
                 sectionType: section.type,
-                imageFirst: isStorySection
+                imageFirst: isStoryLike
             }
         );
 
         if (messageEl) {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
-            if (isStorySection) {
+            if (isStoryLike) {
                 alignStoryImageWithTextStart(messageEl);
             }
             // Add data attribute to indicate if this is a reading section (for word highlighting)
             if (section.type === 'reading') {
                 messageEl.dataset.sectionType = 'reading';
+            }
+            if (isBeforeReading) {
+                const content = messageEl.querySelector('.message-content');
+                if (content && !content.querySelector('.teach-before-reading-input')) {
+                    const imageCandidates = resolveBeforeReadingImageSrc(section.image);
+                    if (imageCandidates.length > 0) {
+                        const image = document.createElement('img');
+                        image.className = 'teach-before-reading-image';
+                        image.alt = 'Before Reading word cloud';
+                        image.loading = 'lazy';
+                        image.style.cursor = 'zoom-in';
+                        image.setAttribute('role', 'button');
+                        image.setAttribute('tabindex', '0');
+                        image.setAttribute('aria-label', 'Open word cloud in full screen');
+                        let imageIndex = 0;
+                        let currentImageSrc = '';
+
+                        const setNextImage = () => {
+                            if (imageIndex >= imageCandidates.length) {
+                                image.remove();
+                                return;
+                            }
+                            currentImageSrc = imageCandidates[imageIndex];
+                            image.src = currentImageSrc;
+                            imageIndex += 1;
+                        };
+
+                        image.addEventListener('click', () => {
+                            openImageModal(currentImageSrc || image.src);
+                        });
+                        image.addEventListener('keydown', (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                openImageModal(currentImageSrc || image.src);
+                            }
+                        });
+                        image.addEventListener('error', setNextImage);
+                        setNextImage();
+                        content.appendChild(image);
+                    }
+
+                    const inputWrapper = document.createElement('div');
+                    inputWrapper.className = 'teach-before-reading-input-wrapper';
+
+                    const label = document.createElement('label');
+                    label.className = 'teach-before-reading-input-label';
+                    label.setAttribute('for', `teach-before-reading-${section.id}`);
+                    label.textContent = 'Your prediction';
+
+                    const textarea = document.createElement('textarea');
+                    textarea.id = `teach-before-reading-${section.id}`;
+                    textarea.className = 'teach-before-reading-input';
+                    textarea.rows = 4;
+                    textarea.placeholder = 'Write what you think this story will be about...';
+
+                    inputWrapper.appendChild(label);
+                    inputWrapper.appendChild(textarea);
+                    content.appendChild(inputWrapper);
+                }
             }
             
             // Get answerKey from week if provided
@@ -1836,14 +1886,9 @@ const TeachUI = (() => {
             if (typeof specificRenderer === 'function') {
                 specificRenderer(messageEl, section);
             } else {
-                const isWordCloudSection =
-                    /word\s*cloud/i.test(section.heading || '') ||
-                    /\[wordcloud\]/i.test(section.content || '');
-                if (isWordCloudSection) {
-                    renderChicagoWordCloud(messageEl, section);
+                if (isBeforeReading) {
                     return messageEl;
                 }
-
                 // Auto-detect fill-in-the-blanks exercises or "Choose and Write" exercises
                 const hasBlanks = /_{3,}/.test(section.content || '');
                 const isChooseAndWrite = /choose and write/i.test(section.heading || '');
@@ -1915,17 +1960,15 @@ const TeachUI = (() => {
         }
 
         const weekProgress = options.weekProgress ?? { completed: 0, total: 0 };
-        const summaryText =
-            week.summary && !/new words/i.test(week.summary)
-                ? week.summary
-                : 'Review the story and missions below to get ready for your tutoring session.';
+        const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
+        const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
+        const hasBeforeReadingSection = orderedSections.some((section) => isBeforeReadingSection(section));
+        const summaryText = 'Review the story and missions below to get ready for your tutoring session.';
         const summaryParts = [
             `**${week.title}**`,
             summaryText,
             `_${weekProgress.completed}/${weekProgress.total} missions completed for this week._`
         ];
-        const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
-        const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
         if (isFirstWeek) {
             const suspectsExerciseId = 'week1-suspects-who-is-who';
             const suspectsIndex = orderedSections.findIndex((section) => section.id === suspectsExerciseId);

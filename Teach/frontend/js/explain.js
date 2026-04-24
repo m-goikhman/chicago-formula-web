@@ -17,8 +17,7 @@
         : null;
 
     const tutorProfile = {
-        sender: 'AI Tutor',
-        avatar: 'detective_guide.png'
+        sender: 'AI Tutor'
     };
 
     const explanationCache = new Map();
@@ -208,7 +207,9 @@
             tutorProfile.sender,
             contentLines.join('\n'),
             null,
-            tutorProfile.avatar
+            null,
+            false,
+            { hideAvatar: true }
         );
 
         if (!messageDiv) {
@@ -294,8 +295,7 @@
 
         if (showTypingIndicator) {
             typingMessage = showTypingIndicator({
-                name: tutorProfile.sender,
-                image: tutorProfile.avatar
+                name: tutorProfile.sender
             });
         }
 

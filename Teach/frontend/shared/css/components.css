@@ -62,14 +62,19 @@
             max-width: 500px;
             border-radius: 10px;
             margin: 10px 0;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: none;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s;
         }
         
         .message-image:hover {
             transform: scale(1.02);
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+            box-shadow: none;
+        }
+
+        .message-image--no-shadow,
+        .message-image--no-shadow:hover {
+            box-shadow: none;
         }
 
         .message-image--detective-guide {

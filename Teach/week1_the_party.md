@@ -1,16 +1,9 @@
 # Week 1: The Chicago Formula
 
-## Before Reading
+## Before Reading[image=images/wordcloud.png]
 
 You are going to read a story called **Chicago Formula**.
-Here are some words you will often find in the story. You can click on the word to see its definition.
-
-### Word Cloud
-Explore the key words from the story (stop-words removed).
-Select any word to highlight it, then click the highlight to get a tutor comment.
-[wordcloud]
-
-### Exercise
+Here are some words you will often find in the story.
 What do you think the story will be about?
 
 ### Exercise 1: Match the Words
@@ -41,7 +34,7 @@ Write one sentence using each of these words:
 
 ---
 
-## Part 1: The Call [image=nina.png]
+## Part 1: The Call [image=images/nina.png]
 
 It is 7:40 PM on Monday, December 18th. Snow is falling over Chicago.
 
@@ -54,12 +47,12 @@ When she arrives, the paramedics are already there. She shows her badge and foll
 The paramedics lift Alex onto a stretcher. "He's stable," one of them tells Nina. "We're taking him now."
 
 Nina nods. She stays behind.
-### The Card [image=ep1/clue3.png]
+### The Card [image=images/clue3.png]
 In the hallway outside the bathroom, she crouches down. On the floor, near the bathroom door, there is a small card. She reads it without touching it.
 
 *"Pay up or die!"*
 
-### The Weapon [image=ep1/clue2.png]
+### The Weapon [image=images/clue2.png]
 She stands up and looks around. On the bathroom floor, half under the sink, she can see a heavy gold-coloured object — a trophy of some kind, about thirty centimetres tall. There is blood on it.
 
 Near the base of the toilet, something small catches her eye. She crouches down again. It is a tiny plastic cap — the kind that covers the end of a USB drive. An unusual shape: it looks like the nose of a small plane, with a tiny propeller. It could have been there for days. It could mean nothing. But it is strange to find in a bathroom.

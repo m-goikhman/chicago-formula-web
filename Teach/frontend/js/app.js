@@ -2,6 +2,7 @@
     const menuEl = document.getElementById('horizontalMenu');
     const chatArea = document.getElementById('chatArea');
     const overallChipEl = document.getElementById('overallProgressChip');
+    const overallProgressBarEl = document.getElementById('overallProgressBar');
     const burgerButton = document.getElementById('burgerButton');
     const appContainer = document.getElementById('teachApp');
 
@@ -9,7 +10,6 @@
     const loginInput = document.getElementById('participantCode');
     const loginButton = document.getElementById('loginBtn');
     const loginError = document.getElementById('loginError');
-    const logoutButton = document.getElementById('logoutButton');
 
     const TeachAuth = window.TeachAuth;
 
@@ -40,11 +40,10 @@
     function showTeachHelp() {
         window.alert(
             [
-                'How to use Teach mode:',
+                'How to play:',
                 '1. Pick an episode from the dropdown under the title.',
                 '2. Read sections and complete tasks step-by-step.',
                 '3. Mark tasks complete to track progress.',
-                '4. Add reflection notes at the end of each episode.'
             ].join('\n')
         );
     }
@@ -121,12 +120,15 @@
     }
 
     function updateOverallChip() {
-        if (!overallChipEl) {
-            return;
-        }
         const overallProgress = TeachState.getOverallProgress();
         const ratio = overallProgress.total > 0 ? overallProgress.completed / overallProgress.total : 0;
-        overallChipEl.textContent = `Overall completion · ${Math.round(ratio * 100)}%`;
+        const pct = Math.round(ratio * 100);
+        if (overallChipEl) {
+            overallChipEl.textContent = `${pct}%`;
+        }
+        if (overallProgressBarEl) {
+            overallProgressBarEl.style.width = `${pct}%`;
+        }
     }
 
     function showErrorState(message) {
@@ -195,9 +197,6 @@
         if (appContainer) {
             appContainer.classList.remove('active');
         }
-        if (logoutButton) {
-            logoutButton.style.display = 'none';
-        }
         clearLoginMessages();
         setLoginLoading(false);
     }
@@ -208,9 +207,6 @@
         }
         if (appContainer) {
             appContainer.classList.add('active');
-        }
-        if (logoutButton) {
-            logoutButton.style.display = '';
         }
     }
 
@@ -301,14 +297,6 @@
             });
         }
 
-        if (logoutButton) {
-            logoutButton.addEventListener('click', () => {
-                if (TeachAuth && typeof TeachAuth.logout === 'function') {
-                    TeachAuth.logout();
-                }
-                window.location.reload();
-            });
-        }
     }
 
     async function bootstrap() {

@@ -29,9 +29,59 @@
     gap: 12px;
 }
 
-.teach-container .progress-chip {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.25);
+.progress-subband {
+    background: #123f4d;
+    padding: 6px 30px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.progress-subband-label {
+    font-size: 11px;
+    font-weight: 300;
+    color: rgba(212, 230, 235, 0.6);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.progress-subband-bar-bg {
+    flex: 1;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    overflow: hidden;
+}
+
+.progress-subband-bar-fg {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #1e6a7a, #d4af64);
+    border-radius: 20px;
+    transition: width 0.4s ease;
+}
+
+.progress-subband-pct {
+    font-size: 11px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.9);
+    flex-shrink: 0;
+}
+
+@media (max-width: 900px) {
+    .progress-subband {
+        padding: 5px 20px;
+        gap: 8px;
+    }
+
+    .progress-subband-label {
+        font-size: 10px;
+    }
+
+    .progress-subband-pct {
+        font-size: 10px;
+    }
 }
 
 .teach-container .header-title-container h1 {
@@ -62,6 +112,18 @@
 .teach-section-message .message-content {
     width: 100%;
     max-width: 680px;
+}
+
+@media (min-width: 769px) {
+    .teach-section-reading.typewriter-intro .message-content {
+        width: 90%;
+        max-width: 90%;
+    }
+
+    .teach-section-reading.tutor-message .message-content {
+        width: 100%;
+        max-width: 520px;
+    }
 }
 
 .teach-section-message .message-text p {
@@ -95,6 +157,11 @@
 
 /* On phones keep image compact and separated from text. */
 @media (max-width: 768px) {
+    .teach-section-reading .message-text {
+        font-size: 1.1rem;
+        line-height: 1.85;
+    }
+
     .teach-section-reading.typewriter-intro .message-text > .teach-inline-story-image {
         float: none;
         width: min(72%, 220px);
@@ -262,6 +329,50 @@
     font-size: 0.8rem;
     text-align: right;
     color: rgba(26, 85, 99, 0.6);
+}
+
+.teach-before-reading-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.teach-before-reading-image {
+    width: 100%;
+    max-width: 520px;
+    border-radius: 12px;
+    margin-top: 12px;
+    box-shadow: none;
+}
+
+.teach-before-reading-input-label {
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(26, 85, 99, 0.7);
+    font-weight: 600;
+}
+
+.teach-before-reading-input {
+    width: 100%;
+    min-height: 110px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 85, 99, 0.2);
+    padding: 12px 14px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    resize: vertical;
+    background: rgba(26, 85, 99, 0.05);
+    color: #1a5563;
+    font-family: 'Inter', sans-serif;
+}
+
+.teach-before-reading-input:focus {
+    outline: none;
+    border-color: rgba(30, 106, 122, 0.6);
+    box-shadow: 0 0 0 2px rgba(30, 106, 122, 0.2);
+    background: rgba(255, 255, 255, 0.95);
 }
 
 .teach-match-words {
@@ -718,63 +829,8 @@
     color: #d35400;
 }
 
-.teach-section-message.teach-wordcloud-message .message-content {
-    max-width: none;
-    width: 100%;
-    padding: 0;
-    border: none;
-    background: transparent;
-    box-shadow: none;
-}
-
-.teach-section-message.teach-wordcloud-message .message-content-wrapper {
-    width: 100%;
-}
-
-.teach-wordcloud-message .message-sender {
-    margin-bottom: 10px;
-}
-
-.teach-wordcloud {
-    width: 100%;
-    margin-top: 10px;
-    padding: 8px 0 4px;
-    line-height: 2.2;
-}
-
-.teach-wordcloud-word {
-    display: inline-block;
-    margin: 2px 10px 2px 0;
-    color: #1a5563;
-    font-weight: 600;
-    cursor: text;
-    user-select: text;
-    transition: transform 0.15s ease, color 0.15s ease;
-}
-
-.teach-wordcloud-word:hover {
-    color: #1e6a7a;
-    transform: translateY(-1px);
-}
-
 .burger-button {
     border: 1px solid rgba(255, 255, 255, 0.35);
-}
-
-.teach-logout-button {
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    background: transparent;
-    color: #ffffff;
-    padding: 8px 16px;
-    border-radius: 999px;
-    font-size: 0.85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
-}
-
-.teach-logout-button:hover {
-    background: rgba(255, 255, 255, 0.12);
 }
 
 @media (max-width: 900px) {
