@@ -81,6 +81,46 @@ const TeachContentLoader = (() => {
         return sentences.slice(0, sentenceLimit).join(' ');
     }
 
+    function normalizeSection(weekId, section, index, settings) {
+        const safeSection = section || {};
+        const heading = String(safeSection.heading || '').trim();
+        const content = String(safeSection.content || '').trim();
+        const classification = classifyHeading(heading, settings, content);
+        const fallbackId = `${weekId}-section-${index + 1}`;
+        return {
+            id: safeSection.id || fallbackId,
+            heading,
+            image: safeSection.image ?? null,
+            content,
+            type: safeSection.type || classification.type,
+            category: safeSection.category || classification.category,
+            renderer: safeSection.renderer || null,
+            order: typeof safeSection.order === 'number' ? safeSection.order : index
+        };
+    }
+
+    function finalizeWeek(rawWeek, settings) {
+        const sections = (rawWeek.sections || [])
+            .map((section, index) => normalizeSection(rawWeek.id, section, index, settings))
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        const tasks = sections.filter((section) => section.type === 'task');
+        const readingSections = sections.filter((section) => section.type === 'reading');
+        const referenceReading =
+            readingSections.find((section) => !/vocabulary/i.test(section.heading)) ||
+            readingSections[0] ||
+            sections.find((section) => section.type === 'info');
+
+        return {
+            ...rawWeek,
+            sections,
+            tasks,
+            readingSections,
+            summary: extractSummary(referenceReading, settings.summarySentenceLimit),
+            preview: referenceReading?.content?.slice(0, settings.maxReadingPreviewChars) ?? ''
+        };
+    }
+
     function splitContentIntoSegments(defaultHeading, content, defaultImage = null) {
         const lines = String(content ?? '').split(/\r?\n/);
         const segments = [];
@@ -279,21 +319,141 @@ const TeachContentLoader = (() => {
         return null;
     }
 
+    function buildLegacySectionMap(week, settings) {
+        if (!week) {
+            return new Map();
+        }
+        const map = new Map();
+        (week.sections || [])
+            .map((section, index) => normalizeSection(week.id, section, index, settings))
+            .forEach((section) => {
+                map.set(section.id, section);
+            });
+        return map;
+    }
+
+    async function fetchManifestForWeek(weekId) {
+        try {
+            const response = await fetch(`data/teach-manifest/${weekId}.json`, { cache: 'no-cache' });
+            if (!response.ok) {
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            console.warn(`[TeachContentLoader] Failed to load manifest for ${weekId}:`, error);
+            return null;
+        }
+    }
+
+    async function fetchTextSource(path) {
+        if (!path) {
+            return '';
+        }
+        const response = await fetch(path, { cache: 'no-cache' });
+        if (!response.ok) {
+            throw new Error(`Could not load ${path} (HTTP ${response.status})`);
+        }
+        return response.text();
+    }
+
+    async function composeWeekFromManifest(manifest, legacyWeek, settings) {
+        const fallbackWeek = legacyWeek || {
+            id: manifest.id,
+            title: manifest.title || manifest.id,
+            order: manifest.order ?? 0,
+            source: manifest.source || '',
+            sections: []
+        };
+        const legacyMap = buildLegacySectionMap(fallbackWeek, settings);
+        const items = Array.isArray(manifest.items) ? manifest.items : [];
+        const sections = [];
+
+        for (let index = 0; index < items.length; index += 1) {
+            const item = items[index] || {};
+            const id = item.id || `${manifest.id}-item-${index + 1}`;
+            const fallbackType = item.kind === 'exercise' ? 'task' : 'info';
+            const fallbackCategory = item.kind === 'exercise' ? 'exercise' : 'info';
+
+            if (item.fromLegacySectionId && legacyMap.has(item.fromLegacySectionId)) {
+                const legacy = legacyMap.get(item.fromLegacySectionId);
+                sections.push({
+                    ...legacy,
+                    id,
+                    order: index,
+                    renderer: item.renderer || legacy.renderer || null
+                });
+                continue;
+            }
+
+            const markdown = item.contentSource
+                ? await fetchTextSource(item.contentSource)
+                : String(item.content || '');
+            const heading = String(item.heading || '').trim();
+            const classification = classifyHeading(heading, settings, markdown);
+
+            sections.push({
+                id,
+                heading,
+                image: item.image ?? null,
+                content: markdown,
+                type: item.type || classification.type || fallbackType,
+                category: item.category || classification.category || fallbackCategory,
+                renderer: item.renderer || null,
+                order: index
+            });
+        }
+
+        return finalizeWeek({
+            ...fallbackWeek,
+            id: manifest.id || fallbackWeek.id,
+            title: manifest.title || fallbackWeek.title,
+            order: manifest.order ?? fallbackWeek.order ?? 0,
+            source: manifest.source || fallbackWeek.source,
+            sections
+        }, settings);
+    }
+
+    async function applyWeekManifests(weeks, weeksConfig, settings) {
+        const byId = new Map((weeks || []).map((week) => [week.id, week]));
+        const result = [];
+
+        for (const week of weeks || []) {
+            const manifest = await fetchManifestForWeek(week.id);
+            if (!manifest || !Array.isArray(manifest.items) || manifest.items.length === 0) {
+                result.push(finalizeWeek(week, settings));
+                continue;
+            }
+            const composed = await composeWeekFromManifest(manifest, week, settings);
+            result.push(composed);
+        }
+
+        const existingIds = new Set(result.map((week) => week.id));
+        for (const weekMeta of weeksConfig || []) {
+            if (existingIds.has(weekMeta.id)) {
+                continue;
+            }
+            const manifest = await fetchManifestForWeek(weekMeta.id);
+            if (!manifest || !Array.isArray(manifest.items) || manifest.items.length === 0) {
+                continue;
+            }
+            const composed = await composeWeekFromManifest(manifest, byId.get(weekMeta.id), settings);
+            result.push(composed);
+        }
+
+        return result
+            .filter(Boolean)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }
+
     async function loadTeachContent(weeksConfig = TEACH_WEEKS, settings = TEACH_CONTENT_SETTINGS) {
         const prebuilt = await fetchPrebuiltContent();
         if (prebuilt) {
-            return prebuilt
-                .map((week) =>
-                    buildWeekFromSections(
-                        {
-                            ...week,
-                            sections: week.sections ?? []
-                        },
-                        { id: week.id },
-                        settings
-                    )
-                )
-                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const normalizedPrebuilt = prebuilt
+                .map((week) => ({
+                    ...week,
+                    sections: week.sections ?? []
+                }));
+            return applyWeekManifests(normalizedPrebuilt, weeksConfig, settings);
         }
 
         const fetchPromises = weeksConfig.map(async (weekMeta) => {
@@ -320,9 +480,11 @@ const TeachContentLoader = (() => {
         });
 
         const weeks = await Promise.all(fetchPromises);
-        return weeks
-            .filter(Boolean)
-            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return applyWeekManifests(
+            weeks.filter(Boolean),
+            weeksConfig,
+            settings
+        );
     }
 
     return {

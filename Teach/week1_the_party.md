@@ -15,10 +15,10 @@ Write the correct letter next to each number:
 3. evidence → _____
 4. contradict → _____
 
-a) to say the opposite of what someone else said
-b) proof you were somewhere else during a crime
-c) a reason for doing something bad
-d) proof that something happened
+to say the opposite of what someone else said
+proof you were somewhere else during a crime
+a reason for doing something bad
+proof that something happened
 
 
 ### Exercise 2: Write Your Own Sentences

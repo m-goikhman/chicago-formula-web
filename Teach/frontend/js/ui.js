@@ -1731,11 +1731,31 @@ const TeachUI = (() => {
         }
     }
 
-    const interactiveSectionRenderers = {
+    const renderersByType = {
+        match_words: renderMatchWordsExercise,
+        sentence_builder: renderSentenceExercise,
+        suspects_drag: renderSuspectsDragExercise
+    };
+
+    const renderersById = {
         'week1-exercise-1-match-the-words': renderMatchWordsExercise,
         'week1-exercise-2-write-your-own-sentences': renderSentenceExercise,
         'week1-suspects-who-is-who': renderSuspectsDragExercise
     };
+
+    function resolveInteractiveRenderer(section) {
+        if (!section) {
+            return null;
+        }
+        if (section.id && typeof renderersById[section.id] === 'function') {
+            return renderersById[section.id];
+        }
+        const rendererType = String(section.renderer || '').trim();
+        if (rendererType && typeof renderersByType[rendererType] === 'function') {
+            return renderersByType[rendererType];
+        }
+        return null;
+    }
 
     function decorateHeading(messageEl) {
         const headingEl = messageEl?.querySelector('.message-text strong');
@@ -1881,10 +1901,10 @@ const TeachUI = (() => {
             const answerKey = week ? parseAnswerKey(week) : {};
             const correctAnswers = getAnswersForExercise(answerKey, section);
             
-            // Check for specific interactive renderer first
-            const specificRenderer = interactiveSectionRenderers[section.id];
-            if (typeof specificRenderer === 'function') {
-                specificRenderer(messageEl, section);
+            // Resolve renderer by id override first, then by type.
+            const interactiveRenderer = resolveInteractiveRenderer(section);
+            if (typeof interactiveRenderer === 'function') {
+                interactiveRenderer(messageEl, section);
             } else {
                 if (isBeforeReading) {
                     return messageEl;
