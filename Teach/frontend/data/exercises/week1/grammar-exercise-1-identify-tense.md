@@ -9,3 +9,10 @@ Write which tense is used in each sentence:
 4. "Tim had already left the building when Fiona arrived." -> __________
 
 5. "The tap was running when Nina entered the bathroom." -> __________
+
+[answers]
+1. past perfect
+2. past continuous
+3. past simple
+4. past perfect
+5. past continuous

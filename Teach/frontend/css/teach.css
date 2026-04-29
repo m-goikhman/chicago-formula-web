@@ -931,8 +931,8 @@
     }
 
     .teach-fill-blanks-grammar .teach-blank-input {
-        min-width: 40px;
-        width: 70px;
+        min-width: 80px;
+        width: 90px !important;
         max-width: 100px;
         padding: 2px 4px;
         font-size: 0.85rem;
@@ -975,14 +975,16 @@
 
 /* Grammar exercises: smaller inline inputs that don't break lines */
 .teach-fill-blanks-grammar .teach-blank-input {
-    display: inline-block;
-    width: 20px;
+    display: inline-block !important;
+    width: 120px !important;
+    min-width: 90px;
     max-width: 120px;
     padding: 3px 6px;
     margin: 0 2px;
     font-size: 0.9rem;
     vertical-align: baseline;
     line-height: 1.4;
+    box-sizing: border-box;
 }
 
 /* Clickable choice buttons in "Choose and Write" exercises */

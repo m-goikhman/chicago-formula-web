@@ -1318,6 +1318,63 @@ const TeachUI = (() => {
             return;
         }
 
+        const parseFillInAnswersConfig = (rawContent = '') => {
+            const source = String(rawContent || '');
+            const match = source.match(/\[answers\]\s*([\s\S]*)$/i);
+            if (!match) {
+                return {
+                    answerSets: [],
+                    cleanedContent: source.trim()
+                };
+            }
+
+            const lines = match[1]
+                .split('\n')
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .filter((line) => line !== '---');
+
+            const answerSets = [];
+
+            lines.forEach((line) => {
+                const numbered = line.match(/^\d+\s*[-.)]?\s*(.+)$/);
+                const answerText = (numbered ? numbered[1] : line).trim();
+                if (!answerText) {
+                    return;
+                }
+
+                const variants = answerText
+                    .split(/\s*\|\|\s*/g)
+                    .map((variant) => variant.trim())
+                    .filter(Boolean);
+
+                if (variants.length > 0) {
+                    answerSets.push(variants);
+                }
+            });
+
+            const cleanedContent = source.replace(/\n?\[answers\][\s\S]*$/i, '').trim();
+            return { answerSets, cleanedContent };
+        };
+
+        const normalizeAnswer = (value) =>
+            String(value || '')
+                .toLowerCase()
+                .replace(/[’`]/g, "'")
+                .replace(/[^\p{L}\p{N}'\s-]/gu, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+        const answersConfig = parseFillInAnswersConfig(section?.content || '');
+        if (answersConfig.cleanedContent) {
+            const renderedContent = answersConfig.cleanedContent.replace(/\n/g, '  \n');
+            if (typeof window.marked?.parse === 'function') {
+                messageText.innerHTML = window.marked.parse(renderedContent);
+            } else {
+                messageText.textContent = answersConfig.cleanedContent;
+            }
+        }
+
         // Determine if this is a "Choose and Write" exercise (needs clickable choices)
         const isChooseAndWrite = /choose and write/i.test(section.heading || '');
 
@@ -1749,6 +1806,7 @@ const TeachUI = (() => {
                 // Regular validation for other exercises
                 let allFilled = true;
                 let hasEmpty = false;
+                let allCheckedAnswersCorrect = true;
 
                 inputs.forEach((input) => {
                     const value = input.value.trim();
@@ -1766,11 +1824,37 @@ const TeachUI = (() => {
                         return;
                     }
 
-                    // For now, just mark as filled (can be extended with actual answer checking)
-                    input.classList.add('correct');
-                    if (feedback) {
-                        feedback.textContent = '✓';
-                        feedback.classList.add('correct');
+                    const blankIndex = Number(input.dataset.blankIndex || 0);
+                    const expectedVariants = answersConfig.answerSets[blankIndex] || [];
+
+                    // If no answer is provided in the md block, keep this blank as completion-only.
+                    if (expectedVariants.length === 0) {
+                        input.classList.add('correct');
+                        if (feedback) {
+                            feedback.textContent = '✓';
+                            feedback.classList.add('correct');
+                        }
+                        return;
+                    }
+
+                    const normalizedValue = normalizeAnswer(value);
+                    const matchingVariant = expectedVariants.find(
+                        (variant) => normalizeAnswer(variant) === normalizedValue
+                    );
+
+                    if (matchingVariant) {
+                        input.classList.add('correct');
+                        if (feedback) {
+                            feedback.textContent = '✓ Correct';
+                            feedback.classList.add('correct');
+                        }
+                    } else {
+                        allCheckedAnswersCorrect = false;
+                        input.classList.add('incorrect');
+                        if (feedback) {
+                            feedback.textContent = `✗ Correct: ${expectedVariants[0]}`;
+                            feedback.classList.add('incorrect');
+                        }
                     }
                 });
 
@@ -1782,9 +1866,21 @@ const TeachUI = (() => {
                 }
 
                 if (allFilled) {
-                    result.textContent = 'All blanks filled! Great work.';
-                    result.classList.remove('warning', 'error');
-                    result.classList.add('success');
+                    if (answersConfig.answerSets.length > 0) {
+                        if (allCheckedAnswersCorrect) {
+                            result.textContent = 'Excellent! All checked answers are correct.';
+                            result.classList.remove('warning', 'error');
+                            result.classList.add('success');
+                        } else {
+                            result.textContent = 'Some answers are incorrect. Review the corrections and try again.';
+                            result.classList.remove('success', 'warning');
+                            result.classList.add('error');
+                        }
+                    } else {
+                        result.textContent = 'All blanks filled! Great work.';
+                        result.classList.remove('warning', 'error');
+                        result.classList.add('success');
+                    }
                 }
             }
         }

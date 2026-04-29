@@ -19,3 +19,13 @@ Now write 3 sentences using past perfect:
 
 
 ---
+
+[answers]
+1. 6
+2. 7
+3. 2
+4. 3
+5. 1
+6. 4
+7. 5
+8. 8
