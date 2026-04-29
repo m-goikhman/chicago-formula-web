@@ -37,31 +37,3 @@ He stops.
 Nina stands up.
 
 "Tim Kane, you are under arrest."
-
-
-### Comprehension Questions — Part 4
-
-Answer in complete sentences:
-
-1. **What three pieces of evidence does Nina use to confront Tim?**
-
-   _______________________________________________
-
-2. **Why did Tim attack Alex?**
-
-   _______________________________________________
-
-3. **Why did Tim drop Ronnie's card near the bathroom?**
-
-   _______________________________________________
-
-4. **What mistake did Tim make with his car?**
-
-   _______________________________________________
-
-5. **Were your predictions about the story correct? What surprised you most?**
-
-   _______________________________________________
-
-
----

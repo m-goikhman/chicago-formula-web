@@ -46,8 +46,8 @@ EP2_JAMES_USB_QUESTION = "What's on the drive, and how can I help?"
 EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
 EP1_PART1_LOCATION = "part1_ep1"
 EP1_PART2_LOCATION = "part2_ep1"
-EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 12
-EP1_PRIVATE_MIN_TURNS_ANY = 20
+EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 10
+EP1_PRIVATE_MIN_TURNS_ANY = 12
 TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
 EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
 PUBLIC_FOLLOWUP_LOCK_TURNS = 1
@@ -444,7 +444,8 @@ def _is_public_group_address(message_text: str) -> bool:
     if not lowered:
         return False
 
-    group_address_patterns = [
+    # Strong patterns are explicit group calls and should always route as group.
+    strong_group_address_patterns = [
         r"\beveryone\b",
         r"\beverybody\b",
         r"\byou\s+all\b",
@@ -454,13 +455,32 @@ def _is_public_group_address(message_text: str) -> bool:
         r"\bwhich\s+of\s+you\b",
         r"\bboth\s+of\s+you\b",
         r"\brest\s+of\s+you\b",
+    ]
+    if any(re.search(pattern, lowered) for pattern in strong_group_address_patterns):
+        return True
+
+    # Softer patterns like "who else" can be follow-ups to one speaker:
+    # "Who else was in this group where you've hung out?"
+    # In these cases we should keep singular-you routing to last responder.
+    soft_group_address_patterns = [
         r"\bwho\s+else\b",
         r"\bwhat\s+about\s+the\s+others\b",
         r"\bothers\b",
         r"\banyone\b",
         r"\banybody\b",
     ]
-    return any(re.search(pattern, lowered) for pattern in group_address_patterns)
+    if not any(re.search(pattern, lowered) for pattern in soft_group_address_patterns):
+        return False
+
+    singular_you_patterns = [
+        r"\byou\b",
+        r"\byour\b",
+        r"\byou've\b",
+        r"\byou'd\b",
+        r"\byou'll\b",
+    ]
+    addressed_to_single_person = any(re.search(pattern, lowered) for pattern in singular_you_patterns)
+    return not addressed_to_single_person
 
 
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
@@ -1567,9 +1587,40 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
 
     state["ep1_outro_questionnaire_shown"] = True
     outro = _ep1_outro_questionnaire_message(participant_code, state)
-    outro["buttons"] = [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}]
+    outro["buttons"] = [{"text": "Get final summary from AI language tutor", "action": "get_final_summary"}]
     await game_state_manager.save_game_state(participant_code, state)
     return [outro]
+
+
+async def handle_get_final_summary(participant_code: str) -> List[Dict]:
+    """Generate final language summary based on accumulated participant progress."""
+    from ai_services import ask_tutor_for_final_summary
+
+    logs = progress_manager.get_participant_progress(participant_code)
+    summary_data = await ask_tutor_for_final_summary(participant_code, logs)
+    summary_text = summary_data.get("summary", "").strip()
+    if not summary_text:
+        summary_text = (
+            "Great job completing the game! You showed curiosity and engagement with English. "
+            "Keep practicing and you'll continue to improve!"
+        )
+
+    tutor_data = CHARACTER_DATA.get("tutor", {"full_name": "English Tutor"})
+    formatted_reply = f"*{tutor_data['full_name']}:*\n{summary_text}"
+    log_message("character_tutor", formatted_reply, participant_code)
+
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, formatted_reply, "tutor")
+
+    return [{
+        "type": "character",
+        "character": "tutor",
+        "character_name": tutor_data["full_name"],
+        "content": formatted_reply,
+        "message_id": message_id,
+        "show_explain": False,
+        "buttons": [{"text": "⬅️ Back to Main Menu", "action": "show_main_menu"}],
+    }]
 
 
 async def handle_inline_button_action(participant_code: str, action: str) -> Optional[List[Dict]]:
@@ -3935,10 +3986,11 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     
     if analysis_result.get("improvement_needed"):
         feedback = analysis_result.get("feedback", "")
+        briefly = analysis_result.get("briefly", "")
         logger.info(f"Participant {participant_code}: Tutor feedback needed. Saving to: participant_logs/language_progress/web_{participant_code}_language_progress.json")
         logger.info(f"Feedback: '{feedback[:100]}...'")
         # Save participant-scoped writing feedback.
-        success = progress_manager.add_participant_writing_feedback(participant_code, text, feedback)
+        success = progress_manager.add_participant_writing_feedback(participant_code, text, feedback, briefly)
         if success:
             logger.info(f"Participant {participant_code}: Successfully saved feedback to progress manager")
         else:

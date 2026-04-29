@@ -270,24 +270,22 @@ const TeachUI = (() => {
 
     function getSectionHeadingInfo(section) {
         const heading = typeof section?.heading === 'string' ? section.heading.trim() : '';
-        const content = typeof section?.content === 'string' ? section.content.trim() : '';
-        const contentLength = content.length;
+        const kind = typeof section?.kind === 'string' ? section.kind.trim().toLowerCase() : '';
+        const category = typeof section?.category === 'string' ? section.category.trim().toLowerCase() : '';
         
         // Exclude vocabulary sections from typewriter styling
         const normalizedHeading = heading.toLowerCase();
         const isVocabularySection = /vocabulary/i.test(normalizedHeading);
         
-        // A section is a story/reading section if:
-        // 1. It's marked as type 'reading', OR
-        // 2. It has a heading and is a long text (>= 500 chars) - likely a reading text
-        // BUT exclude vocabulary sections
-        const isLongText = contentLength >= 500;
+        // Manifest is the source of truth: prefer explicit kind/category metadata.
+        // Keep a narrow fallback for older content that only used type='reading'.
         const hasHeading = heading && heading.length > 0;
+        const isExplicitStory = kind === 'story' || category === 'story';
         
         const isStorySection =
             !isVocabularySection &&
-            ((section?.type === 'reading' && hasHeading) ||
-            (hasHeading && isLongText && section?.type !== 'task'));
+            hasHeading &&
+            (isExplicitStory || section?.type === 'reading');
 
         const displayHeading = (() => {
             if (!heading) {
@@ -576,7 +574,55 @@ const TeachUI = (() => {
         content.appendChild(controls);
     }
 
-    function renderMatchWordsExercise(messageEl) {
+    function parseMatchWordsConfig(rawContent = '') {
+        const source = String(rawContent || '');
+        const match = source.match(/\[match_words\]\s*([\s\S]*)$/i);
+        if (!match) {
+            return null;
+        }
+
+        const lines = match[1]
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => line !== '---');
+
+        const entries = lines
+            .map((line) => {
+                const separatorIdx = line.indexOf('|');
+                if (separatorIdx <= 0) {
+                    return null;
+                }
+                const word = line.slice(0, separatorIdx).trim();
+                const definition = line.slice(separatorIdx + 1).trim();
+                if (!word || !definition) {
+                    return null;
+                }
+                return { word, definition };
+            })
+            .filter(Boolean);
+
+        if (entries.length === 0) {
+            return null;
+        }
+
+        const words = [];
+        const choices = [];
+        entries.forEach((entry, index) => {
+            const choiceId = String(index);
+            words.push({ word: entry.word, answer: choiceId });
+            choices.push({ id: choiceId, text: entry.definition });
+        });
+
+        if (words.length === 0 || choices.length === 0) {
+            return null;
+        }
+
+        const cleanedContent = source.replace(/\n?\[match_words\][\s\S]*$/i, '').trim();
+        return { words, choices, cleanedContent };
+    }
+
+    function renderMatchWordsExercise(messageEl, section) {
         if (!messageEl || messageEl.querySelector('.teach-match-words')) {
             return;
         }
@@ -586,29 +632,25 @@ const TeachUI = (() => {
             return;
         }
 
+        const parsedConfig = parseMatchWordsConfig(section?.content || '');
+        if (!parsedConfig) {
+            return;
+        }
+        const exerciseData = parsedConfig;
+
         const messageText = contentEl.querySelector('.message-text');
         if (messageText) {
-            messageText.innerHTML =
-                '<p>Match each vocabulary word with its meaning, then check your answers.</p>';
+            const cleanedIntro =
+                parsedConfig.cleanedContent || 'Match each vocabulary word with its meaning, then check your answers.';
+            if (typeof window.marked?.parse === 'function') {
+                messageText.innerHTML = window.marked.parse(cleanedIntro);
+            } else {
+                messageText.textContent = cleanedIntro;
+            }
         }
 
-        const exerciseData = {
-            words: [
-                { word: 'alibi', answer: 'b' },
-                { word: 'motive', answer: 'c' },
-                { word: 'evidence', answer: 'd' },
-                { word: 'contradict', answer: 'a' }
-            ],
-            choices: [
-                { letter: 'a', text: 'to say the opposite of what someone else said' },
-                { letter: 'b', text: 'proof you were somewhere else during a crime' },
-                { letter: 'c', text: 'a reason for doing something bad' },
-                { letter: 'd', text: 'proof that something happened' }
-            ]
-        };
-
         const lookupChoice = exerciseData.choices.reduce((acc, choice) => {
-            acc[choice.letter] = choice;
+            acc[choice.id] = choice;
             return acc;
         }, {});
 
@@ -649,8 +691,8 @@ const TeachUI = (() => {
 
             exerciseData.choices.forEach((choice) => {
                 const option = document.createElement('option');
-                option.value = choice.letter;
-                option.textContent = `${choice.letter.toUpperCase()}) ${choice.text}`;
+                option.value = choice.id;
+                option.textContent = choice.text;
                 select.appendChild(option);
             });
 
@@ -679,26 +721,27 @@ const TeachUI = (() => {
         resetButton.textContent = 'Reset';
         actions.appendChild(resetButton);
 
-        // Add Continue button to proceed to next exercise
-        const continueButton = document.createElement('button');
-        continueButton.type = 'button';
-        continueButton.className = 'teach-match-words-button continue';
-        continueButton.textContent = 'Continue';
-        continueButton.addEventListener('click', () => {
-            // Try to find and click the next button if it exists
-            const nextButton = messageEl.querySelector('.teach-next-button');
-            if (nextButton && !nextButton.disabled) {
-                nextButton.click();
-            } else {
-                // If no next button, try to trigger next step via custom event
-                const event = new CustomEvent('teach-continue-next', {
-                    bubbles: true,
-                    detail: { messageEl }
-                });
-                messageEl.dispatchEvent(event);
-            }
-        });
-        actions.appendChild(continueButton);
+        if (section?.type !== 'task') {
+            const continueButton = document.createElement('button');
+            continueButton.type = 'button';
+            continueButton.className = 'teach-match-words-button continue';
+            continueButton.textContent = 'Continue';
+            continueButton.addEventListener('click', () => {
+                // Try to find and click the next button if it exists
+                const nextButton = messageEl.querySelector('.teach-next-button');
+                if (nextButton && !nextButton.disabled) {
+                    nextButton.click();
+                } else {
+                    // If no next button, try to trigger next step via custom event
+                    const event = new CustomEvent('teach-continue-next', {
+                        bubbles: true,
+                        detail: { messageEl }
+                    });
+                    messageEl.dispatchEvent(event);
+                }
+            });
+            actions.appendChild(continueButton);
+        }
 
         container.appendChild(actions);
 
@@ -741,7 +784,7 @@ const TeachUI = (() => {
                     select.classList.add('incorrect');
                     feedback.classList.add('incorrect');
                     const choice = lookupChoice[correct];
-                    feedback.textContent = `Correct: ${choice.letter.toUpperCase()}) ${choice.text}`;
+                    feedback.textContent = choice ? `Correct: ${choice.text}` : 'Incorrect.';
                 }
             });
 
@@ -775,7 +818,43 @@ const TeachUI = (() => {
         contentEl.appendChild(container);
     }
 
-    function renderSentenceExercise(messageEl) {
+    function parseSentenceBuilderConfig(rawContent = '') {
+        const source = String(rawContent || '');
+        const match = source.match(/\[sentence_builder\]\s*([\s\S]*)$/i);
+        if (!match) {
+            return null;
+        }
+
+        const lines = match[1]
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => line !== '---');
+
+        const prompts = lines
+            .map((line) => {
+                const separatorIdx = line.indexOf('|');
+                if (separatorIdx <= 0) {
+                    return null;
+                }
+                const word = line.slice(0, separatorIdx).trim();
+                const example = line.slice(separatorIdx + 1).trim();
+                if (!word || !example) {
+                    return null;
+                }
+                return { word, example };
+            })
+            .filter(Boolean);
+
+        if (prompts.length === 0) {
+            return null;
+        }
+
+        const cleanedContent = source.replace(/\n?\[sentence_builder\][\s\S]*$/i, '').trim();
+        return { prompts, cleanedContent };
+    }
+
+    function renderSentenceExercise(messageEl, section) {
         if (!messageEl || messageEl.querySelector('.teach-sentence-exercise')) {
             return;
         }
@@ -785,26 +864,24 @@ const TeachUI = (() => {
             return;
         }
 
-        const messageText = contentEl.querySelector('.message-text');
-        if (messageText) {
-            messageText.innerHTML =
-                '<p>Write a complete sentence that naturally uses each highlighted vocabulary word. Press “Send” to check your sentence before moving on.</p>';
+        const parsedConfig = parseSentenceBuilderConfig(section?.content || '');
+        if (!parsedConfig) {
+            return;
         }
 
-        const prompts = [
-            {
-                word: 'suspicious',
-                example: 'Nina became suspicious when Tim changed his story.'
-            },
-            {
-                word: 'confess',
-                example: 'Tim finally decided to confess after Nina showed the evidence.'
-            },
-            {
-                word: 'wound',
-                example: 'The paramedics treated the wound on the back of Alex\'s head.'
+        const messageText = contentEl.querySelector('.message-text');
+        if (messageText) {
+            const cleanedIntro =
+                parsedConfig.cleanedContent ||
+                'Write a complete sentence that naturally uses each highlighted vocabulary word. Press "Send" to check your sentence before moving on.';
+            if (typeof window.marked?.parse === 'function') {
+                messageText.innerHTML = window.marked.parse(cleanedIntro);
+            } else {
+                messageText.textContent = cleanedIntro;
             }
-        ];
+        }
+
+        const prompts = parsedConfig.prompts;
 
         const container = document.createElement('div');
         container.className = 'teach-sentence-exercise';
@@ -914,34 +991,35 @@ const TeachUI = (() => {
         updateStatus();
         container.appendChild(status);
 
-        // Add Continue button to proceed to next exercise
-        const continueActions = document.createElement('div');
-        continueActions.className = 'teach-sentence-actions';
-        const continueButton = document.createElement('button');
-        continueButton.type = 'button';
-        continueButton.className = 'teach-sentence-send continue';
-        continueButton.textContent = 'Continue';
-        continueButton.addEventListener('click', () => {
-            // Try to find and click the next button if it exists
-            const nextButton = messageEl.querySelector('.teach-next-button');
-            if (nextButton && !nextButton.disabled) {
-                nextButton.click();
-            } else {
-                // If no next button, try to trigger next step via custom event
-                const event = new CustomEvent('teach-continue-next', {
-                    bubbles: true,
-                    detail: { messageEl }
-                });
-                messageEl.dispatchEvent(event);
-            }
-        });
-        continueActions.appendChild(continueButton);
-        container.appendChild(continueActions);
+        if (section?.type !== 'task') {
+            const continueActions = document.createElement('div');
+            continueActions.className = 'teach-sentence-actions';
+            const continueButton = document.createElement('button');
+            continueButton.type = 'button';
+            continueButton.className = 'teach-sentence-send continue';
+            continueButton.textContent = 'Continue';
+            continueButton.addEventListener('click', () => {
+                // Try to find and click the next button if it exists
+                const nextButton = messageEl.querySelector('.teach-next-button');
+                if (nextButton && !nextButton.disabled) {
+                    nextButton.click();
+                } else {
+                    // If no next button, try to trigger next step via custom event
+                    const event = new CustomEvent('teach-continue-next', {
+                        bubbles: true,
+                        detail: { messageEl }
+                    });
+                    messageEl.dispatchEvent(event);
+                }
+            });
+            continueActions.appendChild(continueButton);
+            container.appendChild(continueActions);
+        }
 
         contentEl.appendChild(container);
     }
 
-    function renderSuspectsDragExercise(messageEl) {
+    function renderSuspectsDragExercise(messageEl, section) {
         if (!messageEl || messageEl.querySelector('.teach-suspects-exercise')) {
             return;
         }
@@ -1012,23 +1090,25 @@ const TeachUI = (() => {
         resetButton.textContent = 'Reset';
         actions.appendChild(resetButton);
 
-        const continueButton = document.createElement('button');
-        continueButton.type = 'button';
-        continueButton.className = 'teach-suspects-button continue';
-        continueButton.textContent = 'Continue';
-        continueButton.addEventListener('click', () => {
-            const nextButton = messageEl.querySelector('.teach-next-button');
-            if (nextButton && !nextButton.disabled) {
-                nextButton.click();
-            } else {
-                const event = new CustomEvent('teach-continue-next', {
-                    bubbles: true,
-                    detail: { messageEl }
-                });
-                messageEl.dispatchEvent(event);
-            }
-        });
-        actions.appendChild(continueButton);
+        if (section?.type !== 'task') {
+            const continueButton = document.createElement('button');
+            continueButton.type = 'button';
+            continueButton.className = 'teach-suspects-button continue';
+            continueButton.textContent = 'Continue';
+            continueButton.addEventListener('click', () => {
+                const nextButton = messageEl.querySelector('.teach-next-button');
+                if (nextButton && !nextButton.disabled) {
+                    nextButton.click();
+                } else {
+                    const event = new CustomEvent('teach-continue-next', {
+                        bubbles: true,
+                        detail: { messageEl }
+                    });
+                    messageEl.dispatchEvent(event);
+                }
+            });
+            actions.appendChild(continueButton);
+        }
 
         const result = document.createElement('div');
         result.className = 'teach-suspects-result';
@@ -1510,26 +1590,27 @@ const TeachUI = (() => {
         resetButton.textContent = 'Reset';
         actions.appendChild(resetButton);
 
-        // Add Continue button to proceed to next exercise
-        const continueButton = document.createElement('button');
-        continueButton.type = 'button';
-        continueButton.className = 'teach-fill-blanks-button continue';
-        continueButton.textContent = 'Continue';
-        continueButton.addEventListener('click', () => {
-            // Try to find and click the next button if it exists
-            const nextButton = messageEl.querySelector('.teach-next-button');
-            if (nextButton && !nextButton.disabled) {
-                nextButton.click();
-            } else {
-                // If no next button, try to trigger next step via custom event
-                const event = new CustomEvent('teach-continue-next', {
-                    bubbles: true,
-                    detail: { messageEl }
-                });
-                messageEl.dispatchEvent(event);
-            }
-        });
-        actions.appendChild(continueButton);
+        if (section?.type !== 'task') {
+            const continueButton = document.createElement('button');
+            continueButton.type = 'button';
+            continueButton.className = 'teach-fill-blanks-button continue';
+            continueButton.textContent = 'Continue';
+            continueButton.addEventListener('click', () => {
+                // Try to find and click the next button if it exists
+                const nextButton = messageEl.querySelector('.teach-next-button');
+                if (nextButton && !nextButton.disabled) {
+                    nextButton.click();
+                } else {
+                    // If no next button, try to trigger next step via custom event
+                    const event = new CustomEvent('teach-continue-next', {
+                        bubbles: true,
+                        detail: { messageEl }
+                    });
+                    messageEl.dispatchEvent(event);
+                }
+            });
+            actions.appendChild(continueButton);
+        }
 
         container.appendChild(actions);
 
@@ -1731,10 +1812,100 @@ const TeachUI = (() => {
         }
     }
 
+    function parseChoiceRevealConfig(rawContent = '') {
+        const source = String(rawContent || '');
+        const match = source.match(/\[button_reveal\]\s*([\s\S]*)$/i);
+        if (!match) {
+            return null;
+        }
+
+        const lines = match[1]
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => line !== '---');
+
+        const buttons = lines
+            .map((line) => {
+                const separatorIdx = line.indexOf('|');
+                if (separatorIdx <= 0) {
+                    return null;
+                }
+                const label = line.slice(0, separatorIdx).trim();
+                const text = line.slice(separatorIdx + 1).trim();
+                if (!label || !text) {
+                    return null;
+                }
+                return { label, text };
+            })
+            .filter(Boolean);
+
+        if (buttons.length === 0) {
+            return null;
+        }
+
+        const cleanedContent = source.replace(/\n?\[button_reveal\][\s\S]*$/i, '').trim();
+        return { buttons, cleanedContent };
+    }
+
+    function renderChoiceRevealExercise(messageEl, section) {
+        if (!messageEl || messageEl.querySelector('.teach-choice-reveal')) {
+            return;
+        }
+
+        const contentEl = messageEl.querySelector('.message-content');
+        if (!contentEl) {
+            return;
+        }
+
+        const parsedConfig = parseChoiceRevealConfig(section?.content || '');
+        if (!parsedConfig) {
+            return;
+        }
+
+        const messageText = contentEl.querySelector('.message-text');
+        if (messageText && typeof window.marked?.parse === 'function') {
+            messageText.innerHTML = window.marked.parse(parsedConfig.cleanedContent || '');
+        }
+
+        const container = document.createElement('div');
+        container.className = 'teach-choice-reveal';
+
+        const buttonRow = document.createElement('div');
+        buttonRow.className = 'teach-choice-reveal-buttons';
+
+        const output = document.createElement('div');
+        output.className = 'teach-choice-reveal-output';
+        output.setAttribute('aria-live', 'polite');
+
+        parsedConfig.buttons.forEach((item) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'teach-choice-reveal-button';
+            button.textContent = item.label;
+
+            button.addEventListener('click', () => {
+                output.textContent = item.text;
+                buttonRow.dataset.disabled = 'true';
+                const rowButtons = buttonRow.querySelectorAll('button');
+                rowButtons.forEach((rowButton) => {
+                    rowButton.disabled = true;
+                });
+            });
+
+            buttonRow.appendChild(button);
+        });
+
+        container.appendChild(buttonRow);
+        container.appendChild(output);
+        contentEl.appendChild(container);
+    }
+
     const renderersByType = {
         match_words: renderMatchWordsExercise,
         sentence_builder: renderSentenceExercise,
-        suspects_drag: renderSuspectsDragExercise
+        suspects_drag: renderSuspectsDragExercise,
+        choice_reveal: renderChoiceRevealExercise
     };
 
     const renderersById = {
@@ -1797,6 +1968,7 @@ const TeachUI = (() => {
         const { heading, displayHeading, isStorySection } = getSectionHeadingInfo(section);
         const isBeforeReading = isBeforeReadingSection(section);
         const isStoryLike = isStorySection && !isBeforeReading;
+        const isPortraitStory = isStoryLike && section.portrait === true;
 
         const sender =
             section.type === 'task'
@@ -1823,13 +1995,14 @@ const TeachUI = (() => {
             isStoryLike,
             {
                 sectionType: section.type,
-                imageFirst: isStoryLike
+                imageFirst: isPortraitStory
             }
         );
 
         if (messageEl) {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
-            if (isStoryLike) {
+            if (isPortraitStory) {
+                messageEl.classList.add('teach-story-portrait');
                 alignStoryImageWithTextStart(messageEl);
             }
             // Add data attribute to indicate if this is a reading section (for word highlighting)

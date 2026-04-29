@@ -1,0 +1,1 @@
+Fantastic work! You completed the entire mystery game without making any writign mistakes - this shows excellent English skills! You also learned [n_words] new words. Based on your perfect performance, I think you might be ready to try a more challenging difficulty level, to continue growing your English abilities!

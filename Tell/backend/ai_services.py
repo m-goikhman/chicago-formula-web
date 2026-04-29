@@ -20,6 +20,12 @@ else:
 # Telegram's message length limit
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
+TUTOR_PROMPT_PATHS = {
+    "analysis": "prompts/language_learning/tutor_feedback.md",
+    "explanation": "prompts/language_learning/tutor_explain.md",
+    "final_summary": "prompts/language_learning/tutor_final_summary.md",
+}
+
 # Episode 1 contradiction-handling configuration.
 # We keep this structured in code so runtime checks rely on deterministic fact slots.
 EP1_CONTRADICTION_BEHAVIOR = {
@@ -390,6 +396,17 @@ def _get_fallback_response(character_key: str = None) -> str:
     return "I'm having trouble processing that request right now."
 
 
+def _get_tutor_prompt(task: str) -> str:
+    """Load prompt dedicated to a specific tutor task."""
+    prompt_path = TUTOR_PROMPT_PATHS.get(task)
+    if not prompt_path:
+        print(f"WARNING: Unknown tutor task '{task}', using generic tutor prompt")
+        from config import CHARACTER_DATA
+
+        return load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
+    return load_system_prompt(prompt_path)
+
+
 def _parse_director_json_payload(response_text: str) -> dict:
     """Parse director JSON with tolerance for fenced code blocks or wrappers."""
     candidate = response_text.strip()
@@ -552,6 +569,18 @@ def _rewrite_history_for_active_character(history: list, character_key: Optional
 
     return rewritten
 
+
+def _strip_leading_self_reference_prefix(response_text: str) -> str:
+    """
+    Remove leaked self-reference prefixes sometimes produced by the model,
+    e.g. "[you]: hello" or "you: hello".
+    """
+    if not response_text:
+        return response_text
+
+    cleaned = response_text.strip()
+    return re.sub(r"^(?:\[\s*you\s*\]\s*:\s*|you\s*:\s*)+", "", cleaned, flags=re.IGNORECASE).strip()
+
 async def ask_for_dialogue(
     participant_code: str,
     user_message: str,
@@ -676,6 +705,9 @@ async def ask_for_dialogue(
             assistant_reply = validated_response
         else:
             assistant_reply = validated_response
+
+        # Remove leaked "[you]:" / "you:" prefixes that can appear from rewritten history tags.
+        assistant_reply = _strip_leading_self_reference_prefix(assistant_reply)
         
         # Clean up any character name prefixes from the response
         if character_key:
@@ -737,12 +769,11 @@ async def ask_for_dialogue(
 
 async def ask_tutor_for_analysis(participant_code: str, text_to_analyze: str) -> dict:
     """A special function that calls the Tutor for text analysis and expects a JSON response."""
-    from config import CHARACTER_DATA # Local import to avoid circular dependency
-    tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
+    tutor_prompt = _get_tutor_prompt("analysis")
     analysis_request = f"Analyze this text: '{text_to_analyze}'"
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": analysis_request}]
     if client is None:
-        return {"improvement_needed": False, "feedback": ""}
+        return {"improvement_needed": False, "feedback": "", "briefly": ""}
     try:
         chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
@@ -752,21 +783,28 @@ async def ask_tutor_for_analysis(participant_code: str, text_to_analyze: str) ->
         if not is_valid:
             print(f"WARNING: Tutor analysis response validation failed for participant {participant_code}")
             log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
-            return {"improvement_needed": False, "feedback": ""}
+            return {"improvement_needed": False, "feedback": "", "briefly": ""}
         
         return json.loads(validated_response)
     except (json.JSONDecodeError, Exception) as e:
         log_message("tutor_error", f"Could not parse tutor analysis JSON: {e}", participant_code)
-        return {"improvement_needed": False, "feedback": ""}
+        return {"improvement_needed": False, "feedback": "", "briefly": ""}
 
 async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str, original_message: str = "") -> dict:
     """A special function that calls the Tutor for an explanation and expects a JSON response."""
-    from config import CHARACTER_DATA
-    tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
-    
-    explanation_request = f"Please explain the meaning of: '{text_to_explain}'."
-    if original_message:
-        explanation_request += f" Original message: '{original_message}'"
+    tutor_prompt = _get_tutor_prompt("explanation")
+
+    text_to_explain = (text_to_explain or "").strip()
+    original_message = (original_message or "").strip()
+    request_payload = {
+        "selected_text": text_to_explain,
+        "original_message": original_message,
+    }
+    explanation_request = (
+        "Explain the selected text using the JSON payload below.\n"
+        "Important: the selected text always comes from the original message (possibly as a substring).\n"
+        f"{json.dumps(request_payload, ensure_ascii=False)}"
+    )
         
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": explanation_request}]
     if client is None:
@@ -782,38 +820,80 @@ async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str,
             log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
             return {}
         
-        return json.loads(validated_response)
+        parsed = json.loads(validated_response)
+        if not isinstance(parsed, dict):
+            return {}
+
+        definition = parsed.get("definition", "")
+        examples = parsed.get("examples", [])
+        contextual_explanation = parsed.get("contextual_explanation", "")
+
+        if not isinstance(definition, str):
+            definition = str(definition)
+        if not isinstance(examples, list):
+            examples = []
+        else:
+            examples = [str(example) for example in examples]
+        if not isinstance(contextual_explanation, str):
+            contextual_explanation = str(contextual_explanation)
+
+        # Keep a non-empty context field when original text was provided.
+        if original_message and not contextual_explanation.strip():
+            contextual_explanation = (
+                f"In this message, '{text_to_explain}' is used in context of the sentence."
+            )
+
+        return {
+            "definition": definition,
+            "examples": examples,
+            "contextual_explanation": contextual_explanation,
+        }
     except (json.JSONDecodeError, Exception) as e:
         log_message("tutor_error", f"Could not parse tutor explanation JSON: {e}", participant_code)
         return {}
 
 async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict) -> dict:
-    """A special function that calls the Tutor for final learning summary and expects a JSON response."""
-    from config import CHARACTER_DATA
-    tutor_prompt = load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
-    
+    """A special function that calls the Tutor for final learning summary and expects plain text."""
+
     # Prepare summary of user's progress
     words_learned = progress_data.get("words_learned", [])
     writing_feedback = progress_data.get("writing_feedback", [])
-    
-    # Handle cases with no errors/words differently
-    if not words_learned and not writing_feedback:
-        summary_request = f"Generate final learning summary. User completed the game with no new words learned and no writing errors that needed correction. This means they played excellently! Please congratulate them and suggest they might be ready for a more challenging difficulty level."
-    else:
-        summary_request = f"Generate final learning summary. User learned {len(words_learned)} words"
-        
-        if words_learned:
-            summary_request += f" (words: {', '.join([entry['query'] for entry in words_learned[:5]])}{'...' if len(words_learned) > 5 else ''})"
-        
-        if writing_feedback:
-            summary_request += f" and received {len(writing_feedback)} pieces of feedback on their writing"
-            # Add examples of common mistakes for analysis
-            feedback_examples = [entry['feedback'] for entry in writing_feedback[:3]]
-            if feedback_examples:
-                summary_request += f". Recent feedback included: {'; '.join(feedback_examples)}"
-        
-        summary_request += ". Please provide a warm summary using the good-areas to improve-good structure."
-    
+
+    # No errors + no new words: deterministic static summary
+    if not writing_feedback and not words_learned:
+        static_summary = load_system_prompt("prompts/language_learning/final_summary_no_errors_no_vocab.md").strip()
+        return {"summary": static_summary}
+
+    # No errors + has new words: deterministic static summary with word count
+    if not writing_feedback and words_learned:
+        words_count = len(words_learned)
+        static_summary = load_system_prompt("prompts/language_learning/final_summary_no_errors.md").strip()
+        return {"summary": static_summary.replace("[n_words]", str(words_count))}
+
+    # Generate with tutor only when both errors and new words are present
+    if not (writing_feedback and words_learned):
+        return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
+
+    tutor_prompt = _get_tutor_prompt("final_summary")
+    summary_request = f"Generate final learning summary. User learned {len(words_learned)} words"
+
+    summary_request += f" (words: {', '.join([entry['query'] for entry in words_learned[:5]])}{'...' if len(words_learned) > 5 else ''})"
+    summary_request += f" and received {len(writing_feedback)} pieces of feedback on their writing."
+
+    full_error_corpus = [
+        {
+            "user_text": entry.get("query", ""),
+            "feedback_for_user": entry.get("feedback", ""),
+            "briefly": entry.get("briefly", ""),
+        }
+        for entry in writing_feedback
+    ]
+    summary_request += (
+        f" Full error corpus (all entries) with teacher-oriented brief tags: "
+        f"{json.dumps(full_error_corpus, ensure_ascii=False)}."
+    )
+    summary_request += " Please provide a warm summary using the good-areas to improve-good structure."
+
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": summary_request}]
     if client is None:
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
@@ -828,9 +908,9 @@ async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict
             log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
             return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
         
-        return json.loads(validated_response)
-    except (json.JSONDecodeError, Exception) as e:
-        log_message("tutor_error", f"Could not parse tutor final summary JSON: {e}", participant_code)
+        return {"summary": validated_response.strip()}
+    except Exception as e:
+        log_message("tutor_error", f"Could not get tutor final summary: {e}", participant_code)
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
 
 

@@ -237,6 +237,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep1_usb_received,
         handle_ep1_outro_narrator,
         handle_ep1_outro_questionnaire,
+        handle_get_final_summary,
     )
     
     # Route actions to appropriate handlers
@@ -270,6 +271,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep1_outro_narrator(participant_code)
     elif request.action == "outro_questionnaire":
         messages = await handle_ep1_outro_questionnaire(participant_code)
+    elif request.action == "get_final_summary":
+        messages = await handle_get_final_summary(participant_code)
     elif request.action.startswith("examine_ep2_clue_"):
         clue_id = request.action.split("_", 3)[3]
         messages = await handle_clue_examination(participant_code, clue_id, forced_stage=2)

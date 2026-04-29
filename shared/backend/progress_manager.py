@@ -137,6 +137,7 @@ class ProgressManager:
         participant_code: str,
         user_text: str,
         feedback: str,
+        briefly: str = "",
         source: str = WEB_SOURCE,
     ) -> bool:
         """Add writing feedback for a participant code."""
@@ -146,7 +147,8 @@ class ProgressManager:
             new_entry = {
                 "timestamp": datetime.datetime.now(cet_tz).isoformat(),
                 "query": user_text,
-                "feedback": feedback
+                "feedback": feedback,
+                "briefly": briefly,
             }
             if not any(entry.get('query') == user_text for entry in progress_data.get("writing_feedback", [])):
                 progress_data.setdefault("writing_feedback", []).append(new_entry)

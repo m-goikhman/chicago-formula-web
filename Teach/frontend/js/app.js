@@ -3,6 +3,7 @@
     const chatArea = document.getElementById('chatArea');
     const overallChipEl = document.getElementById('overallProgressChip');
     const overallProgressBarEl = document.getElementById('overallProgressBar');
+    const progressSubbandEl = document.querySelector('.progress-subband');
     const burgerButton = document.getElementById('burgerButton');
     const appContainer = document.getElementById('teachApp');
 
@@ -194,6 +195,9 @@
         if (loginScreen) {
             loginScreen.style.display = 'flex';
         }
+        if (progressSubbandEl) {
+            progressSubbandEl.style.display = 'none';
+        }
         if (appContainer) {
             appContainer.classList.remove('active');
         }
@@ -204,6 +208,9 @@
     function showAppContainer() {
         if (loginScreen) {
             loginScreen.style.display = 'none';
+        }
+        if (progressSubbandEl) {
+            progressSubbandEl.style.display = '';
         }
         if (appContainer) {
             appContainer.classList.add('active');

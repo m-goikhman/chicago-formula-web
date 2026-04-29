@@ -140,13 +140,13 @@
     margin-bottom: 0.4em;
 }
 
-/* Story sections with [image=...] use right float on desktop. */
+/* Portrait story sections use right float on desktop. */
 @media (min-width: 769px) {
-    .teach-section-reading.typewriter-intro .message-content-wrapper {
+    .typewriter-intro.teach-story-portrait .message-content-wrapper {
         overflow: hidden;
     }
 
-    .teach-section-reading.typewriter-intro .message-text > .teach-inline-story-image {
+    .typewriter-intro.teach-story-portrait .message-text > .teach-inline-story-image {
         float: right;
         width: clamp(170px, 34%, 240px);
         margin: 1.9em 0 14px 18px;
@@ -162,7 +162,7 @@
         line-height: 1.85;
     }
 
-    .teach-section-reading.typewriter-intro .message-text > .teach-inline-story-image {
+    .typewriter-intro.teach-story-portrait .message-text > .teach-inline-story-image {
         float: none;
         width: min(72%, 220px);
         margin: 0 auto 14px;
@@ -663,6 +663,46 @@
 
 .teach-sentence-overall.teach-sentence-overall-complete {
     color: #2e7d32;
+}
+
+.teach-choice-reveal {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.teach-choice-reveal-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.teach-choice-reveal-button {
+    padding: 9px 16px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    background: linear-gradient(135deg, #1e6a7a, #1a5563);
+    color: #ffffff;
+}
+
+.teach-choice-reveal-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.teach-choice-reveal-output {
+    min-height: 42px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 85, 99, 0.18);
+    background: rgba(26, 85, 99, 0.06);
+    color: #1a5563;
+    padding: 10px 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
 }
 
 .teach-suspects-exercise {

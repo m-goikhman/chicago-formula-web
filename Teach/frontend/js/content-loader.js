@@ -91,6 +91,7 @@ const TeachContentLoader = (() => {
             id: safeSection.id || fallbackId,
             heading,
             image: safeSection.image ?? null,
+            portrait: safeSection.portrait === true,
             content,
             type: safeSection.type || classification.type,
             category: safeSection.category || classification.category,
@@ -371,8 +372,9 @@ const TeachContentLoader = (() => {
         for (let index = 0; index < items.length; index += 1) {
             const item = items[index] || {};
             const id = item.id || `${manifest.id}-item-${index + 1}`;
+            const isStoryKind = item.kind === 'story';
             const fallbackType = item.kind === 'exercise' ? 'task' : 'info';
-            const fallbackCategory = item.kind === 'exercise' ? 'exercise' : 'info';
+            const fallbackCategory = item.kind === 'exercise' ? 'exercise' : isStoryKind ? 'story' : 'info';
 
             if (item.fromLegacySectionId && legacyMap.has(item.fromLegacySectionId)) {
                 const legacy = legacyMap.get(item.fromLegacySectionId);
@@ -390,14 +392,18 @@ const TeachContentLoader = (() => {
                 : String(item.content || '');
             const heading = String(item.heading || '').trim();
             const classification = classifyHeading(heading, settings, markdown);
+            const resolvedType = isStoryKind ? 'info' : item.type || classification.type || fallbackType;
+            const resolvedCategory = isStoryKind ? 'story' : item.category || classification.category || fallbackCategory;
 
             sections.push({
                 id,
+                kind: item.kind || null,
                 heading,
                 image: item.image ?? null,
+                portrait: item.portrait === true,
                 content: markdown,
-                type: item.type || classification.type || fallbackType,
-                category: item.category || classification.category || fallbackCategory,
+                type: resolvedType,
+                category: resolvedCategory,
                 renderer: item.renderer || null,
                 order: index
             });
