@@ -8,6 +8,7 @@ from config import GCS_BUCKET_NAME
 import pytz
 storage_client = None
 bucket = None
+TELL_SOURCE = "tell"
 
 def _get_bucket():
     """Lazy initialization of storage client and bucket."""
@@ -35,7 +36,7 @@ def log_message(role: str, content: str, participant_code: str):
         # This ensures complete data capture for both research and regular logs
         sanitized_content = content
 
-        blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
+        blob_name = f"participant_logs/{TELL_SOURCE}/chat_history/{participant_code}_chat_history.txt"
         blob = bucket.blob(blob_name)
 
         try:
@@ -63,7 +64,7 @@ def clear_chat_history_log(participant_code: str) -> bool:
         return False
 
     try:
-        blob_name = f"participant_logs/chat_history/{participant_code}_chat_history.txt"
+        blob_name = f"participant_logs/{TELL_SOURCE}/chat_history/{participant_code}_chat_history.txt"
 
         blob = bucket.blob(blob_name)
         if blob.exists():

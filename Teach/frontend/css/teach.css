@@ -982,6 +982,30 @@
     max-width: 16ch !important;
 }
 
+.teach-blank-input-small {
+    display: inline-block;
+}
+
+.teach-blank-textarea {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 100%;
+    margin: 10px 0;
+    padding: 10px 12px;
+    line-height: 1.55;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.teach-blank-textarea-medium {
+    min-height: 140px;
+}
+
+.teach-blank-textarea-huge {
+    min-height: 260px;
+}
+
 /* Grammar exercises: smaller inline inputs that don't break lines */
 .teach-fill-blanks-grammar .teach-blank-input {
     display: inline-block !important;

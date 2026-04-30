@@ -9,6 +9,8 @@ import pytz
 logger = logging.getLogger(__name__)
 
 WEB_SOURCE = "web"
+TEACH_SOURCE = "teach"
+TELL_SOURCE = "tell"
 
 
 class ProgressManager:
@@ -34,6 +36,11 @@ class ProgressManager:
     
     def _get_progress_blob_name(self, participant_code: str, source: str = WEB_SOURCE) -> str:
         """Resolve storage path for participant-scoped progress."""
+        if source in {TEACH_SOURCE, TELL_SOURCE}:
+            return (
+                f"participant_logs/{source}/language_progress/"
+                f"{participant_code}_language_progress.json"
+            )
         if source == WEB_SOURCE:
             return f"participant_logs/language_progress/web_{participant_code}_language_progress.json"
         return f"participant_logs/language_progress/{participant_code}_language_progress.json"

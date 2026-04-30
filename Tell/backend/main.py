@@ -15,7 +15,7 @@ import random
 import bootstrap  # noqa: F401
 
 from shared.backend.auth import validate_session_token, login_participant, is_test_mode_participant
-from shared.backend.progress_manager import progress_manager  # used in some endpoints
+from shared.backend.progress_manager import progress_manager, TELL_SOURCE  # used in some endpoints
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
 from utils import log_message, clear_chat_history_log
 from game_state_manager import game_state_manager
@@ -180,7 +180,7 @@ async def reset_game(current_user=Depends(get_current_user)):
 
     # Clear persisted game state and progress
     await game_state_manager.delete_game_state(participant_code)
-    progress_manager.clear_participant_progress(participant_code)
+    progress_manager.clear_participant_progress(participant_code, source=TELL_SOURCE)
 
     # Clear persisted chat history log
     clear_chat_history_log(participant_code)
@@ -540,7 +540,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         })
         
         # Save learned word to progress
-        progress_manager.add_participant_word_learned(participant_code, word, definition)
+        progress_manager.add_participant_word_learned(participant_code, word, definition, source=TELL_SOURCE)
         
         return {"messages": messages}
     

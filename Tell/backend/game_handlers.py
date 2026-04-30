@@ -17,7 +17,7 @@ import bootstrap  # noqa: F401
 from utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
 from game_state_manager import game_state_manager
-from shared.backend.progress_manager import progress_manager
+from shared.backend.progress_manager import progress_manager, TELL_SOURCE
 from shared.backend.auth import is_test_mode_participant
 from ai_services import ask_for_dialogue
 from scripted_messages import (
@@ -1596,7 +1596,7 @@ async def handle_get_final_summary(participant_code: str) -> List[Dict]:
     """Generate final language summary based on accumulated participant progress."""
     from ai_services import ask_tutor_for_final_summary
 
-    logs = progress_manager.get_participant_progress(participant_code)
+    logs = progress_manager.get_participant_progress(participant_code, source=TELL_SOURCE)
     summary_data = await ask_tutor_for_final_summary(participant_code, logs)
     summary_text = summary_data.get("summary", "").strip()
     if not summary_text:
@@ -2078,7 +2078,7 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
         if saved_state.get("game_completed"):
             logger.info(f"Participant {participant_code}: Previous game completed, starting fresh")
             await game_state_manager.delete_game_state(participant_code)
-            progress_manager.clear_participant_progress(participant_code)
+            progress_manager.clear_participant_progress(participant_code, source=TELL_SOURCE)
     
     # Initialize or restore game state
     if participant_code not in GAME_STATE:
@@ -3848,10 +3848,12 @@ async def handle_language_menu_progress(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
     
     # Get progress data from progress manager
-    # Load progress by participant code in web version.
-    # This uses: participant_logs/language_progress/web_{participant_code}_language_progress.json
-    logger.info(f"Participant {participant_code}: Loading progress from: participant_logs/language_progress/web_{participant_code}_language_progress.json")
-    logs = progress_manager.get_participant_progress(participant_code)
+    # Load progress from Tell-specific storage path.
+    logger.info(
+        f"Participant {participant_code}: Loading progress from: "
+        f"participant_logs/{TELL_SOURCE}/language_progress/{participant_code}_language_progress.json"
+    )
+    logs = progress_manager.get_participant_progress(participant_code, source=TELL_SOURCE)
     
     logger.info(f"Participant {participant_code}: Progress data received - words_learned: {len(logs.get('words_learned', []))}, writing_feedback: {len(logs.get('writing_feedback', []))}")
     
@@ -3975,7 +3977,7 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     
     Note: This analyzes only text from the web version user, identified by participant_code.
     Data is stored in participant_logs/language_progress/web_{participant_code}_language_progress.json
-    (Note: 'web_' prefix separates web version data from Telegram bot data)
+    (Note: Tell logs are stored under participant_logs/tell/)
     """
     from ai_services import ask_tutor_for_analysis
     
@@ -3987,10 +3989,19 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     if analysis_result.get("improvement_needed"):
         feedback = analysis_result.get("feedback", "")
         briefly = analysis_result.get("briefly", "")
-        logger.info(f"Participant {participant_code}: Tutor feedback needed. Saving to: participant_logs/language_progress/web_{participant_code}_language_progress.json")
+    logger.info(
+        f"Participant {participant_code}: Tutor feedback needed. Saving to: "
+        f"participant_logs/{TELL_SOURCE}/language_progress/{participant_code}_language_progress.json"
+    )
         logger.info(f"Feedback: '{feedback[:100]}...'")
         # Save participant-scoped writing feedback.
-        success = progress_manager.add_participant_writing_feedback(participant_code, text, feedback, briefly)
+        success = progress_manager.add_participant_writing_feedback(
+            participant_code,
+            text,
+            feedback,
+            briefly,
+            source=TELL_SOURCE,
+        )
         if success:
             logger.info(f"Participant {participant_code}: Successfully saved feedback to progress manager")
         else:

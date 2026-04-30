@@ -4,20 +4,7 @@
 - Which piece of evidence did you find most convincing?
 - Which vocabulary words were new or difficult for you?
 - What grammar point do you want to practise more?
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-
+[huge_writing_space]
 ---
 [button_reveal]
 Show a reflection example|I suspected Tim when Nina discovered the timeline contradiction with the missing camera footage. The strongest evidence for me was the witness statement plus the medical report, because they confirmed he lied about where he was. New words for me were "alibi" and "contradict", and I want to practise narrative tenses more, especially switching clearly between past simple and past continuous.
