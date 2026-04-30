@@ -469,8 +469,12 @@ class HighlightManager {
         // Prevent multiple simultaneous requests
         if (highlight.classList.contains('loading')) return;
         
-        // Get original message text
-        const messageDiv = document.querySelector(`${this.messageContainerSelector}[data-message-id="${messageId}"]`);
+        // Prefer the clicked highlight's own container to avoid collisions
+        // when duplicated message ids exist in the page.
+        let messageDiv = highlight.closest(this.messageContainerSelector);
+        if (!messageDiv && messageId) {
+            messageDiv = document.querySelector(`${this.messageContainerSelector}[data-message-id="${messageId}"]`);
+        }
         if (!messageDiv) return;
         
         const messageText = messageDiv.querySelector(this.messageTextSelector);

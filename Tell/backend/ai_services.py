@@ -805,6 +805,23 @@ async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str,
         "Important: the selected text always comes from the original message (possibly as a substring).\n"
         f"{json.dumps(request_payload, ensure_ascii=False)}"
     )
+    try:
+        log_message(
+            "tutor_explain_input",
+            json.dumps(
+                {
+                    "selected_text": text_to_explain,
+                    "original_message_len": len(original_message),
+                    "original_message_preview": original_message[:300],
+                    "request_preview": explanation_request[:500],
+                },
+                ensure_ascii=False,
+            ),
+            participant_code,
+        )
+    except Exception:
+        # Logging must never break tutor flow.
+        pass
         
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": explanation_request}]
     if client is None:
@@ -843,11 +860,27 @@ async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str,
                 f"In this message, '{text_to_explain}' is used in context of the sentence."
             )
 
-        return {
+        result = {
             "definition": definition,
             "examples": examples,
             "contextual_explanation": contextual_explanation,
         }
+        try:
+            log_message(
+                "tutor_explain_output",
+                json.dumps(
+                    {
+                        "definition_preview": definition[:200],
+                        "examples_count": len(examples),
+                        "contextual_explanation_preview": contextual_explanation[:300],
+                    },
+                    ensure_ascii=False,
+                ),
+                participant_code,
+            )
+        except Exception:
+            pass
+        return result
     except (json.JSONDecodeError, Exception) as e:
         log_message("tutor_error", f"Could not parse tutor explanation JSON: {e}", participant_code)
         return {}

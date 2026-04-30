@@ -1,6 +1,6 @@
 It is 7:40 PM on Monday, December 18th. Snow is falling over Chicago.
 
-Sergeant Nina Reyes of the Chicago Police Department is sitting in her car outside the precinct when her phone rings. A young man — Alex Martin, 28, a PhD student — has been found unconscious in his apartment on South Woodlawn Avenue. Head injury. Ambulance on its way.
+Sergeant Nina Reyes of the Chicago Police Department is sitting in her car outside the police station when her phone rings. A young man — Alex Martin, 28, a PhD student — has been found unconscious in his apartment on South Woodlawn Avenue. Head injury. Ambulance on its way.
 
 Nina drives fast.
 

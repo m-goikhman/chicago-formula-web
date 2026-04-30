@@ -931,9 +931,9 @@
     }
 
     .teach-fill-blanks-grammar .teach-blank-input {
-        min-width: 80px;
-        width: 90px !important;
-        max-width: 100px;
+        min-width: 7ch !important;
+        width: 9ch !important;
+        max-width: 11ch !important;
         padding: 2px 4px;
         font-size: 0.85rem;
     }
@@ -960,7 +960,9 @@
 
 .teach-blank-input {
     display: inline-block;
-    min-width: 120px;
+    width: 12ch !important;
+    min-width: 10ch;
+    max-width: 16ch !important;
     padding: 6px 10px;
     margin: 0 4px;
     border-radius: 8px;
@@ -973,12 +975,19 @@
     vertical-align: baseline;
 }
 
+.teach-fill-blanks input[type="text"].teach-blank-input {
+    display: inline-block !important;
+    width: 12ch !important;
+    min-width: 10ch !important;
+    max-width: 16ch !important;
+}
+
 /* Grammar exercises: smaller inline inputs that don't break lines */
 .teach-fill-blanks-grammar .teach-blank-input {
     display: inline-block !important;
-    width: 120px !important;
-    min-width: 90px;
-    max-width: 120px;
+    width: 10ch !important;
+    min-width: 8ch !important;
+    max-width: 14ch !important;
     padding: 3px 6px;
     margin: 0 2px;
     font-size: 0.9rem;

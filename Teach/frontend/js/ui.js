@@ -614,6 +614,13 @@ const TeachUI = (() => {
             choices.push({ id: choiceId, text: entry.definition });
         });
 
+        // Keep the original id->definition mapping from markdown as the source of truth,
+        // but randomize definition order shown in selects so answers are not position-based.
+        for (let i = choices.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [choices[i], choices[j]] = [choices[j], choices[i]];
+        }
+
         if (words.length === 0 || choices.length === 0) {
             return null;
         }
@@ -1090,26 +1097,6 @@ const TeachUI = (() => {
         resetButton.textContent = 'Reset';
         actions.appendChild(resetButton);
 
-        if (section?.type !== 'task') {
-            const continueButton = document.createElement('button');
-            continueButton.type = 'button';
-            continueButton.className = 'teach-suspects-button continue';
-            continueButton.textContent = 'Continue';
-            continueButton.addEventListener('click', () => {
-                const nextButton = messageEl.querySelector('.teach-next-button');
-                if (nextButton && !nextButton.disabled) {
-                    nextButton.click();
-                } else {
-                    const event = new CustomEvent('teach-continue-next', {
-                        bubbles: true,
-                        detail: { messageEl }
-                    });
-                    messageEl.dispatchEvent(event);
-                }
-            });
-            actions.appendChild(continueButton);
-        }
-
         const result = document.createElement('div');
         result.className = 'teach-suspects-result';
 
@@ -1366,21 +1353,30 @@ const TeachUI = (() => {
                 .trim();
 
         const answersConfig = parseFillInAnswersConfig(section?.content || '');
-        if (answersConfig.cleanedContent) {
-            const renderedContent = answersConfig.cleanedContent.replace(/\n/g, '  \n');
-            if (typeof window.marked?.parse === 'function') {
-                messageText.innerHTML = window.marked.parse(renderedContent);
-            } else {
-                messageText.textContent = answersConfig.cleanedContent;
-            }
-        }
-
         // Determine if this is a "Choose and Write" exercise (needs clickable choices)
         const isChooseAndWrite = /choose and write/i.test(section.heading || '');
+
+        const escapeHtml = (value = '') =>
+            String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+        if (answersConfig.cleanedContent) {
+            if (isChooseAndWrite && typeof window.marked?.parse === 'function') {
+                messageText.innerHTML = window.marked.parse(answersConfig.cleanedContent);
+            } else {
+                // Keep each source line as a visual line so numbered grammar prompts never collapse.
+                messageText.innerHTML = escapeHtml(answersConfig.cleanedContent).replace(/\r?\n/g, '<br>');
+            }
+        }
 
         // Find all blanks in the rendered HTML (pattern: 3+ underscores)
         // Need to search in text nodes to avoid matching underscores in HTML attributes
         const blankPattern = /_{3,}/g;
+        const blankDetector = /_{3,}/;
         const walker = document.createTreeWalker(
             messageText,
             NodeFilter.SHOW_TEXT,
@@ -1390,7 +1386,7 @@ const TeachUI = (() => {
         const textNodesWithBlanks = [];
         let node;
         while ((node = walker.nextNode())) {
-            if (blankPattern.test(node.textContent)) {
+            if (blankDetector.test(node.textContent)) {
                 textNodesWithBlanks.push(node);
             }
         }
