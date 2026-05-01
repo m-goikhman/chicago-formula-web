@@ -117,6 +117,14 @@ Nina looks at her. "Is there anything else that seemed unusual to you this eveni
 
 Fiona is quiet for a moment. "Alex has been... different lately. More closed off. He doesn't talk to me much about his work, which is nothing new, but recently it's felt like something else — like he's been carrying something. And tonight —" she looks around the room — "I mean, look at this group. Tim's his office mate, Ronnie's practically a stranger. These aren't his close friends. Alex doesn't really have close friends. I always thought that was sad."
 
+### Writing
+
+Do you believe Fiona is telling the truth? Is there anything in her statement that seems strange or unclear? Write 2–3 sentences.
+
+_______________________________________________
+
+_______________________________________________
+
 ---
 
 **TIM**
@@ -138,6 +146,15 @@ Tim blinks. "Before — before Ronnie. I meant before Ronnie arrived. We got the
 "The card we found outside the bathroom," Nina asks. "'Pay up or die.' Have you seen it before?"
 
 "Yes — no — I mean, yes." He exhales. "Someone left something like that on my desk at work. A few days ago. I don't know who. I assumed it was some stupid joke." He glances up. "Is it — do you think the same person could have attacked Alex?"
+
+### Writing
+
+Tim says "I was here a bit before." What do you think he meant, and why does it matter? Write 2–3 sentences.
+
+_______________________________________________
+
+_______________________________________________
+
 ---
 
 **RONNIE**
@@ -153,6 +170,16 @@ Ronnie Snapper. MBA student. He knows Alex from university — a friendly acquai
 "And the card we found outside the bathroom," Nina says. "'Pay up or die.' Do you recognise it?"
 
 Ronnie is quiet for a moment. "I wrote it," he says.
+
+### Writing
+
+Ronnie says he wrote the threatening card. Does this make him more or less suspicious to you? At this point, who do you think attacked Alex, and why? Write 3–4 sentences.
+
+_______________________________________________
+
+_______________________________________________
+
+_______________________________________________
 
 ### Comprehension Questions — Part 2
 
@@ -245,8 +272,17 @@ Alone with Nina, Pauline sits down and takes a breath.
 
 "And on your way back here — did you notice anything outside?"
 
-"A blue car, parked right at the entrance. The spot had been empty when I arrived. Someone was sitting inside." 
+"A blue car, parked right at the entrance. The spot had been empty when I arrived. Someone was sitting inside."
 
+### Writing
+
+Pauline's account changes what we know about the evening. Has your theory about who is responsible changed? Write 3–4 sentences.
+
+_______________________________________________
+
+_______________________________________________
+
+_______________________________________________
 
 ### Comprehension Questions — Part 3
 
@@ -314,6 +350,14 @@ Nina stands up.
 
 "Tim Kane, you are under arrest."
 
+Tim reaches into his pocket and places a small USB drive on the coffee table. Without its cap, it looks like a tiny plane that has lost its nose.
+
+She picks it up. It is light. A little silly-looking.
+
+Whatever Alex had spent years building — the formula that Pauline traded with, that Tim had been willing to go this far for — was on this ridiculous little object in her hand. Nina turns it over once, then slips it into an evidence bag.
+
+She does not know what is on it. Not yet.
+
 
 ### Comprehension Questions — Part 4
 
@@ -342,176 +386,39 @@ Answer in complete sentences:
 
 ---
 
-## Grammar Focus: Narrative Tenses
+## Writing: The Flash Drive
 
-Mystery stories use three past tenses together to tell a clear and suspenseful story.
+Answer each question in 2–4 sentences.
 
-- **Past simple**: the main events. *Nina arrived at the apartment. Tim said nothing.*
-- **Past continuous**: actions in progress when something else happened. *The tap was still running when Nina entered.*
-- **Past perfect**: actions that happened before the main events. *Tim had parked the car over an hour earlier.*
-
-
-### Grammar Exercise 1: Identify the Tenses
-
-Write which tense is used in each sentence:
-
-1. "The snow had been building up for at least an hour." → __________
-
-2. "Fiona was sitting on the sofa with her arms folded." → __________
-
-3. "Nina closed her notebook." → __________
-
-4. "Tim had already left the building when Fiona arrived." → __________
-
-5. "The tap was running when Nina entered the bathroom." → __________
-
-
-### Grammar Exercise 2: Fill in the Gaps
-
-Write the correct form of the verb:
-
-1. When Nina __________ (arrive), the paramedics __________ (already / take) Alex downstairs.
-
-2. Ronnie __________ (notice) that the snow __________ (build) up for a long time.
-
-3. Fiona __________ (call) Alex's phone, but he __________ (not / answer).
-
-4. By the time Pauline __________ (arrive), Tim __________ (attack) Alex.
-
-5. Nina __________ (lean) forward after she __________ (present) all the evidence.
-
-
-### Grammar Exercise 3: Sequence the Events
-
-Number these events from 1–8:
-
-___ Fiona found Alex on the bathroom floor  
-___ Nina confronted Tim with the evidence  
-___ Tim hid in Alex's office at the university  
-___ Pauline saw a blue car outside when she left  
-___ Tim entered Alex's building using the keypad code  
-___ Ronnie noticed the snow on Tim's car  
-___ Nina arrived at the apartment  
-___ Tim confessed  
-
-Now write 3 sentences using past perfect:
-
-1. By the time Nina arrived, _______________________________________________
-
-2. When Ronnie saw Tim at the car, _______________________________________________
-
-3. Before Fiona opened the bathroom door, _______________________________________________
-
-
----
-
-## Writing Tasks
-
-### Writing Task 1: Witness Statement
-
-**Choose one character (Fiona, Ronnie, or Pauline) and write their full witness statement to Nina (100–120 words).**
-
-Include:
-- Where you were earlier that evening
-- When you arrived at the building
-- What you saw and what you did
-- Anything suspicious you noticed
-
-**WITNESS STATEMENT**
-
-Name: __________  Date: December 18th
-
-Statement:
+**1.** What do you think is on the flash drive? Give your best theory and explain why.
 
 _______________________________________________
 
 _______________________________________________
 
-_______________________________________________
+**2.** Does Nina have the right to look at what's on the drive? Or should she need a warrant first?
 
 _______________________________________________
 
 _______________________________________________
 
-_______________________________________________
-
-
-### Writing Task 2: Nina's Case Notes
-
-**You are Sergeant Reyes. Write your case notes at the end of the evening (100–120 words).**
-
-Include:
-- Summary of what happened
-- Key evidence
-- Suspect and motive
-- Outcome
-
-**CASE NOTES — Case #2024-1218**
+**3.** The formula belongs to Alex — but Pauline has been using it for trading for two years. Who do you think really owns it?
 
 _______________________________________________
 
 _______________________________________________
 
-_______________________________________________
+**4.** Pauline came to the apartment, argued with Alex, and left before the attack. Should she face any consequences? Why or why not?
 
 _______________________________________________
 
 _______________________________________________
 
-_______________________________________________
-
-_______________________________________________
-
-
-### Writing Task 3: Newspaper Article
-
-**Write a newspaper article for *The Chicago Tribune* (120–150 words).**
-
-Include:
-- A headline
-- What happened and where
-- Who was involved
-- Key evidence
-- What happened to the suspect and the victim
-
-**THE CHICAGO TRIBUNE**
-
-**Headline:** _______________________________________________
+**5.** Do you think Tim deserves punishment even though he says he didn't mean to hurt Alex badly?
 
 _______________________________________________
 
 _______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-_______________________________________________
-
-
-### Writing Task 4: Opinion
-
-**Answer these questions in 2–3 sentences each:**
-
-1. **Do you think Tim deserves punishment even though he says he didn't mean to hurt Alex badly?**
-
-   _______________________________________________
-
-   _______________________________________________
-
-2. **Was it wrong for Alex and Pauline to use the formula secretly for profit?**
-
-   _______________________________________________
-
-   _______________________________________________
-
-3. **Which character did you find most interesting? Why?**
-
-   _______________________________________________
-
-   _______________________________________________
 
 
 ---
@@ -525,54 +432,6 @@ Use words from the vocabulary list to complete the report:
 **Words:** wound, alibi, contradict, motive, evidence, confess, suspicious
 
 The victim had a serious __________ on the back of his head. The key suspect's behaviour was immediately __________: his story began to __________ what two witnesses had said. His __________ — that he had only just arrived — was proved false by physical __________. His __________ was financial desperation. After the detective presented the full case, the suspect decided to __________ to the crime.
-
-
----
-
-## Grammar Focus: Reported Speech
-
-When we report what someone said, we usually change the tense back one step.
-
-**Direct:** Tim said, "I arrived at 7:05."
-**Reported:** Tim said that he **had arrived** at 7:05.
-
-
-### Grammar Exercise 4: Change to Reported Speech
-
-1. Fiona said, "I heard water running in the bathroom."
-
-   Fiona said that _______________________________________________
-
-2. Tim claimed, "I parked far away."
-
-   Tim claimed that _______________________________________________
-
-3. Ronnie stated, "The snow on Tim's car was very thick."
-
-   Ronnie stated that _______________________________________________
-
-4. Pauline explained, "I saw a blue car outside when I left."
-
-   Pauline explained that _______________________________________________
-
-5. Tim confessed, "I didn't mean to hurt him badly."
-
-   Tim confessed that _______________________________________________
-
-
-### Grammar Exercise 5: Report the Questions
-
-1. Nina asked Tim, "Where did you park your car?"
-
-   Nina asked Tim _______________________________________________
-
-2. Nina asked Pauline, "What time did you leave the building?"
-
-   Nina asked Pauline _______________________________________________
-
-3. Nina asked Ronnie, "Did you write the note?"
-
-   Nina asked Ronnie _______________________________________________
 
 
 ---

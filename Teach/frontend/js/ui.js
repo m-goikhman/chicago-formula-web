@@ -308,6 +308,37 @@ const TeachUI = (() => {
         window.TeachPickExplain?.renderPickExplainExercise ??
         (() => {});
 
+    const apiClient = window.apiClient;
+    const TeachAuth = window.TeachAuth;
+
+    async function requestTutorFinalSummary() {
+        if (!apiClient || !TeachAuth || typeof TeachAuth.callWithSessionRecovery !== 'function') {
+            throw new Error('Tutor summary is unavailable right now.');
+        }
+
+        const executeRequest = async () => apiClient.get('/api/teach/final-summary', {
+            token: TeachAuth.getToken?.() || ''
+        });
+
+        const { response, data, authFailureHandled } = await TeachAuth.callWithSessionRecovery(executeRequest, {
+            authFailureMessage: 'Could not fetch tutor summary right now.'
+        });
+
+        if (authFailureHandled) {
+            throw new Error('Could not fetch tutor summary right now.');
+        }
+        if (!response?.ok) {
+            const detail = data && (data.detail || data.error || data.message);
+            throw new Error(detail || 'Could not fetch tutor summary right now.');
+        }
+
+        const summary = String(data?.summary || '').trim();
+        if (!summary) {
+            throw new Error('Could not fetch tutor summary right now.');
+        }
+        return summary;
+    }
+
     function parseChoiceRevealConfig(rawContent = '') {
         const source = String(rawContent || '');
         const match = source.match(/\[button_reveal\]\s*([\s\S]*)$/i);
@@ -537,6 +568,7 @@ const TeachUI = (() => {
                 buildNextButtonLabel,
                 resolveMessageElement,
                 appendNextButton,
+                requestTutorFinalSummary,
                 stepProgressByWeek,
                 TEACH_ONBOARDING_WELCOME_TEMPLATE
             }

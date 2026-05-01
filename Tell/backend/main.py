@@ -93,6 +93,8 @@ class TeachOpenEndedResponseRequest(BaseModel):
     response: str
     week_id: Optional[str] = None
     renderer: Optional[str] = None
+    category: Optional[str] = None
+    include_feedback: Optional[bool] = False
 
 
 def _resolve_learning_source(source: Optional[str]) -> str:
@@ -100,6 +102,57 @@ def _resolve_learning_source(source: Optional[str]) -> str:
     if normalized == TEACH_SOURCE:
         return TEACH_SOURCE
     return TELL_SOURCE
+
+
+def _build_fallback_writing_feedback(response_text: str) -> str:
+    text = str(response_text or "").strip()
+    if not text:
+        return ""
+    if len(text) < 40:
+        return "Good start. Add a bit more detail so your idea is clearer."
+    if "." not in text and "!" not in text and "?" not in text:
+        return "Nice idea. Add punctuation so your writing reads as a complete sentence."
+    return "Good job. Your writing is clear and complete."
+
+
+def _build_progress_report_message(logs: dict) -> str:
+    words_learned = logs.get("words_learned") or []
+    writing_feedback = logs.get("writing_feedback") or []
+    meaningful_feedback = [
+        entry for entry in writing_feedback
+        if not str(entry.get("feedback") or "").startswith("teach_open_ended_response::")
+    ]
+
+    if not words_learned and not meaningful_feedback:
+        return (
+            "📊 **Your Progress Report**\n\n"
+            "You don't have any saved progress yet! Keep asking for explanations and writing "
+            "responses to build your learning history."
+        )
+
+    report = "--- \n**Your Progress Report**\n---\n\n"
+
+    if words_learned:
+        report += "**Words You've Learned:**\n"
+        for entry in words_learned:
+            word = str(entry.get("query") or "").strip()
+            definition = str(entry.get("feedback") or "").strip()
+            if not word:
+                continue
+            report += f"• **{word}**: {definition}\n"
+        report += "\n"
+
+    if meaningful_feedback:
+        report += "**My Feedback on Your Phrases:**\n"
+        for entry in meaningful_feedback:
+            query = str(entry.get("query") or "").strip()
+            feedback = str(entry.get("feedback") or "").strip()
+            if not query and not feedback:
+                continue
+            report += f"📖 *You wrote:* {query}\n"
+            report += f"✅ **My suggestion:** {feedback}\n\n"
+
+    return report
 
 
 # Dependency to get current user
@@ -628,6 +681,8 @@ async def save_teach_open_ended_response(
     section_id = str(request.section_id or "").strip() or "unknown_section"
     week_id = str(request.week_id or "").strip()
     renderer = str(request.renderer or "").strip()
+    category = str(request.category or "").strip().lower()
+    include_feedback = bool(request.include_feedback)
 
     # Keep context in `briefly`, full participant answer in `query`.
     context_bits = [f"section={section_id}"]
@@ -638,16 +693,78 @@ async def save_teach_open_ended_response(
     if prompt:
         context_bits.append(f"prompt={prompt[:200]}")
 
+    tutor_feedback = ""
+    should_generate_feedback = (
+        include_feedback
+        and category == "writing"
+        and len(cleaned_response) >= 20
+    )
+    if should_generate_feedback:
+        try:
+            from ai_services import ask_tutor_for_analysis
+            analysis = await ask_tutor_for_analysis(
+                participant_code,
+                cleaned_response,
+                source=TEACH_SOURCE,
+            )
+            tutor_feedback = str((analysis or {}).get("feedback") or "").strip()
+        except Exception as error:
+            logger.warning("Teach writing feedback generation failed: %s", error)
+            tutor_feedback = ""
+        if not tutor_feedback:
+            tutor_feedback = _build_fallback_writing_feedback(cleaned_response)
+
+    stored_feedback = tutor_feedback or f"teach_open_ended_response::{section_id}"
     success = progress_manager.add_participant_writing_feedback(
         participant_code=participant_code,
         user_text=cleaned_response,
-        feedback=f"teach_open_ended_response::{section_id}",
+        feedback=stored_feedback,
         briefly=" | ".join(context_bits),
         source=TEACH_SOURCE,
         deduplicate_by_query=False,
     )
 
-    return {"saved": bool(success)}
+    return {
+        "saved": bool(success),
+        "feedback": tutor_feedback,
+    }
+
+
+@app.get("/api/teach/final-summary")
+async def get_teach_final_summary(
+    current_user=Depends(get_current_user),
+):
+    """Generate final tutor summary for Teach progress."""
+    participant_code = current_user["participant_code"]
+
+    from ai_services import ask_tutor_for_final_summary
+
+    try:
+        logs = progress_manager.get_participant_progress(
+            participant_code=participant_code,
+            source=TEACH_SOURCE,
+        )
+    except Exception as error:
+        logger.warning("Failed to load Teach progress for final summary: %s", error)
+        logs = {"words_learned": [], "writing_feedback": []}
+
+    summary_data = await ask_tutor_for_final_summary(participant_code, logs)
+    summary = str((summary_data or {}).get("summary") or "").strip()
+    if not summary:
+        summary = (
+            "Great job completing this week! Keep practicing and your English will continue to improve."
+        )
+
+    return {"summary": summary}
+
+
+@app.get("/api/teach/progress-report")
+async def get_teach_progress_report(current_user=Depends(get_current_user)):
+    """Build Teach learning progress report (words + tutor writing feedback)."""
+    participant_code = current_user["participant_code"]
+    logs = progress_manager.get_participant_progress(participant_code, source=TEACH_SOURCE)
+    report = _build_progress_report_message(logs)
+    return {"report": report}
 
 
 # Multi-stage game endpoints

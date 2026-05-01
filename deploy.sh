@@ -60,8 +60,7 @@ show_deployment_menu() {
     DEPLOY_TELL_FRONTEND=false
     DEPLOY_TEACH_FRONTEND=false
     DEPLOY_PORTAL_FRONTEND=false
-    BUILD_TEACH_CONTENT=false
-    
+
     case "$choice" in
         1)
             DEPLOY_BACKEND=true
@@ -71,7 +70,6 @@ show_deployment_menu() {
             ;;
         3)
             DEPLOY_TEACH_FRONTEND=true
-            BUILD_TEACH_CONTENT=true
             ;;
         4)
             DEPLOY_PORTAL_FRONTEND=true
@@ -81,7 +79,6 @@ show_deployment_menu() {
             DEPLOY_TELL_FRONTEND=true
             DEPLOY_TEACH_FRONTEND=true
             DEPLOY_PORTAL_FRONTEND=true
-            BUILD_TEACH_CONTENT=true
             ;;
         0)
             info "Deployment cancelled."
@@ -235,7 +232,6 @@ if [ -n "$DEPLOY_BACKEND" ] || [ -n "$DEPLOY_TELL_FRONTEND" ] || [ -n "$DEPLOY_T
     DEPLOY_TELL_FRONTEND=${DEPLOY_TELL_FRONTEND:-false}
     DEPLOY_TEACH_FRONTEND=${DEPLOY_TEACH_FRONTEND:-false}
     DEPLOY_PORTAL_FRONTEND=${DEPLOY_PORTAL_FRONTEND:-false}
-    BUILD_TEACH_CONTENT=${BUILD_TEACH_CONTENT:-false}
     info "Using environment variables for deployment selection (non-interactive mode)"
 else
     # Interactive mode: show menu
@@ -280,28 +276,6 @@ fi
 # Display Firebase project for clarity
 info "Using Firebase project: ${GREEN}$FIREBASE_PROJECT_ID${NC}"
 echo ""
-
-# ============================================
-# PREPARE CONTENT
-# ============================================
-if [ "$BUILD_TEACH_CONTENT" = true ]; then
-    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    info "Building Teach content bundle"
-    info "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo ""
-
-    set -e  # Enable error checking for this section
-    node Teach/scripts/build-content.mjs
-    
-    if [ $? -eq 0 ]; then
-        success "Teach content bundle updated!"
-    else
-        error "Unable to build Teach content bundle"
-        exit 1
-    fi
-    set +e
-    echo ""
-fi
 
 # ============================================
 # BACKEND DEPLOYMENT

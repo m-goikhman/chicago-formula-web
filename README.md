@@ -67,8 +67,6 @@ uvicorn main:app --reload --port 8000
 # Access API docs
 open http://localhost:8000/docs
 
-# Rebuild Teach content bundle after editing markdown weeks
-node Teach/scripts/build-content.mjs
 ```
 
 Teach markdown supports section images via heading metadata:
@@ -101,7 +99,6 @@ window.portalDestinations = {
 
 The `deploy.sh` helper script will:
 
-- rebuild the Teach content bundle (`Teach/frontend/data/content.json`)
 - deploy the backend to Cloud Run using `Tell/backend/Dockerfile`
 - push the Portal, Tell, and Teach frontends to Firebase Hosting
 

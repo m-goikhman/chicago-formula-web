@@ -304,22 +304,6 @@ const TeachContentLoader = (() => {
         return buildWeekFromSections(baseWeek, { id: meta.id }, settings);
     }
 
-    async function fetchPrebuiltContent() {
-        try {
-            const response = await fetch('data/content.json', { cache: 'no-cache' });
-            if (!response.ok) {
-                return null;
-            }
-            const payload = await response.json();
-            if (payload && Array.isArray(payload.weeks)) {
-                return payload.weeks;
-            }
-        } catch (error) {
-            console.warn('[TeachContentLoader] Failed to load prebuilt content:', error);
-        }
-        return null;
-    }
-
     function buildLegacySectionMap(week, settings) {
         if (!week) {
             return new Map();
@@ -452,16 +436,6 @@ const TeachContentLoader = (() => {
     }
 
     async function loadTeachContent(weeksConfig = TEACH_WEEKS, settings = TEACH_CONTENT_SETTINGS) {
-        const prebuilt = await fetchPrebuiltContent();
-        if (prebuilt) {
-            const normalizedPrebuilt = prebuilt
-                .map((week) => ({
-                    ...week,
-                    sections: week.sections ?? []
-                }));
-            return applyWeekManifests(normalizedPrebuilt, weeksConfig, settings);
-        }
-
         const fetchPromises = weeksConfig.map(async (weekMeta) => {
             try {
                 const response = await fetch(weekMeta.source);

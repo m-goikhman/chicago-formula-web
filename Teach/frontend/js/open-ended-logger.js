@@ -9,9 +9,8 @@
         return;
     }
 
-    const pendingTimers = new WeakMap();
     const lastSentValue = new WeakMap();
-    const DEBOUNCE_MS = 1200;
+    const lastFeedbackValue = new WeakMap();
 
     function shouldTrackTextarea(textarea) {
         if (!textarea || textarea.tagName !== 'TEXTAREA') {
@@ -43,7 +42,91 @@
         return '';
     }
 
-    async function sendResponse(textarea, getWeekId) {
+    function getSectionMeta(textarea) {
+        const sectionMessage = textarea.closest('.teach-section-message');
+        return {
+            sectionMessage,
+            sectionId: sectionMessage?.dataset?.sectionId || 'unknown-section',
+            renderer: sectionMessage?.dataset?.renderer || '',
+            category: String(sectionMessage?.dataset?.sectionCategory || '').trim().toLowerCase()
+        };
+    }
+
+    function getFeedbackContainer(textarea) {
+        const sectionMeta = getSectionMeta(textarea);
+        const parent = textarea.parentElement;
+        if (!parent || !sectionMeta.sectionMessage) {
+            return null;
+        }
+
+        let feedbackEl = parent.querySelector('.teach-inline-tutor-feedback');
+        if (!feedbackEl) {
+            feedbackEl = document.createElement('div');
+            feedbackEl.className = 'teach-inline-tutor-feedback';
+            feedbackEl.hidden = true;
+            parent.appendChild(feedbackEl);
+        }
+        return feedbackEl;
+    }
+
+    function updateFeedback(textarea, feedbackText) {
+        const feedbackEl = getFeedbackContainer(textarea);
+        if (!feedbackEl) {
+            return;
+        }
+
+        const text = String(feedbackText || '').trim();
+        if (!text) {
+            feedbackEl.textContent = '';
+            feedbackEl.hidden = true;
+            return;
+        }
+
+        feedbackEl.textContent = `Tutor feedback: ${text}`;
+        feedbackEl.hidden = false;
+    }
+
+    function shouldEnableTutorFeedback(textarea) {
+        const { category } = getSectionMeta(textarea);
+        return category === 'writing';
+    }
+
+    function ensureFeedbackButton(textarea, getWeekId) {
+        if (!shouldEnableTutorFeedback(textarea)) {
+            return;
+        }
+        const parent = textarea.parentElement;
+        if (!parent) {
+            return;
+        }
+        if (parent.querySelector('.teach-get-tutor-feedback-btn')) {
+            return;
+        }
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'teach-get-tutor-feedback-btn';
+        button.textContent = 'Get tutor feedback';
+        button.addEventListener('click', async () => {
+            if (button.disabled) {
+                return;
+            }
+            button.disabled = true;
+            try {
+                await sendResponse(textarea, getWeekId, {
+                    trigger: 'feedback_button',
+                    forceFeedback: true,
+                    showFeedback: true
+                });
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        parent.appendChild(button);
+    }
+
+    async function sendResponse(textarea, getWeekId, options = {}) {
         if (!shouldTrackTextarea(textarea)) {
             return;
         }
@@ -53,7 +136,21 @@
             return;
         }
 
-        if (lastSentValue.get(textarea) === response) {
+        const trigger = String(options.trigger || '').trim();
+        const forceFeedback = Boolean(options.forceFeedback);
+        const showFeedback = Boolean(options.showFeedback);
+        const { sectionId, renderer, category } = getSectionMeta(textarea);
+        const includeFeedback = (
+            forceFeedback
+            || trigger === 'feedback_button'
+            || trigger === 'continue'
+        ) && (
+            category === 'writing'
+            && response.length >= 20
+            && lastFeedbackValue.get(textarea) !== response
+        );
+
+        if (!includeFeedback && lastSentValue.get(textarea) === response) {
             return;
         }
 
@@ -62,43 +159,37 @@
             return;
         }
 
-        const sectionMessage = textarea.closest('.teach-section-message');
-        const sectionId = sectionMessage?.dataset?.sectionId || 'unknown-section';
-        const renderer = sectionMessage?.dataset?.renderer || '';
         const prompt = inferPromptFromTextarea(textarea);
         const weekId = typeof getWeekId === 'function' ? getWeekId() : '';
 
         try {
-            const { response: apiResponse } = await apiClient.postJson(
+            const { response: apiResponse, data } = await apiClient.postJson(
                 '/api/teach/open-ended-response',
                 {
                     section_id: sectionId,
                     prompt,
                     response,
                     week_id: weekId || null,
-                    renderer: renderer || null
+                    renderer: renderer || null,
+                    category: category || null,
+                    include_feedback: includeFeedback
                 },
                 { token }
             );
 
             if (apiResponse.ok) {
                 lastSentValue.set(textarea, response);
+                if (includeFeedback) {
+                    const feedbackText = String(data?.feedback || '').trim();
+                    if (feedbackText && showFeedback) {
+                        updateFeedback(textarea, feedbackText);
+                    }
+                    lastFeedbackValue.set(textarea, response);
+                }
             }
         } catch (error) {
             console.warn('[TeachOpenEndedLogger] Failed to save open-ended response:', error);
         }
-    }
-
-    function scheduleSend(textarea, getWeekId) {
-        const existing = pendingTimers.get(textarea);
-        if (existing) {
-            clearTimeout(existing);
-        }
-        const timer = setTimeout(() => {
-            pendingTimers.delete(textarea);
-            sendResponse(textarea, getWeekId);
-        }, DEBOUNCE_MS);
-        pendingTimers.set(textarea, timer);
     }
 
     function setup(container, getWeekId) {
@@ -106,25 +197,41 @@
             return;
         }
 
-        container.addEventListener('input', (event) => {
-            const textarea = event.target;
-            if (!shouldTrackTextarea(textarea)) {
-                return;
+        const knownTextareas = container.querySelectorAll('textarea');
+        knownTextareas.forEach((textarea) => {
+            if (shouldTrackTextarea(textarea)) {
+                ensureFeedbackButton(textarea, getWeekId);
             }
-            scheduleSend(textarea, getWeekId);
         });
 
-        container.addEventListener('focusout', (event) => {
+        container.addEventListener('focusin', (event) => {
             const textarea = event.target;
             if (!shouldTrackTextarea(textarea)) {
                 return;
             }
-            const existing = pendingTimers.get(textarea);
-            if (existing) {
-                clearTimeout(existing);
-                pendingTimers.delete(textarea);
+            ensureFeedbackButton(textarea, getWeekId);
+        });
+
+        container.addEventListener('click', (event) => {
+            const continueBtn = event.target?.closest('.teach-next-button, .teach-sentence-send.continue');
+            if (!continueBtn) {
+                return;
             }
-            sendResponse(textarea, getWeekId);
+            const sectionMessage = continueBtn.closest('.teach-section-message');
+            if (!sectionMessage) {
+                return;
+            }
+            const textareas = sectionMessage.querySelectorAll('textarea');
+            textareas.forEach((textarea) => {
+                if (!shouldTrackTextarea(textarea)) {
+                    return;
+                }
+                sendResponse(textarea, getWeekId, {
+                    trigger: 'continue',
+                    forceFeedback: true,
+                    showFeedback: false
+                });
+            });
         });
     }
 

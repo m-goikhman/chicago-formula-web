@@ -10,6 +10,7 @@ window.TeachWeekContent = (() => {
         const buildNextButtonLabel = deps.buildNextButtonLabel || (() => 'Continue');
         const resolveMessageElement = deps.resolveMessageElement || (() => null);
         const appendNextButton = deps.appendNextButton || (() => {});
+        const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
         const stepProgressByWeek = deps.stepProgressByWeek || new Map();
         const TEACH_ONBOARDING_WELCOME_TEMPLATE = deps.TEACH_ONBOARDING_WELCOME_TEMPLATE;
 
@@ -95,6 +96,64 @@ window.TeachWeekContent = (() => {
                     })
             });
         });
+
+        if (typeof requestTutorFinalSummary === 'function') {
+            sequence.push({
+                type: 'final_summary_cta',
+                factory: () => {
+                    const ctaMessage = addMessage(
+                        'system',
+                        'Mentor',
+                        'You finished the missions. Want feedback from your AI language tutor?'
+                    );
+                    if (!ctaMessage) {
+                        return null;
+                    }
+
+                    ctaMessage.classList.add('teach-final-summary-cta');
+                    const content = ctaMessage.querySelector('.message-content');
+                    if (!content) {
+                        return ctaMessage;
+                    }
+
+                    const actions = document.createElement('div');
+                    actions.className = 'teach-final-summary-actions';
+
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'teach-final-summary-btn';
+                    button.textContent = 'Get tutor final summary';
+
+                    const status = document.createElement('div');
+                    status.className = 'teach-final-summary-status';
+                    status.hidden = true;
+
+                    button.addEventListener('click', async () => {
+                        if (button.disabled) {
+                            return;
+                        }
+                        button.disabled = true;
+                        status.hidden = false;
+                        status.textContent = 'Generating summary...';
+
+                        try {
+                            const summary = await requestTutorFinalSummary();
+                            addMessage('bot', 'AI Tutor', summary, null, null, false, { hideAvatar: true });
+                            status.textContent = 'Summary added below.';
+                        } catch (error) {
+                            status.textContent = error?.message || 'Could not fetch tutor summary right now.';
+                            button.disabled = false;
+                            return;
+                        }
+                    });
+
+                    actions.appendChild(button);
+                    actions.appendChild(status);
+                    content.appendChild(actions);
+                    return ctaMessage;
+                }
+            });
+        }
 
         sequence.push({
             type: 'notes',

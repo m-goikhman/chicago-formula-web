@@ -55,6 +55,7 @@ window.TeachSectionMessage = (() => {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
             messageEl.dataset.sectionId = section?.id || '';
             messageEl.dataset.sectionType = section?.type || '';
+            messageEl.dataset.sectionCategory = section?.category || '';
             messageEl.dataset.renderer = section?.renderer || '';
             if (isPortraitStory) {
                 messageEl.classList.add('teach-story-portrait');

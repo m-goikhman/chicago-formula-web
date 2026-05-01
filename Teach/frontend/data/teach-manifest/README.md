@@ -6,7 +6,7 @@ This folder defines week sequencing and exercise composition.
 
 - Week order and item order: `data/teach-manifest/weekN.json`
 - Exercise text: `data/exercises/weekN/*.md`
-- Story source: legacy week sections (`content.json` or markdown parser fallback)
+- Story source: week markdown parser (with optional manifest overrides)
 
 ## Manifest schema
 

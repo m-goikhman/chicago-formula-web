@@ -1,4 +1,13 @@
 window.TeachFillInTheBlanks = (() => {
+    function resolveButtonPolicy(section) {
+        const categoryPolicies = window.TEACH_CONFIG?.TEACH_EXERCISE_BUTTON_POLICY_BY_CATEGORY || {};
+        const category = String(section?.category || '').trim().toLowerCase();
+        return categoryPolicies[category] || {
+            check: true,
+            reset: true
+        };
+    }
+
     function renderFillInTheBlanksExercise(messageEl, section, correctAnswersFromKey = null) {
         if (!messageEl || messageEl.querySelector('.teach-fill-blanks')) {
             return;
@@ -64,6 +73,7 @@ window.TeachFillInTheBlanks = (() => {
         const answersConfig = parseFillInAnswersConfig(section?.content || '');
         // Determine if this is a "Choose and Write" exercise (needs clickable choices)
         const isChooseAndWrite = /choose and write/i.test(section.heading || '');
+        const buttonPolicy = resolveButtonPolicy(section);
 
         const escapeHtml = (value = '') =>
             String(value)
@@ -359,17 +369,23 @@ window.TeachFillInTheBlanks = (() => {
         const actions = document.createElement('div');
         actions.className = 'teach-fill-blanks-actions';
 
-        const checkButton = document.createElement('button');
-        checkButton.type = 'button';
-        checkButton.className = 'teach-fill-blanks-button primary';
-        checkButton.textContent = 'Check answers';
-        actions.appendChild(checkButton);
+        let checkButton = null;
+        let resetButton = null;
+        if (buttonPolicy.check) {
+            checkButton = document.createElement('button');
+            checkButton.type = 'button';
+            checkButton.className = 'teach-fill-blanks-button primary';
+            checkButton.textContent = 'Check answers';
+            actions.appendChild(checkButton);
+        }
 
-        const resetButton = document.createElement('button');
-        resetButton.type = 'button';
-        resetButton.className = 'teach-fill-blanks-button secondary';
-        resetButton.textContent = 'Reset';
-        actions.appendChild(resetButton);
+        if (buttonPolicy.reset) {
+            resetButton = document.createElement('button');
+            resetButton.type = 'button';
+            resetButton.className = 'teach-fill-blanks-button secondary';
+            resetButton.textContent = 'Reset';
+            actions.appendChild(resetButton);
+        }
 
         if (section?.type !== 'task') {
             const continueButton = document.createElement('button');
@@ -609,8 +625,12 @@ window.TeachFillInTheBlanks = (() => {
             }
         }
 
-        checkButton.addEventListener('click', validate);
-        resetButton.addEventListener('click', clearState);
+        if (checkButton) {
+            checkButton.addEventListener('click', validate);
+        }
+        if (resetButton) {
+            resetButton.addEventListener('click', clearState);
+        }
 
         // Allow Enter key to move to next input or check (only for text inputs, not Choose-and-Write)
         if (!isChooseAndWrite && inputs.length > 0) {
@@ -622,7 +642,7 @@ window.TeachFillInTheBlanks = (() => {
                             const nextInput = inputs[index + 1];
                             if (nextInput) {
                                 nextInput.focus();
-                            } else {
+                            } else if (buttonPolicy.check) {
                                 validate();
                             }
                         }

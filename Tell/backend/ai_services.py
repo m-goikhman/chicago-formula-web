@@ -21,9 +21,14 @@ else:
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
 TUTOR_PROMPT_PATHS = {
-    "analysis": "prompts/language_learning/tutor_feedback.md",
+    "analysis": "prompts/language_learning/tutor_feedback_tell.md",
     "explanation": "prompts/language_learning/tutor_explain.md",
     "final_summary": "prompts/language_learning/tutor_final_summary.md",
+}
+
+TUTOR_ANALYSIS_PROMPT_PATHS = {
+    "tell": "prompts/language_learning/tutor_feedback_tell.md",
+    "teach": "prompts/language_learning/tutor_feedback_teach.md",
 }
 
 # Episode 1 contradiction-handling configuration.
@@ -396,9 +401,15 @@ def _get_fallback_response(character_key: str = None) -> str:
     return "I'm having trouble processing that request right now."
 
 
-def _get_tutor_prompt(task: str) -> str:
+def _get_tutor_prompt(task: str, source: Optional[str] = None) -> str:
     """Load prompt dedicated to a specific tutor task."""
     prompt_path = TUTOR_PROMPT_PATHS.get(task)
+    if task == "analysis":
+        normalized_source = str(source or "tell").strip().lower()
+        prompt_path = TUTOR_ANALYSIS_PROMPT_PATHS.get(
+            normalized_source,
+            TUTOR_ANALYSIS_PROMPT_PATHS["tell"],
+        )
     if not prompt_path:
         print(f"WARNING: Unknown tutor task '{task}', using generic tutor prompt")
         from config import CHARACTER_DATA
@@ -767,9 +778,13 @@ async def ask_for_dialogue(
         log_message("dialogue_error", f"ask_for_dialogue failed: {e}", participant_code)
         return "Sorry, a server error occurred."
 
-async def ask_tutor_for_analysis(participant_code: str, text_to_analyze: str) -> dict:
+async def ask_tutor_for_analysis(
+    participant_code: str,
+    text_to_analyze: str,
+    source: str = "tell",
+) -> dict:
     """A special function that calls the Tutor for text analysis and expects a JSON response."""
-    tutor_prompt = _get_tutor_prompt("analysis")
+    tutor_prompt = _get_tutor_prompt("analysis", source=source)
     analysis_request = f"Analyze this text: '{text_to_analyze}'"
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": analysis_request}]
     if client is None:

@@ -14,6 +14,8 @@
 
     const TeachAuth = window.TeachAuth;
     const TeachOpenEndedLogger = window.TeachOpenEndedLogger;
+    const apiClient = window.apiClient;
+    const uiShared = window.uiShared || {};
 
     let notesSaveTimer = null;
     let notesStatusEl = null;
@@ -28,15 +30,68 @@
         return `${Math.round((completed / total) * 100)}%`;
     }
 
-    function showProgressReport() {
-        const weeks = TeachState.getWeeks();
-        const lines = weeks.map((week, index) => {
-            const progress = TeachState.getWeekProgress(week.id);
-            return `Episode ${index + 1}: ${progress.completed}/${progress.total} tasks (${formatPercent(progress.completed, progress.total)})`;
-        });
-        const overall = TeachState.getOverallProgress();
-        lines.push(`Overall: ${overall.completed}/${overall.total} tasks (${formatPercent(overall.completed, overall.total)})`);
-        window.alert(lines.join('\n'));
+    async function showProgressReport() {
+        if (!apiClient || !TeachAuth) {
+            window.alert('Progress report is temporarily unavailable.');
+            return;
+        }
+
+        const token = TeachAuth.getToken?.();
+        if (!token) {
+            window.alert('Please sign in again to view your progress report.');
+            return;
+        }
+
+        try {
+            const requestFn = () => apiClient.get('/api/teach/progress-report', { token });
+            const { response, data } = TeachAuth.callWithSessionRecovery
+                ? await TeachAuth.callWithSessionRecovery(requestFn, {
+                    authFailureMessage: 'Your session expired. Please sign in again to view your progress report.'
+                })
+                : await requestFn();
+
+            if (!response?.ok) {
+                throw new Error(data?.detail || data?.error || data?.message || 'Unable to load progress report.');
+            }
+
+            const report = String(data?.report || '').trim();
+            if (!report) {
+                window.alert('No progress report is available yet.');
+                return;
+            }
+
+            const addMessage = typeof uiShared.addMessage === 'function' ? uiShared.addMessage : null;
+            if (!addMessage) {
+                window.alert(report);
+                return;
+            }
+
+            const messageDiv = addMessage('system', 'Mentor', report);
+            if (!messageDiv) {
+                return;
+            }
+
+            const messageContent = messageDiv.querySelector('.message-content');
+            if (!messageContent) {
+                return;
+            }
+
+            const buttonRow = document.createElement('div');
+            buttonRow.className = 'button-row';
+
+            const hideButton = document.createElement('button');
+            hideButton.type = 'button';
+            hideButton.textContent = 'Hide this message';
+            hideButton.addEventListener('click', () => {
+                messageDiv.style.display = 'none';
+            });
+
+            buttonRow.appendChild(hideButton);
+            messageContent.appendChild(buttonRow);
+        } catch (error) {
+            console.error('[TeachApp] Failed to load progress report:', error);
+            window.alert('Could not load your progress report right now. Please try again.');
+        }
     }
 
     function showTeachHelp() {
