@@ -15,7 +15,11 @@ import random
 import bootstrap  # noqa: F401
 
 from shared.backend.auth import validate_session_token, login_participant, is_test_mode_participant
-from shared.backend.progress_manager import progress_manager, TELL_SOURCE  # used in some endpoints
+from shared.backend.progress_manager import (
+    progress_manager,
+    TELL_SOURCE,
+    TEACH_SOURCE,
+)
 from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
 from utils import log_message, clear_chat_history_log
 from game_state_manager import game_state_manager
@@ -80,6 +84,22 @@ class ExplainRequest(BaseModel):
     message_id: Optional[int] = None
     word: Optional[str] = None
     original_text: Optional[str] = None
+    source: Optional[str] = None
+
+
+class TeachOpenEndedResponseRequest(BaseModel):
+    section_id: str
+    prompt: Optional[str] = None
+    response: str
+    week_id: Optional[str] = None
+    renderer: Optional[str] = None
+
+
+def _resolve_learning_source(source: Optional[str]) -> str:
+    normalized = str(source or "").strip().lower()
+    if normalized == TEACH_SOURCE:
+        return TEACH_SOURCE
+    return TELL_SOURCE
 
 
 # Dependency to get current user
@@ -475,6 +495,7 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
     """Handle explain actions (word spotting, explanations)."""
     participant_code = current_user["participant_code"]
     logger.info(f"Explain action from {participant_code}: {request.action}")
+    learning_source = _resolve_learning_source(request.source)
     
     from config import message_cache
     from utils import save_message_to_cache
@@ -540,7 +561,12 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         })
         
         # Save learned word to progress
-        progress_manager.add_participant_word_learned(participant_code, word, definition, source=TELL_SOURCE)
+        progress_manager.add_participant_word_learned(
+            participant_code,
+            word,
+            definition,
+            source=learning_source,
+        )
         
         return {"messages": messages}
     
@@ -585,6 +611,43 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
         return {"messages": messages}
     
     return {"error": "Unknown action"}
+
+
+@app.post("/api/teach/open-ended-response")
+async def save_teach_open_ended_response(
+    request: TeachOpenEndedResponseRequest,
+    current_user=Depends(get_current_user),
+):
+    """Persist Teach open-ended writing responses in participant progress logs."""
+    participant_code = current_user["participant_code"]
+    cleaned_response = str(request.response or "").strip()
+    if not cleaned_response:
+        return {"saved": False, "reason": "empty_response"}
+
+    prompt = str(request.prompt or "").strip()
+    section_id = str(request.section_id or "").strip() or "unknown_section"
+    week_id = str(request.week_id or "").strip()
+    renderer = str(request.renderer or "").strip()
+
+    # Keep context in `briefly`, full participant answer in `query`.
+    context_bits = [f"section={section_id}"]
+    if week_id:
+        context_bits.append(f"week={week_id}")
+    if renderer:
+        context_bits.append(f"renderer={renderer}")
+    if prompt:
+        context_bits.append(f"prompt={prompt[:200]}")
+
+    success = progress_manager.add_participant_writing_feedback(
+        participant_code=participant_code,
+        user_text=cleaned_response,
+        feedback=f"teach_open_ended_response::{section_id}",
+        briefly=" | ".join(context_bits),
+        source=TEACH_SOURCE,
+        deduplicate_by_query=False,
+    )
+
+    return {"saved": bool(success)}
 
 
 # Multi-stage game endpoints

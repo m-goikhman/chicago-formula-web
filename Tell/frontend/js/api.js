@@ -1,8 +1,17 @@
 // API functions
 const apiClient = window.apiClient;
+const authRecovery = window.authRecovery;
+const explainClient = window.explainClient;
 if (!apiClient) {
     throw new Error('apiClient must be loaded before Tell API module');
 }
+if (!authRecovery || typeof authRecovery.callWithAutoReauth !== 'function' || typeof authRecovery.isExpiredTokenError !== 'function') {
+    throw new Error('authRecovery must be loaded before Tell API module');
+}
+if (!explainClient || typeof explainClient.requestWordExplanationResponse !== 'function') {
+    throw new Error('explainClient must be loaded before Tell API module');
+}
+const explainErrorMessage = explainClient.DEFAULT_EXPLAIN_ERROR_MESSAGE || 'Could not fetch the explanation. Please try again later.';
 
 function shouldShowNinaFloatingButton() {
     return (window.currentStageNumber || 1) === 1;
@@ -28,21 +37,6 @@ function syncNinaFloatingButtonVisibility() {
         && !window.ep1GameCompleted
         && !hasNinaPublicDialogueStarted();
     ninaButton.style.display = shouldShow ? 'flex' : 'none';
-}
-
-function isUnauthorizedResponse(response) {
-    return response && response.status === 401;
-}
-
-function getAuthErrorMessage(data) {
-    if (!data) return '';
-    return String(data.detail || data.error || data.message || '').toLowerCase();
-}
-
-function isExpiredTokenError(response, data) {
-    if (!isUnauthorizedResponse(response)) return false;
-    const message = getAuthErrorMessage(data);
-    return message.includes('invalid or expired token') || message.includes('expired token') || message.includes('invalid token');
 }
 
 async function silentReauthenticate() {
@@ -86,33 +80,19 @@ function forceReloginWithMessage() {
     }
 }
 
+function createTellRecoveryHandlers(overrides = {}) {
+    return {
+        shouldRetry: authRecovery.isExpiredTokenError,
+        reauth: silentReauthenticate,
+        onAuthFailure: () => {
+            forceReloginWithMessage();
+        },
+        ...overrides
+    };
+}
+
 async function callWithAutoReauth(requestFn) {
-    let result = await requestFn();
-    if (!isExpiredTokenError(result.response, result.data)) {
-        return result;
-    }
-
-    const refreshed = await silentReauthenticate();
-    if (!refreshed) {
-        forceReloginWithMessage();
-        return {
-            response: result.response,
-            data: result.data,
-            authFailureHandled: true
-        };
-    }
-
-    result = await requestFn();
-    if (isExpiredTokenError(result.response, result.data)) {
-        forceReloginWithMessage();
-        return {
-            response: result.response,
-            data: result.data,
-            authFailureHandled: true
-        };
-    }
-
-    return result;
+    return authRecovery.callWithAutoReauth(requestFn, createTellRecoveryHandlers());
 }
 
 function hasGameNotInitializedError(response, data) {
@@ -142,27 +122,22 @@ async function ensureGameInitialized() {
 }
 
 async function callWithSessionRecovery(requestFn) {
-    let result = await callWithAutoReauth(requestFn);
-    if (result.authFailureHandled) {
-        return result;
-    }
-
-    if (!hasGameNotInitializedError(result.response, result.data)) {
-        return result;
-    }
-
-    const initialized = await ensureGameInitialized();
-    if (!initialized) {
-        forceReloginWithMessage();
-        return {
-            response: result.response,
-            data: result.data,
-            authFailureHandled: true
-        };
-    }
-
-    result = await callWithAutoReauth(requestFn);
-    return result;
+    return authRecovery.callWithSessionRecovery(requestFn, createTellRecoveryHandlers({
+        ensureInitialized: async (result) => {
+            if (!hasGameNotInitializedError(result.response, result.data)) {
+                return { retry: false };
+            }
+            const initialized = await ensureGameInitialized();
+            if (!initialized) {
+                forceReloginWithMessage();
+                return {
+                    retry: false,
+                    authFailureHandled: true
+                };
+            }
+            return { retry: true };
+        }
+    }));
 }
 
 function isTestModeParticipantCode(code) {
@@ -886,24 +861,23 @@ async function explainWord(wordOrPhrase, originalText) {
             ? window.getActiveChatScope()
             : 'public';
         const routeToNinaChat = isNinaChatModalOpen();
-        const { response, data, authFailureHandled } = await callWithSessionRecovery(() => apiClient.postJson('/api/game/explain', {
-            action: 'word',
+        const { response, data, authFailureHandled } = await explainClient.requestWordExplanationResponse({
+            apiClient,
             word: wordOrPhrase,
-            original_text: originalText
-        }, {
-            token: sessionToken
-        }));
+            originalText,
+            getToken: () => sessionToken,
+            requestWithRecovery: (requestFn) => callWithSessionRecovery(requestFn)
+        });
 
         if (authFailureHandled) {
             return;
         }
 
         if (!response.ok) {
-            const errorMessage = (data && (data.detail || data.error || data.message)) || response.statusText || 'Failed to get explanation';
             if (routeToNinaChat) {
-                appendNinaExplainError(`Error: ${errorMessage}`);
+                appendNinaExplainError(`Error: ${explainErrorMessage}`);
             } else {
-                addMessage('error', 'Error', errorMessage);
+                addMessage('error', 'Error', explainErrorMessage);
             }
             return;
         }
@@ -934,17 +908,17 @@ async function explainWord(wordOrPhrase, originalText) {
             }
         } else if (data && data.error) {
             if (routeToNinaChat) {
-                appendNinaExplainError(`Error: ${data.error}`);
+                appendNinaExplainError(`Error: ${explainErrorMessage}`);
             } else {
-                addMessage('error', 'Error', data.error);
+                addMessage('error', 'Error', explainErrorMessage);
             }
         }
     } catch (error) {
         console.error('Error explaining word:', error);
         if (isNinaChatModalOpen()) {
-            appendNinaExplainError('Error: Failed to get explanation');
+            appendNinaExplainError(`Error: ${explainErrorMessage}`);
         } else {
-            addMessage('error', 'Error', 'Failed to get explanation');
+            addMessage('error', 'Error', explainErrorMessage);
         }
     }
 }

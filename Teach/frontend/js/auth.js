@@ -3,17 +3,21 @@
 
     const apiClient = global.apiClient;
     const sharedConfig = global.sharedConfig;
+    const authSession = global.authSession;
+    const authRecovery = global.authRecovery;
 
-    if (!apiClient || !sharedConfig) {
-        console.warn('[TeachAuth] apiClient or sharedConfig is not available. Teach login flow will be disabled.');
+    if (!apiClient || !sharedConfig || !authSession || !authRecovery) {
+        console.warn('[TeachAuth] Missing dependencies. Teach login flow will be disabled.');
         global.TeachAuth = null;
         return;
     }
 
-    const STORAGE_KEYS = {
-        token: 'sessionToken',
-        participantCode: 'participantCode'
-    };
+    const sessionStore = authSession.createAuthSessionStore({
+        storageKeys: {
+            token: 'sessionToken',
+            participantCode: 'participantCode'
+        }
+    });
 
     function normalizeCode(code) {
         return String(code || '')
@@ -21,50 +25,20 @@
             .toUpperCase();
     }
 
-    function readStorage(key) {
-        try {
-            return global.localStorage?.getItem(key) || '';
-        } catch (error) {
-            console.warn('[TeachAuth] Unable to read localStorage key', key, error);
-            return '';
-        }
-    }
-
-    function writeStorage(key, value) {
-        try {
-            if (!global.localStorage) {
-                return;
-            }
-            if (value == null || value === '') {
-                global.localStorage.removeItem(key);
-            } else {
-                global.localStorage.setItem(key, value);
-            }
-        } catch (error) {
-            console.warn('[TeachAuth] Unable to write localStorage key', key, error);
-        }
-    }
-
     function clearStorage() {
-        writeStorage(STORAGE_KEYS.token, null);
-        writeStorage(STORAGE_KEYS.participantCode, null);
+        sessionStore.clearSession();
     }
 
     function getToken() {
-        return readStorage(STORAGE_KEYS.token);
+        return sessionStore.getToken();
     }
 
     function getParticipantCode() {
-        return readStorage(STORAGE_KEYS.participantCode);
+        return sessionStore.getParticipantCode();
     }
 
     function persistSession(token, participantCode) {
-        if (token) {
-            writeStorage(STORAGE_KEYS.token, token);
-        }
-        if (participantCode) {
-            writeStorage(STORAGE_KEYS.participantCode, normalizeCode(participantCode));
-        }
+        sessionStore.setSession(token, participantCode);
     }
 
     async function login(rawCode) {
@@ -116,7 +90,7 @@
     }
 
     async function restoreSession() {
-        const token = getToken();
+        const { token } = sessionStore.hydrateFromStorage();
         if (!token) {
             return false;
         }
@@ -134,13 +108,61 @@
         clearStorage();
     }
 
+    async function silentReauthenticate() {
+        const code = getParticipantCode();
+        if (!code) {
+            return false;
+        }
+
+        try {
+            const { response, data } = await apiClient.postJson('/api/auth/login', {
+                participant_code: code
+            });
+
+            if (!response.ok || !data?.token) {
+                return false;
+            }
+
+            persistSession(data.token, data?.participant_code || code);
+            return true;
+        } catch (error) {
+            console.error('[TeachAuth] Silent re-authentication failed:', error);
+            return false;
+        }
+    }
+
+    function forceReloginWithMessage(message) {
+        logout();
+        if (typeof global.dispatchEvent === 'function' && typeof global.CustomEvent === 'function') {
+            global.dispatchEvent(new global.CustomEvent('teach:auth-required', {
+                detail: {
+                    message: message || 'Your session expired. Please sign in again.'
+                }
+            }));
+        }
+    }
+
+    async function callWithSessionRecovery(requestFn, options = {}) {
+        const onAuthFailure = typeof options.onAuthFailure === 'function'
+            ? options.onAuthFailure
+            : () => forceReloginWithMessage(options.authFailureMessage);
+
+        return authRecovery.callWithSessionRecovery(requestFn, {
+            reauth: silentReauthenticate,
+            onAuthFailure
+        });
+    }
+
     global.TeachAuth = {
         login,
         restoreSession,
         getToken,
         getParticipantCode,
         persistSession,
-        logout
+        logout,
+        silentReauthenticate,
+        forceReloginWithMessage,
+        callWithSessionRecovery
     };
 })(window);
 

@@ -304,6 +304,10 @@ const TeachUI = (() => {
         window.TeachFillInTheBlanks?.renderFillInTheBlanksExercise ??
         (() => {});
 
+    const renderPickExplainExercise =
+        window.TeachPickExplain?.renderPickExplainExercise ??
+        (() => {});
+
     function parseChoiceRevealConfig(rawContent = '') {
         const source = String(rawContent || '');
         const match = source.match(/\[button_reveal\]\s*([\s\S]*)$/i);
@@ -397,7 +401,8 @@ const TeachUI = (() => {
         match_words: renderMatchWordsExercise,
         sentence_builder: renderSentenceExercise,
         suspects_drag: renderSuspectsDragExercise,
-        choice_reveal: renderChoiceRevealExercise
+        choice_reveal: renderChoiceRevealExercise,
+        pick_explain: renderPickExplainExercise
     };
 
     const renderersById = {

@@ -13,6 +13,7 @@
     const loginError = document.getElementById('loginError');
 
     const TeachAuth = window.TeachAuth;
+    const TeachOpenEndedLogger = window.TeachOpenEndedLogger;
 
     let notesSaveTimer = null;
     let notesStatusEl = null;
@@ -302,6 +303,10 @@
                 }
                 handleHorizontalMenuAction(action);
             });
+        }
+
+        if (TeachOpenEndedLogger && typeof TeachOpenEndedLogger.setup === 'function') {
+            TeachOpenEndedLogger.setup(chatArea, () => TeachState.getCurrentWeekId());
         }
 
     }

@@ -146,6 +146,7 @@ class ProgressManager:
         feedback: str,
         briefly: str = "",
         source: str = WEB_SOURCE,
+        deduplicate_by_query: bool = True,
     ) -> bool:
         """Add writing feedback for a participant code."""
         try:
@@ -157,7 +158,10 @@ class ProgressManager:
                 "feedback": feedback,
                 "briefly": briefly,
             }
-            if not any(entry.get('query') == user_text for entry in progress_data.get("writing_feedback", [])):
+            if (
+                not deduplicate_by_query
+                or not any(entry.get('query') == user_text for entry in progress_data.get("writing_feedback", []))
+            ):
                 progress_data.setdefault("writing_feedback", []).append(new_entry)
                 return self._save_progress_data(progress_data, participant_code, source=source)
             return True

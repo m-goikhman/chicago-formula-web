@@ -53,6 +53,9 @@ window.TeachSectionMessage = (() => {
 
         if (messageEl) {
             messageEl.classList.add('teach-section-message', `teach-section-${section.type}`);
+            messageEl.dataset.sectionId = section?.id || '';
+            messageEl.dataset.sectionType = section?.type || '';
+            messageEl.dataset.renderer = section?.renderer || '';
             if (isPortraitStory) {
                 messageEl.classList.add('teach-story-portrait');
                 alignStoryImageWithTextStart(messageEl);
@@ -101,23 +104,30 @@ window.TeachSectionMessage = (() => {
                         content.appendChild(image);
                     }
 
-                    const inputWrapper = document.createElement('div');
-                    inputWrapper.className = 'teach-before-reading-input-wrapper';
+                    // Only add the default free-text textarea when there is no
+                    // custom interactive renderer handling this section.
+                    const hasCustomRenderer =
+                        typeof resolveInteractiveRenderer(section) === 'function';
 
-                    const label = document.createElement('label');
-                    label.className = 'teach-before-reading-input-label';
-                    label.setAttribute('for', `teach-before-reading-${section.id}`);
-                    label.textContent = 'Your prediction';
+                    if (!hasCustomRenderer) {
+                        const inputWrapper = document.createElement('div');
+                        inputWrapper.className = 'teach-before-reading-input-wrapper';
 
-                    const textarea = document.createElement('textarea');
-                    textarea.id = `teach-before-reading-${section.id}`;
-                    textarea.className = 'teach-before-reading-input';
-                    textarea.rows = 4;
-                    textarea.placeholder = 'Write what you think this story will be about...';
+                        const label = document.createElement('label');
+                        label.className = 'teach-before-reading-input-label';
+                        label.setAttribute('for', `teach-before-reading-${section.id}`);
+                        label.textContent = 'Your prediction';
 
-                    inputWrapper.appendChild(label);
-                    inputWrapper.appendChild(textarea);
-                    content.appendChild(inputWrapper);
+                        const textarea = document.createElement('textarea');
+                        textarea.id = `teach-before-reading-${section.id}`;
+                        textarea.className = 'teach-before-reading-input';
+                        textarea.rows = 4;
+                        textarea.placeholder = 'Write what you think this story will be about...';
+
+                        inputWrapper.appendChild(label);
+                        inputWrapper.appendChild(textarea);
+                        content.appendChild(inputWrapper);
+                    }
                 }
             }
 
