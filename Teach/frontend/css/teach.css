@@ -140,13 +140,13 @@
     margin-bottom: 0.4em;
 }
 
-/* Portrait story sections use right float on desktop. */
+/* Portrait sections (story or manifest portrait:true) use right float on desktop. */
 @media (min-width: 769px) {
-    .typewriter-intro.teach-story-portrait .message-content-wrapper {
+    .teach-story-portrait .message-content-wrapper {
         overflow: hidden;
     }
 
-    .typewriter-intro.teach-story-portrait .message-text > .teach-inline-story-image {
+    .teach-story-portrait .message-text > .teach-inline-story-image {
         float: right;
         width: clamp(170px, 34%, 240px);
         margin: 1.9em 0 14px 18px;
@@ -162,7 +162,7 @@
         line-height: 1.85;
     }
 
-    .typewriter-intro.teach-story-portrait .message-text > .teach-inline-story-image {
+    .teach-story-portrait .message-text > .teach-inline-story-image {
         float: none;
         width: min(72%, 220px);
         margin: 0 auto 14px;
@@ -196,99 +196,6 @@
 .teach-next-button:disabled {
     opacity: 0.7;
     cursor: default;
-}
-
-.teach-task-controls {
-    margin-top: 18px;
-    padding-top: 16px;
-    border-top: 1px solid rgba(26, 85, 99, 0.15);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-}
-
-.teach-task-controls-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.teach-task-badge {
-    background: rgba(26, 85, 99, 0.1);
-    color: #1a5563;
-    border-radius: 999px;
-    padding: 4px 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.teach-task-label {
-    font-size: 0.85rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: rgba(26, 85, 99, 0.65);
-}
-
-.teach-task-toggle {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: #1a5563;
-    position: relative;
-}
-
-.teach-task-toggle input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.teach-task-toggle-indicator {
-    width: 42px;
-    height: 24px;
-    background: rgba(26, 85, 99, 0.2);
-    border-radius: 999px;
-    position: relative;
-    transition: background 0.2s ease;
-}
-
-.teach-task-toggle-indicator::after {
-    content: '';
-    position: absolute;
-    top: 3px;
-    left: 4px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #ffffff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    transition: transform 0.2s ease;
-}
-
-.teach-task-toggle input:checked + .teach-task-toggle-indicator {
-    background: linear-gradient(135deg, #1e6a7a, #1a5563);
-}
-
-.teach-task-toggle input:checked + .teach-task-toggle-indicator::after {
-    transform: translateX(18px);
-}
-
-.teach-task-toggle-text {
-    min-width: 110px;
-}
-
-.teach-task-message-completed .teach-task-toggle-text {
-    font-weight: 600;
-    color: #1a5563;
-}
-
-.teach-task-message-completed .teach-task-controls {
-    border-top-color: rgba(30, 106, 122, 0.3);
 }
 
 .teach-notes-message .message-content {
@@ -882,10 +789,6 @@
         font-size: 0.8rem;
     }
 
-    .teach-task-toggle-text {
-        min-width: auto;
-    }
-
     .teach-match-words {
         padding: 16px;
     }
@@ -930,7 +833,7 @@
         font-size: 0.9rem;
     }
 
-    .teach-fill-blanks-grammar .teach-blank-input {
+    .teach-fill-blanks-compact .teach-blank-input {
         min-width: 7ch !important;
         width: 9ch !important;
         max-width: 11ch !important;
@@ -1006,8 +909,8 @@
     min-height: 260px;
 }
 
-/* Grammar exercises: smaller inline inputs that don't break lines */
-.teach-fill-blanks-grammar .teach-blank-input {
+/* Compact inline blanks (gap-fill / choose-and-write) */
+.teach-fill-blanks-compact .teach-blank-input {
     display: inline-block !important;
     width: 10ch !important;
     min-width: 8ch !important;
@@ -1123,8 +1026,8 @@
     transition: all 0.2s ease;
 }
 
-/* Grammar exercises: smaller inline answer displays */
-.teach-fill-blanks-grammar .teach-blank-answer {
+/* Compact inline answer displays */
+.teach-fill-blanks-compact .teach-blank-answer {
     min-width: 80px;
     padding: 3px 6px;
     margin: 0 2px;
@@ -1162,8 +1065,8 @@
     vertical-align: middle;
 }
 
-/* Grammar exercises: smaller feedback */
-.teach-fill-blanks-grammar .teach-blank-feedback {
+/* Compact inline feedback */
+.teach-fill-blanks-compact .teach-blank-feedback {
     margin-left: 4px;
     font-size: 0.8rem;
 }

@@ -423,27 +423,14 @@ _______________________________________________
 
 ---
 
-## Vocabulary in Context
-
-### Exercise 3: Complete the Police Report
-
-Use words from the vocabulary list to complete the report:
-
-**Words:** wound, alibi, contradict, motive, evidence, confess, suspicious
-
-The victim had a serious __________ on the back of his head. The key suspect's behaviour was immediately __________: his story began to __________ what two witnesses had said. His __________ — that he had only just arrived — was proved false by physical __________. His __________ was financial desperation. After the detective presented the full case, the suspect decided to __________ to the crime.
-
-
----
-
 ## End of Week Reflection
 
 **Write a short reflection (80–100 words) answering these questions:**
 
 - Were you surprised by the ending? At what point did you suspect Tim?
 - Which piece of evidence did you find most convincing?
-- Which vocabulary words were new or difficult for you?
-- What grammar point do you want to practise more?
+- What would you do next if you were Nina?
+- What part of the story stayed with you after you finished?
 
 _______________________________________________
 
@@ -471,13 +458,3 @@ _______________________________________________
 **Comprehension Part 3:** 1. The car is registered to Timothy Kane; the driver's door is blocked; the snow proves it was parked there for over an hour; 2. She is Alex's secret business partner — they use a financial formula he developed; 3. She came to the building before the party, argued with Alex about the formula, collected a USB drive from his office, and returned it to Alex; 4. A blue car parked outside that was not there when she arrived; 5. She confirms the car was there at 6:40 PM and that the drive was in Alex's possession when she left
 
 **Comprehension Part 4:** 1. His car being parked outside since 6:40 PM; the conference trophy (only he had regular office access); Alex being alone in the apartment while Tim was outside; 2. He needed money to pay back Ronnie — he overheard Alex had a valuable formula and wanted to steal the USB drive to sell it; 3. To make Ronnie look guilty — to "frame" him; 4. He got out through the passenger door and the car locked itself automatically with the keys inside; 5. Open answer
-
-**Grammar Exercise 1:** 1. past perfect, 2. past continuous, 3. past simple, 4. past perfect, 5. past continuous
-
-**Grammar Exercise 2:** 1. arrived/had already taken, 2. noticed/had been building, 3. called/didn't answer, 4. arrived/had already attacked, 5. leaned/had presented
-
-**Exercise 3:** wound, suspicious, contradict, alibi, evidence, motive, confess
-
-**Grammar Exercise 4:** 1. she had heard water running, 2. he had parked far away, 3. the snow on Tim's car had been very thick, 4. she had seen a blue car outside when she left, 5. he hadn't meant to hurt him badly
-
-**Grammar Exercise 5:** 1. where he had parked his car, 2. what time she had left the building, 3. whether/if he had written the note

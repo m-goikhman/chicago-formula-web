@@ -73,7 +73,7 @@ window.TeachMatchWords = (() => {
         const messageText = contentEl.querySelector('.message-text');
         if (messageText) {
             const cleanedIntro =
-                parsedConfig.cleanedContent || 'Match each vocabulary word with its meaning, then check your answers.';
+                parsedConfig.cleanedContent || 'Match each word with its meaning, then check your answers.';
             if (typeof window.marked?.parse === 'function') {
                 messageText.innerHTML = window.marked.parse(cleanedIntro);
             } else {

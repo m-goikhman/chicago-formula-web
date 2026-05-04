@@ -61,10 +61,11 @@ window.TeachPickExplain = (() => {
 
         const messageText = contentEl.querySelector('.message-text');
         if (messageText) {
-            if (typeof window.marked === 'object' && typeof window.marked.parse === 'function') {
-                messageText.innerHTML = window.marked.parse(parsedConfig.cleanedContent || '');
+            const cleanedIntro = parsedConfig.cleanedContent || '';
+            if (typeof window.marked?.parse === 'function') {
+                messageText.innerHTML = window.marked.parse(cleanedIntro);
             } else {
-                messageText.textContent = parsedConfig.cleanedContent || '';
+                messageText.textContent = cleanedIntro;
             }
         }
 

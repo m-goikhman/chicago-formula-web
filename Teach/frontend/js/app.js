@@ -100,7 +100,7 @@
                 'How to play:',
                 '1. Pick an episode from the dropdown under the title.',
                 '2. Read sections and complete tasks step-by-step.',
-                '3. Mark tasks complete to track progress.',
+                '3. Use Continue to move through each section in order.',
             ].join('\n')
         );
     }
@@ -167,15 +167,6 @@
         render();
     }
 
-    function handleTaskToggle(taskId, completed) {
-        const currentWeek = TeachState.getCurrentWeek();
-        if (!currentWeek) {
-            return;
-        }
-        TeachState.toggleTaskCompletion(currentWeek.id, taskId, completed);
-        render();
-    }
-
     function updateOverallChip() {
         const overallProgress = TeachState.getOverallProgress();
         const ratio = overallProgress.total > 0 ? overallProgress.completed / overallProgress.total : 0;
@@ -185,6 +176,9 @@
         }
         if (overallProgressBarEl) {
             overallProgressBarEl.style.width = `${pct}%`;
+        }
+        if (progressSubbandEl) {
+            progressSubbandEl.style.display = overallProgress.total > 0 ? '' : 'none';
         }
     }
 
@@ -206,7 +200,6 @@
             return;
         }
 
-        const weekProgress = TeachState.getWeekProgress(currentWeek.id);
         if (notesSaveTimer) {
             clearTimeout(notesSaveTimer);
             notesSaveTimer = null;
@@ -214,11 +207,8 @@
         notesStatusEl = null;
 
         TeachUI.renderWeekContent(chatArea, currentWeek, {
-            isTaskCompleted: (taskId) => TeachState.isTaskCompleted(currentWeek.id, taskId),
-            onTaskToggle: handleTaskToggle,
             participantCode: TeachAuth?.getParticipantCode?.() || '',
             notesValue: TeachState.getNotes(currentWeek.id),
-            weekProgress,
             onNotesReady: ({ notesTextarea, notesStatusEl: statusEl }) => {
                 notesStatusEl = statusEl || null;
                 updateNotesStatus('Autosaved');
@@ -264,9 +254,6 @@
     function showAppContainer() {
         if (loginScreen) {
             loginScreen.style.display = 'none';
-        }
-        if (progressSubbandEl) {
-            progressSubbandEl.style.display = '';
         }
         if (appContainer) {
             appContainer.classList.add('active');

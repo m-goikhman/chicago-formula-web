@@ -107,17 +107,12 @@ const TeachUI = (() => {
         const kind = typeof section?.kind === 'string' ? section.kind.trim().toLowerCase() : '';
         const category = typeof section?.category === 'string' ? section.category.trim().toLowerCase() : '';
         
-        // Exclude vocabulary sections from typewriter styling
-        const normalizedHeading = heading.toLowerCase();
-        const isVocabularySection = /vocabulary/i.test(normalizedHeading);
-        
-        // Manifest is the source of truth: prefer explicit kind/category metadata.
-        // Keep a narrow fallback for older content that only used type='reading'.
         const hasHeading = heading && heading.length > 0;
         const isExplicitStory = kind === 'story' || category === 'story';
-        
+
+        // Manifest is the source of truth: prefer explicit kind/category metadata.
+        // Keep a narrow fallback for older content that only used type='reading'.
         const isStorySection =
-            !isVocabularySection &&
             hasHeading &&
             (isExplicitStory || section?.type === 'reading');
 
@@ -211,81 +206,6 @@ const TeachUI = (() => {
         }
         chatArea.innerHTML = '';
         addMessage('bot', 'Mentor', message);
-    }
-
-    function createCategoryBadge(category) {
-        if (!category) {
-            return null;
-        }
-        const badge = document.createElement('span');
-        badge.className = 'teach-task-badge';
-        badge.textContent = category.replace(/^\w/, (c) => c.toUpperCase());
-        return badge;
-    }
-
-    function attachTaskControls(messageEl, section, options = {}) {
-        if (!messageEl) {
-            return;
-        }
-
-        const isCompleted = options.isTaskCompleted?.(section.id) ?? false;
-        if (isCompleted) {
-            messageEl.classList.add('teach-task-message-completed');
-        }
-
-        const content = messageEl.querySelector('.message-content');
-        if (!content) {
-            return;
-        }
-
-        const controls = document.createElement('div');
-        controls.className = 'teach-task-controls';
-
-        const left = document.createElement('div');
-        left.className = 'teach-task-controls-left';
-
-        const heading = document.createElement('div');
-        heading.className = 'teach-task-label';
-        heading.textContent = 'Task status';
-
-        if (section.category) {
-            const badge = createCategoryBadge(section.category);
-            if (badge) {
-                left.appendChild(badge);
-            }
-        }
-
-        left.appendChild(heading);
-
-        const right = document.createElement('label');
-        right.className = 'teach-task-toggle';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = isCompleted;
-        checkbox.setAttribute('aria-label', `Mark "${section.heading}" as complete`);
-
-        const faux = document.createElement('span');
-        faux.className = 'teach-task-toggle-indicator';
-
-        const state = document.createElement('span');
-        state.className = 'teach-task-toggle-text';
-        state.textContent = isCompleted ? 'Completed' : 'Mark complete';
-
-        right.appendChild(checkbox);
-        right.appendChild(faux);
-        right.appendChild(state);
-
-        checkbox.addEventListener('change', (event) => {
-            const checked = event.target.checked;
-            state.textContent = checked ? 'Completed' : 'Mark complete';
-            messageEl.classList.toggle('teach-task-message-completed', checked);
-            options.onTaskToggle?.(section.id, checked);
-        });
-
-        controls.appendChild(left);
-        controls.appendChild(right);
-        content.appendChild(controls);
     }
 
     const renderMatchWordsExercise =
@@ -504,8 +424,7 @@ const TeachUI = (() => {
                 parseAnswerKey,
                 getAnswersForExercise,
                 resolveInteractiveRenderer,
-                renderFillInTheBlanksExercise,
-                attachTaskControls
+                renderFillInTheBlanksExercise
             }
         });
     };
@@ -517,7 +436,7 @@ const TeachUI = (() => {
         const messageEl = addMessage(
             'system',
             'Reflection Notes',
-            'Capture insights, predictions, or vocabulary you want to remember.'
+            'Capture insights, predictions, or phrases you want to remember.'
         );
 
         if (!messageEl) {

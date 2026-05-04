@@ -3,7 +3,6 @@ const TeachState = (() => {
     let weeks = [];
     let currentWeekId = null;
     let state = {
-        tasks: {},
         notes: {},
         currentWeekId: null
     };
@@ -38,7 +37,6 @@ const TeachState = (() => {
             localStorage.setItem(
                 STORAGE_KEY,
                 JSON.stringify({
-                    tasks: state.tasks,
                     notes: state.notes,
                     currentWeekId
                 })
@@ -49,7 +47,6 @@ const TeachState = (() => {
         emitProgressEvent({
             currentWeekId,
             overall: getOverallProgress(),
-            tasks: state.tasks,
             notes: state.notes
         });
     }
@@ -58,16 +55,11 @@ const TeachState = (() => {
         weeks = loadedWeeks ?? [];
         const stored = loadFromStorage();
         state = {
-            tasks: stored?.tasks ?? {},
             notes: stored?.notes ?? {}
         };
         currentWeekId = stored?.currentWeekId || weeks[0]?.id || null;
 
-        // Ensure task maps exist
         weeks.forEach((week) => {
-            if (!state.tasks[week.id]) {
-                state.tasks[week.id] = {};
-            }
             if (!state.notes[week.id]) {
                 state.notes[week.id] = '';
             }
@@ -103,18 +95,6 @@ const TeachState = (() => {
         return getWeekById(currentWeekId) ?? weeks[0] ?? null;
     }
 
-    function toggleTaskCompletion(weekId, taskId, isCompleted) {
-        if (!state.tasks[weekId]) {
-            state.tasks[weekId] = {};
-        }
-        state.tasks[weekId][taskId] = Boolean(isCompleted);
-        persist();
-    }
-
-    function isTaskCompleted(weekId, taskId) {
-        return Boolean(state.tasks[weekId]?.[taskId]);
-    }
-
     function setNotes(weekId, text) {
         state.notes[weekId] = text;
         persist();
@@ -124,30 +104,8 @@ const TeachState = (() => {
         return state.notes[weekId] ?? '';
     }
 
-    function getWeekProgress(weekId) {
-        const week = getWeekById(weekId);
-        if (!week) {
-            return { completed: 0, total: 0 };
-        }
-        const total = week.tasks?.length ?? 0;
-        const completed = week.tasks?.reduce((count, task) => {
-            return count + (isTaskCompleted(weekId, task.id) ? 1 : 0);
-        }, 0) ?? 0;
-        return { completed, total };
-    }
-
     function getOverallProgress() {
-        const totals = weeks.reduce(
-            (acc, week) => {
-                const progress = getWeekProgress(week.id);
-                return {
-                    completed: acc.completed + progress.completed,
-                    total: acc.total + progress.total
-                };
-            },
-            { completed: 0, total: 0 }
-        );
-        return totals;
+        return { completed: 0, total: 0 };
     }
 
     return {
@@ -156,11 +114,8 @@ const TeachState = (() => {
         getCurrentWeekId,
         setCurrentWeek,
         getCurrentWeek,
-        toggleTaskCompletion,
-        isTaskCompleted,
         setNotes,
         getNotes,
-        getWeekProgress,
         getOverallProgress
     };
 })();

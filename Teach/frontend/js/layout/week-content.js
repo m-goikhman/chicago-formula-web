@@ -25,17 +25,20 @@ window.TeachWeekContent = (() => {
             return {};
         }
 
-        const weekProgress = options.weekProgress ?? { completed: 0, total: 0 };
         const isFirstWeek = String(week.id || '').toLowerCase() === 'week1';
         const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
         const hasBeforeReadingSection = orderedSections.some((section) => isBeforeReadingSection(section));
         void hasBeforeReadingSection;
         const summaryText = 'Review the story and missions below to get ready for your tutoring session.';
-        const summaryParts = [
-            `**${week.title}**`,
-            summaryText,
-            `_${weekProgress.completed}/${weekProgress.total} missions completed for this week._`
-        ];
+        const missionCount = week.tasks?.length ?? 0;
+        const missionLine =
+            missionCount > 0
+                ? `_${missionCount} mission${missionCount === 1 ? '' : 's'} in this episode._`
+                : '';
+        const summaryParts = [`**${week.title}**`, summaryText];
+        if (missionLine) {
+            summaryParts.push(missionLine);
+        }
         if (isFirstWeek) {
             const suspectsExerciseId = 'week1-suspects-who-is-who';
             const suspectsIndex = orderedSections.findIndex((section) => section.id === suspectsExerciseId);
@@ -90,8 +93,6 @@ window.TeachWeekContent = (() => {
                 section,
                 factory: () =>
                     addSectionMessage(chatArea, section, {
-                        isTaskCompleted: options.isTaskCompleted,
-                        onTaskToggle: options.onTaskToggle,
                         week: week
                     })
             });

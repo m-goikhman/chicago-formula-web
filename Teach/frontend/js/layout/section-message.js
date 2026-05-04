@@ -15,24 +15,24 @@ window.TeachSectionMessage = (() => {
         const getAnswersForExercise = deps.getAnswersForExercise || (() => null);
         const resolveInteractiveRenderer = deps.resolveInteractiveRenderer || (() => null);
         const renderFillInTheBlanksExercise = deps.renderFillInTheBlanksExercise || (() => {});
-        const attachTaskControls = deps.attachTaskControls || (() => {});
-
         const { heading, displayHeading, isStorySection } = getSectionHeadingInfo(section);
         const isBeforeReading = isBeforeReadingSection(section);
-        const isStoryLike = isStorySection && !isBeforeReading;
-        const isPortraitStory = isStoryLike && section.portrait === true;
+        const isStoryReading = isStorySection && !isBeforeReading;
+        const usePortraitLayout =
+            !isBeforeReading && section.portrait === true && Boolean(section.image);
 
         const sender =
             section.type === 'task'
                 ? 'Weekly Mission'
                 : isBeforeReading
                     ? 'Mentor'
-                    : isStoryLike && displayHeading
+                    : isStoryReading && displayHeading
                     ? displayHeading
                     : 'Mentor';
         const messageType = section.type === 'task' || isBeforeReading ? 'tutor-message' : 'bot';
         const parts = [];
-        if (heading && (!isStoryLike || isBeforeReading)) {
+        // Story-reading blocks: title is the sender label, not repeated as bold in the body.
+        if (heading && (!isStorySection || isBeforeReading)) {
             parts.push(`**${heading}**`);
         }
         if (section.content) {
@@ -44,10 +44,10 @@ window.TeachSectionMessage = (() => {
             parts.join('\n\n'),
             isBeforeReading ? null : section.image ?? null,
             null,
-            isStoryLike,
+            isStoryReading,
             {
                 sectionType: section.type,
-                imageFirst: isPortraitStory
+                imageFirst: usePortraitLayout
             }
         );
 
@@ -57,9 +57,8 @@ window.TeachSectionMessage = (() => {
             messageEl.dataset.sectionType = section?.type || '';
             messageEl.dataset.sectionCategory = section?.category || '';
             messageEl.dataset.renderer = section?.renderer || '';
-            if (isPortraitStory) {
+            if (usePortraitLayout) {
                 messageEl.classList.add('teach-story-portrait');
-                alignStoryImageWithTextStart(messageEl);
             }
             // Add data attribute to indicate if this is a reading section (for word highlighting)
             if (section.type === 'reading') {
@@ -153,10 +152,11 @@ window.TeachSectionMessage = (() => {
                     renderFillInTheBlanksExercise(messageEl, section, correctAnswers);
                 }
             }
-        }
 
-        if (section.type === 'task') {
-            attachTaskControls(messageEl, section, options);
+            // Some exercise renderers rewrite `.message-text`; move image after rendering.
+            if (usePortraitLayout) {
+                alignStoryImageWithTextStart(messageEl);
+            }
         }
 
         return messageEl;

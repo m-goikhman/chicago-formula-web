@@ -63,9 +63,7 @@ const TEACH_CONTENT_SETTINGS = {
         'exercise',
         'writing',
         'question',
-        'task',
-        'grammar',
-        'vocabulary'
+        'task'
     ],
     readingHeadingPatterns: [
         'reading',

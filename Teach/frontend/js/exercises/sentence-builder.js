@@ -54,7 +54,7 @@ window.TeachSentenceBuilder = (() => {
         if (messageText) {
             const cleanedIntro =
                 parsedConfig.cleanedContent ||
-                'Write a complete sentence that naturally uses each highlighted vocabulary word. Press "Send" to check your sentence before moving on.';
+                'Write a complete sentence that naturally uses each highlighted word. Press "Send" to check your sentence before moving on.';
             if (typeof window.marked?.parse === 'function') {
                 messageText.innerHTML = window.marked.parse(cleanedIntro);
             } else {

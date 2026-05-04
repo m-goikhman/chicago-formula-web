@@ -87,7 +87,7 @@ window.TeachFillInTheBlanks = (() => {
             if (isChooseAndWrite && typeof window.marked?.parse === 'function') {
                 messageText.innerHTML = window.marked.parse(answersConfig.cleanedContent);
             } else {
-                // Keep each source line as a visual line so numbered grammar prompts never collapse.
+                // Keep each source line as a visual line so numbered prompts never collapse.
                 messageText.innerHTML = escapeHtml(answersConfig.cleanedContent).replace(/\r?\n/g, '<br>');
             }
         }
@@ -215,16 +215,14 @@ window.TeachFillInTheBlanks = (() => {
             });
         }
 
-        // Determine if this is a grammar exercise (needs smaller inline inputs)
-        const isGrammarExercise = /grammar/i.test(section.heading || '') || 
-                                  /grammar/i.test(section.category || '') ||
-                                  /fill in the gaps?|choose and write/i.test(section.heading || '');
+        const useCompactInlineBlanks =
+            /fill in the gaps?|choose and write/i.test(section.heading || '');
 
         // Create container for interactive exercise
         const container = document.createElement('div');
         container.className = 'teach-fill-blanks';
-        if (isGrammarExercise) {
-            container.classList.add('teach-fill-blanks-grammar');
+        if (useCompactInlineBlanks) {
+            container.classList.add('teach-fill-blanks-compact');
         }
         if (isChooseAndWrite) {
             container.classList.add('teach-fill-blanks-choose-write');

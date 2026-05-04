@@ -1,5 +1,5 @@
 (function loadExerciseModules() {
-    const version = '20260430';
+    const version = '20260504';
     const basePath = 'js/exercises/';
     const files = [
         'match-words.js',

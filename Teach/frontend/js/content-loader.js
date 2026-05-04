@@ -38,12 +38,6 @@ const TeachContentLoader = (() => {
 
         // If it matches task patterns, classify as task
         if (taskMatch) {
-            if (normalized.includes('vocabulary')) {
-                return { type: 'task', category: 'vocabulary' };
-            }
-            if (normalized.includes('grammar')) {
-                return { type: 'task', category: 'grammar' };
-            }
             if (normalized.includes('writing')) {
                 return { type: 'task', category: 'writing' };
             }
@@ -62,7 +56,7 @@ const TeachContentLoader = (() => {
         // If it has a heading and is a long text, and doesn't look like a task, treat as reading
         if (hasHeading && isLongText && !taskMatch) {
             // Exclude obvious non-reading sections
-            const excludePatterns = ['vocabulary', 'exercise', 'question', 'grammar', 'comprehension', 'reflection'];
+            const excludePatterns = ['exercise', 'question', 'comprehension', 'reflection'];
             const shouldExclude = excludePatterns.some((pattern) => normalized.includes(pattern));
             if (!shouldExclude) {
                 return { type: 'reading', category: 'reading' };
@@ -108,7 +102,6 @@ const TeachContentLoader = (() => {
         const tasks = sections.filter((section) => section.type === 'task');
         const readingSections = sections.filter((section) => section.type === 'reading');
         const referenceReading =
-            readingSections.find((section) => !/vocabulary/i.test(section.heading)) ||
             readingSections[0] ||
             sections.find((section) => section.type === 'info');
 
@@ -239,7 +232,6 @@ const TeachContentLoader = (() => {
         const tasks = expandedSections.filter((section) => section.type === 'task');
         const readingSections = expandedSections.filter((section) => section.type === 'reading');
         const referenceReading =
-            readingSections.find((section) => !/vocabulary/i.test(section.heading)) ||
             readingSections[0] ||
             expandedSections.find((section) => section.type === 'info');
 

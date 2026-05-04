@@ -797,6 +797,14 @@
             font-weight: 600;
         }
 
+        /* Book blocks (intro, outro typewriter): wider column than chat bubbles */
+        @media (min-width: 769px) {
+            .message.typewriter-intro .message-content {
+                width: 90%;
+                max-width: 90%;
+            }
+        }
+
         /* Responsive styles for book-style message */
         @media (max-width: 768px) {
             .message.typewriter-intro .message-content {

@@ -1,6 +1,6 @@
 You are going to read a story called **Chicago Formula**.
 Here are some words you will often find in the story.
-What genre do you think this is?
+What kind of story do you think this is?
 
 [pick_explain]
 prompt: Why do you think so? Which words gave you that idea?
