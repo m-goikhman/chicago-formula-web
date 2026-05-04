@@ -61,8 +61,8 @@ cd Portal/frontend
 npx serve # or any static server
 
 # Backend with hot reload
-cd Tell/backend
-uvicorn main:app --reload --port 8000
+cd shared/backend
+uvicorn shared.backend.main:app --reload --port 8000
 
 # Access API docs
 open http://localhost:8000/docs
@@ -99,7 +99,7 @@ window.portalDestinations = {
 
 The `deploy.sh` helper script will:
 
-- deploy the backend to Cloud Run using `Tell/backend/Dockerfile`
+- deploy the backend to Cloud Run using root `Dockerfile` (which builds from `shared/backend`)
 - push the Portal, Tell, and Teach frontends to Firebase Hosting
 
 Environment variables:
@@ -126,5 +126,4 @@ DEPLOY_TELL_FRONTEND=true TELL_FIREBASE_TARGET=tell \
 
 ## 📝 Notes
 
-The character-driven detective game migrated from Telegram bot version (t.me/lingo_n_bot). 
-Core game logic, AI services, and prompts remain unchanged.
+The shorter game version is available as a Telegram bot (t.me/lingo_n_bot).

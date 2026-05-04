@@ -3,7 +3,7 @@ import datetime
 import logging
 from typing import Dict, Any, Optional
 from google.cloud import storage
-from config import GCS_BUCKET_NAME
+from .game_config import GCS_BUCKET_NAME
 import pytz
 
 logger = logging.getLogger(__name__)

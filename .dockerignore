@@ -1,0 +1,11 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.env
+**/venv
+.DS_Store
+# Frontends and portal are not copied into the backend image
+Portal/
+Tell/frontend/
+Teach/frontend/
+shared/frontend/

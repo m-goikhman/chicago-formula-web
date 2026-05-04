@@ -11,9 +11,9 @@
 ______
 
 ## 2. Подготовка Dockerfile и .dockerignore
-Файлы уже созданы:
-- `Tell/backend/Dockerfile`
-- `Tell/backend/.dockerignore`
+Файлы уже созданы в корне репозитория:
+- `Dockerfile` (контекст сборки — корень `web_teach_and_tell/`, копирует `shared/backend/`)
+- `.dockerignore` в корне репозитория (уменьшает контекст сборки для Cloud Build)
 
 ## 3. Изменения main.py
 Программно уже поддерживается `PORT` через env.
@@ -69,10 +69,10 @@ gcloud projects add-iam-policy-binding $(gcloud config get-value project) \
 
 ---
 ## 5. Развернуть приложение на Cloud Run
-Перейдите в папку backend:
+Сборка из **корня** репозитория (рядом с `Dockerfile`):
 
 ```bash
-cd web_teach_and_tell/Tell/backend
+cd web_teach_and_tell
 
 gcloud run deploy teach-tell-backend \
   --source . \
@@ -269,7 +269,7 @@ Firebase покажет точные значения, которые нужно
 
 ### Шаг 3: Обновить CORS в backend
 
-После подключения кастомного домена нужно добавить его в список разрешенных origins в `Tell/backend/main.py`:
+После подключения кастомного домена нужно добавить его в список разрешенных origins в `shared/backend/main.py`:
 
 ```python
 allow_origins=[
@@ -282,9 +282,9 @@ allow_origins=[
 ],
 ```
 
-Затем перезадеплоить backend:
+Затем перезадеплоить backend (из корня репозитория, где лежит `Dockerfile`):
 ```bash
-cd web_teach_and_tell/Tell/backend
+cd web_teach_and_tell
 gcloud run deploy teach-tell-backend --source . --platform managed --region europe-west4
 ```
 

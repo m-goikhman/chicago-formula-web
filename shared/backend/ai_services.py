@@ -3,8 +3,8 @@ import re
 import sys
 from typing import Dict, List, Optional
 from groq import Groq
-from config import GROQ_API_KEY, user_histories
-from utils import load_system_prompt, get_prompt_path, log_message, combine_character_prompt
+from .game_config import GROQ_API_KEY, user_histories
+from .utils import load_system_prompt, get_prompt_path, log_message, combine_character_prompt
 
 # Initialize the Groq API client
 if not GROQ_API_KEY:
@@ -241,7 +241,7 @@ def _resolve_ep1_contradiction_context(
     if not character_key:
         return None
 
-    from config import GAME_STATE
+    from .game_config import GAME_STATE
 
     state = GAME_STATE.get(participant_code, {})
     if state.get("current_stage", 1) != 1:
@@ -388,7 +388,7 @@ def validate_ai_response(response: str, character_key: str = None) -> tuple[bool
 def _get_fallback_response(character_key: str = None) -> str:
     """Returns an appropriate fallback response for a character."""
     if character_key:
-        from config import CHARACTER_DATA
+        from .game_config import CHARACTER_DATA
         char_data = CHARACTER_DATA.get(character_key, {})
         char_name = char_data.get("full_name", character_key)
         
@@ -412,7 +412,7 @@ def _get_tutor_prompt(task: str, source: Optional[str] = None) -> str:
         )
     if not prompt_path:
         print(f"WARNING: Unknown tutor task '{task}', using generic tutor prompt")
-        from config import CHARACTER_DATA
+        from .game_config import CHARACTER_DATA
 
         return load_system_prompt(CHARACTER_DATA["tutor"]["prompt_file"])
     return load_system_prompt(prompt_path)
@@ -451,7 +451,7 @@ def _parse_director_json_payload(response_text: str) -> dict:
 
 def _resolve_history_key(participant_code: str) -> str:
     """Resolve in-memory history key for a participant and current episode."""
-    from config import GAME_STATE
+    from .game_config import GAME_STATE
 
     state = GAME_STATE.get(participant_code, {})
     episode = state.get("current_stage", 1)
@@ -502,7 +502,7 @@ def _build_character_aliases(character_key: str) -> set[str]:
 
     aliases = {character_key.strip().lower()}
     try:
-        from config import CHARACTER_DATA  # Local import to avoid circular dependency
+        from .game_config import CHARACTER_DATA  # Local import to avoid circular dependency
 
         char_data = CHARACTER_DATA.get(character_key, {})
         full_name = (char_data.get("full_name") or "").strip()
@@ -607,7 +607,7 @@ async def ask_for_dialogue(
     
     # Get global knowledge from game state if participant_code is provided
     knowledge_context = ""
-    from config import GAME_STATE
+    from .game_config import GAME_STATE
     state = GAME_STATE.get(participant_code, {})
     global_knowledge = state.get("global_knowledge", [])
     
@@ -655,7 +655,7 @@ async def ask_for_dialogue(
 
     # Enhance system prompt with character identity reminder
     if character_key:
-        from config import CHARACTER_DATA  # Local import to avoid circular dependency
+        from .game_config import CHARACTER_DATA  # Local import to avoid circular dependency
         char_data = CHARACTER_DATA.get(character_key, {})
         char_name = char_data.get("full_name", character_key)
         enhanced_system_prompt = (
@@ -723,7 +723,7 @@ async def ask_for_dialogue(
         # Clean up any character name prefixes from the response
         if character_key:
             # Remove patterns like "tim: ", "fiona: ", "Tim Kane: ", etc.
-            from config import CHARACTER_DATA  # Local import to avoid circular dependency
+            from .game_config import CHARACTER_DATA  # Local import to avoid circular dependency
             char_data = CHARACTER_DATA.get(character_key, {})
             char_name = char_data.get("full_name", character_key)
             
@@ -986,8 +986,8 @@ async def ask_word_spotter(text_to_analyze: str) -> list:
 
 async def ask_director(participant_code: str, context_text: str, message: str) -> dict:
     """Asks the Director LLM for the next scene and returns it as a dictionary."""
-    from predefined_responses import try_predefined_response
-    from config import GAME_STATE
+    from .predefined_responses import try_predefined_response
+    from .game_config import GAME_STATE
     director_basis = "ai_director_after_predefined_miss"
     
     # First, try to get a predefined response based on keywords
@@ -1020,7 +1020,7 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
     episode = state.get("current_stage", 1)
     location = None
     try:
-        from config import STAGE_CONFIG
+        from .game_config import STAGE_CONFIG
         stage_config = STAGE_CONFIG.get(episode, {})
         if stage_config.get("locations"):
             stage_locations = state.get("stage_locations", {})

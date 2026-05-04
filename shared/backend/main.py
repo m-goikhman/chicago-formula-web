@@ -12,17 +12,17 @@ import uvicorn
 import os
 import time
 import random
-import bootstrap  # noqa: F401
+from . import bootstrap  # noqa: F401
 
-from shared.backend.auth import validate_session_token, login_participant, is_test_mode_participant
-from shared.backend.progress_manager import (
+from .auth import validate_session_token, login_participant, is_test_mode_participant
+from .progress_manager import (
     progress_manager,
     TELL_SOURCE,
     TEACH_SOURCE,
 )
-from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
-from utils import log_message, clear_chat_history_log
-from game_state_manager import game_state_manager
+from .game_config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
+from .utils import log_message, clear_chat_history_log
+from .game_state_manager import game_state_manager
 
 # Configure logging
 logging.basicConfig(
@@ -231,7 +231,7 @@ async def start_game(current_user=Depends(get_current_user)):
     logger.info(f"Starting game for participant: {participant_code}")
     
     # Import and use game handlers
-    from game_handlers import start_game_handler
+    from .game_handlers import start_game_handler
     
     messages = await start_game_handler(participant_code)
     
@@ -277,7 +277,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     # Log user action to chat history
     log_message("action", request.action, participant_code)
     
-    from game_handlers import (
+    from .game_handlers import (
         handle_onboarding_button,
         handle_language_adjustment,
         handle_language_confirmation,
@@ -412,8 +412,8 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
     logger.info(f"Message from {participant_code}: {request.text}")
 
     try:
-        from config import GAME_STATE
-        from game_handlers import (
+        from .game_config import GAME_STATE
+        from .game_handlers import (
             handle_private_message,
             handle_public_message,
             handle_nina_message,
@@ -507,7 +507,7 @@ async def send_message_to_nina(request: MessageRequest, current_user=Depends(get
     participant_code = current_user["participant_code"]
     logger.info(f"Message to Nina from {participant_code}: {request.text}")
     
-    from game_handlers import handle_nina_message
+    from .game_handlers import handle_nina_message
     
     messages = await handle_nina_message(participant_code, request.text)
 
@@ -550,10 +550,10 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
     logger.info(f"Explain action from {participant_code}: {request.action}")
     learning_source = _resolve_learning_source(request.source)
     
-    from config import message_cache
-    from utils import save_message_to_cache
-    from ai_services import ask_word_spotter, ask_tutor_for_explanation
-    from config import CHARACTER_DATA
+    from .game_config import message_cache
+    from .utils import save_message_to_cache
+    from .ai_services import ask_word_spotter, ask_tutor_for_explanation
+    from .game_config import CHARACTER_DATA
     
     messages = []
     tutor_data = CHARACTER_DATA["tutor"]
@@ -701,7 +701,7 @@ async def save_teach_open_ended_response(
     )
     if should_generate_feedback:
         try:
-            from ai_services import ask_tutor_for_analysis
+            from .ai_services import ask_tutor_for_analysis
             analysis = await ask_tutor_for_analysis(
                 participant_code,
                 cleaned_response,
@@ -737,7 +737,7 @@ async def get_teach_final_summary(
     """Generate final tutor summary for Teach progress."""
     participant_code = current_user["participant_code"]
 
-    from ai_services import ask_tutor_for_final_summary
+    from .ai_services import ask_tutor_for_final_summary
 
     try:
         logs = progress_manager.get_participant_progress(
@@ -775,12 +775,12 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     participant_code = current_user["participant_code"]
     logger.info(f"Getting available stages for participant: {participant_code}")
     
-    from game_handlers import get_available_stages, GAME_STATE, get_characters_for_stage, get_stage_location
-    from config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
+    from .game_handlers import get_available_stages, GAME_STATE, get_characters_for_stage, get_stage_location
+    from .game_config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
     # Ensure state is loaded
     if participant_code not in GAME_STATE:
-        from game_handlers import start_game_handler
+        from .game_handlers import start_game_handler
         await start_game_handler(participant_code)
     
     available_stages = get_available_stages(participant_code)
@@ -854,11 +854,11 @@ async def switch_stage(request: StageSwitchRequest, current_user=Depends(get_cur
     participant_code = current_user["participant_code"]
     logger.info(f"Switching to stage {request.stage_number} for participant: {participant_code}")
     
-    from game_handlers import switch_stage, GAME_STATE
+    from .game_handlers import switch_stage, GAME_STATE
     
     # Ensure state is loaded
     if participant_code not in GAME_STATE:
-        from game_handlers import start_game_handler
+        from .game_handlers import start_game_handler
         await start_game_handler(participant_code)
     
     success = await switch_stage(participant_code, request.stage_number)
@@ -875,11 +875,11 @@ async def skip_stage(request: StageSwitchRequest, current_user=Depends(get_curre
     participant_code = current_user["participant_code"]
     logger.info(f"Skipping stage {request.stage_number} for participant: {participant_code}")
     
-    from game_handlers import skip_stage, GAME_STATE
+    from .game_handlers import skip_stage, GAME_STATE
     
     # Ensure state is loaded
     if participant_code not in GAME_STATE:
-        from game_handlers import start_game_handler
+        from .game_handlers import start_game_handler
         await start_game_handler(participant_code)
     
     success = await skip_stage(participant_code, request.stage_number)
@@ -896,11 +896,11 @@ async def get_knowledge(current_user=Depends(get_current_user)):
     participant_code = current_user["participant_code"]
     logger.info(f"Getting knowledge for participant: {participant_code}")
     
-    from game_handlers import GAME_STATE
+    from .game_handlers import GAME_STATE
     
     # Ensure state is loaded
     if participant_code not in GAME_STATE:
-        from game_handlers import start_game_handler
+        from .game_handlers import start_game_handler
         await start_game_handler(participant_code)
     
     state = GAME_STATE.get(participant_code, {})

@@ -4,7 +4,7 @@ import json
 import re
 from typing import Optional
 from google.cloud import storage
-from config import GCS_BUCKET_NAME
+from .game_config import GCS_BUCKET_NAME
 import pytz
 storage_client = None
 bucket = None
@@ -219,7 +219,7 @@ def load_system_prompt(filepath: str) -> str:
 
 def save_message_to_cache(message_id: int, text: str, character_key: str = None):
     """Save message to cache with character info if available"""
-    from config import message_cache  # Import here to avoid circular dependency
+    from .game_config import message_cache  # Import here to avoid circular dependency
     
     if character_key:
         message_cache[message_id] = {
@@ -232,7 +232,7 @@ def save_message_to_cache(message_id: int, text: str, character_key: str = None)
 
 def get_message_from_cache(message_id: int) -> dict:
     """Get message info from cache, returns dict with 'text' and optionally 'character'"""
-    from config import message_cache  # Import here to avoid circular dependency
+    from .game_config import message_cache  # Import here to avoid circular dependency
     
     cached = message_cache.get(message_id)
     if cached is None:

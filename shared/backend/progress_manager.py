@@ -3,7 +3,7 @@ import datetime
 import logging
 from typing import Dict, Any
 from google.cloud import storage
-from .config import GCS_BUCKET_NAME
+from .secrets import GCS_BUCKET_NAME
 import pytz
 
 logger = logging.getLogger(__name__)

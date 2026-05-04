@@ -12,15 +12,15 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
-import bootstrap  # noqa: F401
+from . import bootstrap  # noqa: F401
 
-from utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
-from config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
-from game_state_manager import game_state_manager
-from shared.backend.progress_manager import progress_manager, TELL_SOURCE
-from shared.backend.auth import is_test_mode_participant
-from ai_services import ask_for_dialogue
-from scripted_messages import (
+from .utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
+from .game_config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
+from .game_state_manager import game_state_manager
+from .progress_manager import progress_manager, TELL_SOURCE
+from .auth import is_test_mode_participant
+from .ai_services import ask_for_dialogue
+from .scripted_messages import (
     extract_buttons_from_text as _sm_extract_buttons_from_text,
     split_text_messages as _sm_split_text_messages,
     extract_scripted_message_blocks as _sm_extract_scripted_message_blocks,
@@ -1594,7 +1594,7 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
 
 async def handle_get_final_summary(participant_code: str) -> List[Dict]:
     """Generate final language summary based on accumulated participant progress."""
-    from ai_services import ask_tutor_for_final_summary
+    from .ai_services import ask_tutor_for_final_summary
 
     logs = progress_manager.get_participant_progress(participant_code, source=TELL_SOURCE)
     summary_data = await ask_tutor_for_final_summary(participant_code, logs)
@@ -2906,7 +2906,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         )
 
     # First, check for direct character addressing
-    from predefined_responses import (
+    from .predefined_responses import (
         extract_character_from_message_strict,
         resolve_character_from_singular_you,
     )
@@ -3071,7 +3071,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         return messages
     
     # No direct addressing: keep predefined topic routing and remove AI director layer.
-    from predefined_responses import try_predefined_response
+    from .predefined_responses import try_predefined_response
 
     topic_memory = state.setdefault("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
     topic_memory.setdefault("topic", "None")
@@ -3979,7 +3979,7 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     Data is stored in participant_logs/language_progress/web_{participant_code}_language_progress.json
     (Note: Tell logs are stored under participant_logs/tell/)
     """
-    from ai_services import ask_tutor_for_analysis
+    from .ai_services import ask_tutor_for_analysis
     
     logger.info(f"Participant {participant_code}: Analyzing text from WEB version: '{text[:100]}...'")
     
@@ -3989,10 +3989,10 @@ async def analyze_and_log_user_text(participant_code: str, text: str):
     if analysis_result.get("improvement_needed"):
         feedback = analysis_result.get("feedback", "")
         briefly = analysis_result.get("briefly", "")
-    logger.info(
-        f"Participant {participant_code}: Tutor feedback needed. Saving to: "
-        f"participant_logs/{TELL_SOURCE}/language_progress/{participant_code}_language_progress.json"
-    )
+        logger.info(
+            f"Participant {participant_code}: Tutor feedback needed. Saving to: "
+            f"participant_logs/{TELL_SOURCE}/language_progress/{participant_code}_language_progress.json"
+        )
         logger.info(f"Feedback: '{feedback[:100]}...'")
         # Save participant-scoped writing feedback.
         success = progress_manager.add_participant_writing_feedback(

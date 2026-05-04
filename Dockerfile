@@ -3,20 +3,16 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install dependencies
-COPY Tell/backend/requirements.txt ./requirements.txt
+COPY shared/backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Tell backend source
-COPY Tell/backend/ .
-# Copy shared backend utilities
+# Copy unified backend (FastAPI app + shared auth/progress/secrets)
 COPY shared/backend ./shared/backend
 
-# Set Python path so shared modules are discoverable
-ENV PYTHONPATH="/app:/app/shared/backend"
+# Resolve package `shared.backend` from repo root layout
+ENV PYTHONPATH="/app"
 
-# Set PORT variable for Cloud Run
+# Cloud Run listens on PORT
 ENV PORT=8080
 
-# Start server
-CMD exec uvicorn main:app --host 0.0.0.0 --port $PORT
-
+CMD exec uvicorn shared.backend.main:app --host 0.0.0.0 --port $PORT

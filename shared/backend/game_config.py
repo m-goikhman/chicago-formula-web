@@ -1,5 +1,5 @@
-import bootstrap  # noqa: F401  # ensures shared modules are on sys.path
-from shared.backend.config import (
+from . import bootstrap  # noqa: F401  # ensures repo root is on sys.path
+from .secrets import (
     get_secret,
     TELEGRAM_TOKEN,
     GROQ_API_KEY,
