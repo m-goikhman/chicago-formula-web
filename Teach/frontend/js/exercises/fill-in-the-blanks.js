@@ -307,8 +307,7 @@ window.TeachFillInTheBlanks = (() => {
                     if (index < matches.length) {
                         const rawToken = String(matches[index] || '').trim().toLowerCase();
                         const isMediumWritingSpace = rawToken === '[medium_writing_space]';
-                        const isHugeWritingSpace = rawToken === '[huge_writing_space]';
-                        const isTextarea = isMediumWritingSpace || isHugeWritingSpace;
+                        const isTextarea = isMediumWritingSpace;
                         const input = isTextarea
                             ? document.createElement('textarea')
                             : document.createElement('input');
@@ -319,11 +318,9 @@ window.TeachFillInTheBlanks = (() => {
                         if (isTextarea) {
                             input.classList.add('teach-blank-textarea');
                             input.classList.add(
-                                isHugeWritingSpace
-                                    ? 'teach-blank-textarea-huge'
-                                    : 'teach-blank-textarea-medium'
+                                'teach-blank-textarea-medium'
                             );
-                            input.rows = isHugeWritingSpace ? 12 : 6;
+                            input.rows = 6;
                             input.placeholder = 'Write your answer here...';
                         } else {
                             input.type = 'text';
@@ -385,27 +382,6 @@ window.TeachFillInTheBlanks = (() => {
             actions.appendChild(resetButton);
         }
 
-        if (section?.type !== 'task') {
-            const continueButton = document.createElement('button');
-            continueButton.type = 'button';
-            continueButton.className = 'teach-fill-blanks-button continue';
-            continueButton.textContent = 'Continue';
-            continueButton.addEventListener('click', () => {
-                // Try to find and click the next button if it exists
-                const nextButton = messageEl.querySelector('.teach-next-button');
-                if (nextButton && !nextButton.disabled) {
-                    nextButton.click();
-                } else {
-                    // If no next button, try to trigger next step via custom event
-                    const event = new CustomEvent('teach-continue-next', {
-                        bubbles: true,
-                        detail: { messageEl }
-                    });
-                    messageEl.dispatchEvent(event);
-                }
-            });
-            actions.appendChild(continueButton);
-        }
 
         container.appendChild(actions);
 

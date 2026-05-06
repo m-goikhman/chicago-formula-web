@@ -48,12 +48,21 @@ window.TeachWeekSelector = (() => {
         closeWeekSelectorDropdown();
         dropdown.innerHTML = '';
 
+        const availability = callbacks.weekAvailability instanceof Map
+            ? callbacks.weekAvailability
+            : new Map();
+
         weeks.forEach((week, index) => {
             const item = document.createElement('div');
             item.className = 'episode-dropdown-item';
+            const weekAvailability = availability.get(week.id);
+            const isLocked = Boolean(weekAvailability?.locked);
 
             if (week.id === currentWeekId) {
                 item.classList.add('current');
+            }
+            if (isLocked) {
+                item.classList.add('locked');
             }
 
             const meta = getWeekEpisodeMeta(week, index);
@@ -63,12 +72,21 @@ window.TeachWeekSelector = (() => {
 
             const statusSpan = document.createElement('span');
             statusSpan.className = 'episode-status';
-            statusSpan.textContent = week.id === currentWeekId ? 'Current' : 'Available';
+            if (week.id === currentWeekId) {
+                statusSpan.textContent = 'Current';
+            } else if (isLocked) {
+                statusSpan.textContent = 'Locked';
+            } else {
+                statusSpan.textContent = 'Available';
+            }
 
             item.appendChild(nameSpan);
             item.appendChild(statusSpan);
 
             item.addEventListener('click', () => {
+                if (isLocked) {
+                    return;
+                }
                 callbacks.onSelect?.(week.id);
                 closeWeekSelectorDropdown();
             });

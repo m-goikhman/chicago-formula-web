@@ -1,1 +1,2 @@
 Tim attacked Alex because he needed money to pay back Ronnie and because he was scared. Is Ronnie also responsible for what happened, even though he did not know about the formula? Or is Tim the only one to blame?
+[medium_writing_space]

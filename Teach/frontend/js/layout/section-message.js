@@ -1,4 +1,27 @@
 window.TeachSectionMessage = (() => {
+    function placeDescribeImageBeforeWritingSpace(messageEl, useDescribeLayout) {
+        if (!messageEl || !useDescribeLayout) {
+            return;
+        }
+
+        const contentWrapper = messageEl.querySelector('.message-content-wrapper');
+        const messageText = contentWrapper?.querySelector('.message-text');
+        const messageImage = contentWrapper?.querySelector('.message-image');
+        const firstWritingInput =
+            messageText?.querySelector('.teach-blank-textarea, .teach-blank-input');
+
+        if (!messageText || !messageImage || !firstWritingInput) {
+            return;
+        }
+
+        const imageContainer = messageImage.parentElement;
+        if (!imageContainer) {
+            return;
+        }
+
+        messageText.insertBefore(imageContainer, firstWritingInput);
+    }
+
     function addSectionMessage(chatArea, section, options = {}) {
         if (!chatArea || !section) {
             return;
@@ -20,16 +43,13 @@ window.TeachSectionMessage = (() => {
         const isStoryReading = isStorySection && !isBeforeReading;
         const usePortraitLayout =
             !isBeforeReading && section.portrait === true && Boolean(section.image);
+        const useDescribeLayout =
+            !isBeforeReading && section.describe === true && Boolean(section.image);
 
-        const sender =
-            section.type === 'task'
-                ? 'Weekly Mission'
-                : isBeforeReading
-                    ? 'Mentor'
-                    : isStoryReading && displayHeading
-                    ? displayHeading
-                    : 'Mentor';
-        const messageType = section.type === 'task' || isBeforeReading ? 'tutor-message' : 'bot';
+        const sender = isStoryReading && displayHeading
+            ? displayHeading
+            : 'Tutor';
+        const messageType = isStoryReading ? 'bot' : 'tutor-message';
         const parts = [];
         // Story-reading blocks: title is the sender label, not repeated as bold in the body.
         if (heading && (!isStorySection || isBeforeReading)) {
@@ -40,7 +60,7 @@ window.TeachSectionMessage = (() => {
         }
         const messageEl = addMessage(
             messageType,
-            sender || 'Mentor',
+            sender || 'Tutor',
             parts.join('\n\n'),
             isBeforeReading ? null : section.image ?? null,
             null,
@@ -152,6 +172,8 @@ window.TeachSectionMessage = (() => {
                     renderFillInTheBlanksExercise(messageEl, section, correctAnswers);
                 }
             }
+
+            placeDescribeImageBeforeWritingSpace(messageEl, useDescribeLayout);
 
             // Some exercise renderers rewrite `.message-text`; move image after rendering.
             if (usePortraitLayout) {

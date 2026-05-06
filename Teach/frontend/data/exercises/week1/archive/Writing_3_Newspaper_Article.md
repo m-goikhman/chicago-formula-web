@@ -9,4 +9,4 @@ Include:
 - What happened to the suspect and the victim
 
 **THE CHICAGO TRIBUNE**
-[huge_writing_space]
+[medium_writing_space]

@@ -68,6 +68,14 @@ const TeachUI = (() => {
         button.textContent = label;
 
         button.addEventListener('click', () => {
+            try {
+                messageEl.dispatchEvent(new CustomEvent('teach:section-continue', {
+                    bubbles: true,
+                    detail: { messageEl }
+                }));
+            } catch (error) {
+                console.warn('[TeachUI] Failed to dispatch continue event:', error);
+            }
             button.disabled = true;
             actions.remove();
             if (typeof onClick === 'function') {
@@ -205,7 +213,7 @@ const TeachUI = (() => {
             return;
         }
         chatArea.innerHTML = '';
-        addMessage('bot', 'Mentor', message);
+        addMessage('tutor-message', 'Tutor', message);
     }
 
     const renderMatchWordsExercise =
@@ -459,48 +467,6 @@ const TeachUI = (() => {
         });
     };
 
-    function addNotesMessage(chatArea, options = {}) {
-        if (!chatArea) {
-            return {};
-        }
-        const messageEl = addMessage(
-            'system',
-            'Reflection Notes',
-            'Capture insights, predictions, or phrases you want to remember.'
-        );
-
-        if (!messageEl) {
-            return {};
-        }
-
-        messageEl.classList.add('teach-notes-message');
-        decorateHeading(messageEl);
-
-        const content = messageEl.querySelector('.message-content');
-        if (!content) {
-            return {};
-        }
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'teach-notes-wrapper';
-
-        const textarea = document.createElement('textarea');
-        textarea.id = 'teachNotesTextarea';
-        textarea.placeholder = 'Write your notes here…';
-        textarea.value = options.notesValue ?? '';
-
-        const status = document.createElement('div');
-        status.id = 'teachNotesStatus';
-        status.className = 'teach-notes-status';
-        status.textContent = options.notesStatusText ?? 'Autosaved';
-
-        wrapper.appendChild(textarea);
-        wrapper.appendChild(status);
-        content.appendChild(wrapper);
-
-        return { messageEl, notesTextarea: textarea, notesStatusEl: status };
-    }
-
     const renderWeekContent = (chatArea, week, options = {}) => {
         if (typeof window.TeachWeekContent?.renderWeekContent !== 'function') {
             return {};
@@ -513,12 +479,12 @@ const TeachUI = (() => {
                 personalizeOnboardingQuestionnaireLink,
                 decorateHeading,
                 addSectionMessage,
-                addNotesMessage,
                 buildNextButtonLabel,
                 resolveMessageElement,
                 appendNextButton,
                 requestTutorFinalSummary,
                 requestTeachOutroQuestionnaire,
+                getWeekExerciseSummary: TeachState?.getWeekExerciseSummary || (() => null),
                 stepProgressByWeek,
                 TEACH_ONBOARDING_WELCOME_TEMPLATE
             }

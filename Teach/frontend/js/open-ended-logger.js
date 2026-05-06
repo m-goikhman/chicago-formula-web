@@ -11,47 +11,67 @@
 
     const lastSentValue = new WeakMap();
     const lastFeedbackValue = new WeakMap();
+    const TeachStateRef = (() => {
+        if (global.TeachState) {
+            return global.TeachState;
+        }
+        try {
+            if (typeof TeachState !== 'undefined') {
+                return TeachState;
+            }
+        } catch (error) {
+            // Ignore lexical lookup errors in environments without TeachState.
+        }
+        return null;
+    })();
 
-    function shouldTrackTextarea(textarea) {
-        if (!textarea || textarea.tagName !== 'TEXTAREA') {
+    function shouldTrackInputField(inputField) {
+        if (!inputField) {
             return false;
         }
-        if (textarea.id === 'teachNotesTextarea') {
+        const tagName = String(inputField.tagName || '').toUpperCase();
+        const isTextarea = tagName === 'TEXTAREA';
+        const isTextInput = tagName === 'INPUT' && String(inputField.type || '').toLowerCase() === 'text';
+        if (!isTextarea && !isTextInput) {
             return false;
         }
-        const cls = String(textarea.className || '');
+        if (inputField.id === 'teachNotesTextarea') {
+            return false;
+        }
+        const cls = String(inputField.className || '');
         return (
             cls.includes('teach-') ||
             cls.includes('writing') ||
             cls.includes('sentence') ||
-            cls.includes('before-reading')
+            cls.includes('before-reading') ||
+            cls.includes('teach-blank-input')
         );
     }
 
-    function inferPromptFromTextarea(textarea) {
-        const byFor = textarea.id
-            ? document.querySelector(`label[for="${textarea.id}"]`)
+    function inferPromptFromInputField(inputField) {
+        const byFor = inputField.id
+            ? document.querySelector(`label[for="${inputField.id}"]`)
             : null;
         if (byFor && byFor.textContent) {
             return byFor.textContent.trim();
         }
-        const nearestLabel = textarea.closest('label');
+        const nearestLabel = inputField.closest('label');
         if (nearestLabel && nearestLabel.textContent) {
             return nearestLabel.textContent.trim();
         }
         return '';
     }
 
-    function getSectionMeta(textarea) {
-        const sectionMessage = textarea.closest('.teach-section-message');
-        const className = String(textarea?.className || '');
+    function getSectionMeta(inputField) {
+        const sectionMessage = inputField.closest('.teach-section-message');
+        const className = String(inputField?.className || '');
         let writingSpace = '';
-        if (className.includes('teach-blank-textarea-huge')) {
-            writingSpace = 'huge';
-        } else if (className.includes('teach-blank-textarea-medium')) {
+        if (className.includes('teach-blank-textarea-medium')) {
             writingSpace = 'medium';
         } else if (className.includes('teach-pick-explain-why-textarea')) {
             writingSpace = 'medium';
+        } else if (className.includes('teach-blank-input')) {
+            writingSpace = 'small';
         }
         return {
             sectionMessage,
@@ -62,9 +82,9 @@
         };
     }
 
-    function getFeedbackContainer(textarea) {
-        const sectionMeta = getSectionMeta(textarea);
-        const parent = textarea.parentElement;
+    function getFeedbackContainer(inputField) {
+        const sectionMeta = getSectionMeta(inputField);
+        const parent = inputField.parentElement;
         if (!parent || !sectionMeta.sectionMessage) {
             return null;
         }
@@ -79,8 +99,8 @@
         return feedbackEl;
     }
 
-    function updateFeedback(textarea, feedbackText) {
-        const feedbackEl = getFeedbackContainer(textarea);
+    function updateFeedback(inputField, feedbackText) {
+        const feedbackEl = getFeedbackContainer(inputField);
         if (!feedbackEl) {
             return;
         }
@@ -96,16 +116,53 @@
         feedbackEl.hidden = false;
     }
 
-    function shouldEnableTutorFeedback(textarea) {
-        const { category } = getSectionMeta(textarea);
+    function getPassIndicatorContainer(inputField) {
+        const parent = inputField?.parentElement;
+        if (!parent) {
+            return null;
+        }
+        let indicatorEl = parent.querySelector('.teach-exercise-pass-indicator');
+        if (!indicatorEl) {
+            indicatorEl = document.createElement('div');
+            indicatorEl.className = 'teach-exercise-pass-indicator';
+            indicatorEl.hidden = true;
+            parent.appendChild(indicatorEl);
+        }
+        return indicatorEl;
+    }
+
+    function updatePassIndicator(inputField, status) {
+        const indicatorEl = getPassIndicatorContainer(inputField);
+        if (!indicatorEl) {
+            return;
+        }
+        indicatorEl.classList.remove('pass', 'fail');
+        if (status === 'passed') {
+            indicatorEl.textContent = '✓ Exercise passed';
+            indicatorEl.classList.add('pass');
+            indicatorEl.hidden = false;
+            return;
+        }
+        if (status === 'failed') {
+            indicatorEl.textContent = '✗ Exercise not passed yet';
+            indicatorEl.classList.add('fail');
+            indicatorEl.hidden = false;
+            return;
+        }
+        indicatorEl.textContent = '';
+        indicatorEl.hidden = true;
+    }
+
+    function shouldEnableTutorFeedback(inputField) {
+        const { category } = getSectionMeta(inputField);
         return category === 'writing';
     }
 
-    function ensureFeedbackButton(textarea, getWeekId) {
-        if (!shouldEnableTutorFeedback(textarea)) {
+    function ensureFeedbackButton(inputField, getWeekId) {
+        if (!shouldEnableTutorFeedback(inputField)) {
             return;
         }
-        const parent = textarea.parentElement;
+        const parent = inputField.parentElement;
         if (!parent) {
             return;
         }
@@ -123,7 +180,7 @@
             }
             button.disabled = true;
             try {
-                await sendResponse(textarea, getWeekId, {
+                await sendResponse(inputField, getWeekId, {
                     trigger: 'feedback_button',
                     forceFeedback: true,
                     showFeedback: true
@@ -136,12 +193,12 @@
         parent.appendChild(button);
     }
 
-    async function sendResponse(textarea, getWeekId, options = {}) {
-        if (!shouldTrackTextarea(textarea)) {
+    async function sendResponse(inputField, getWeekId, options = {}) {
+        if (!shouldTrackInputField(inputField)) {
             return;
         }
 
-        const response = String(textarea.value || '').trim();
+        const response = String(inputField.value || '').trim();
         if (!response) {
             return;
         }
@@ -149,18 +206,35 @@
         const trigger = String(options.trigger || '').trim();
         const forceFeedback = Boolean(options.forceFeedback);
         const showFeedback = Boolean(options.showFeedback);
-        const { sectionId, renderer, category, writingSpace } = getSectionMeta(textarea);
+        const forceTutorEvaluation = Boolean(options.forceTutorEvaluation);
+        const { sectionId, renderer, category, writingSpace } = getSectionMeta(inputField);
+        const weekId = typeof getWeekId === 'function' ? getWeekId() : '';
+        const responseLength = response.length;
+        if (category === 'writing' && responseLength < 20) {
+            if (weekId && sectionId) {
+                TeachStateRef?.setExerciseEvaluation?.(weekId, sectionId, {
+                    status: 'pending_short',
+                    source: 'short_response'
+                });
+            }
+            updatePassIndicator(inputField, 'pending_short');
+        }
         const includeFeedback = (
             forceFeedback
             || trigger === 'feedback_button'
             || trigger === 'continue'
         ) && (
             category === 'writing'
-            && response.length >= 20
-            && lastFeedbackValue.get(textarea) !== response
+            && responseLength >= 20
+            && (
+                trigger === 'feedback_button'
+                || 
+                forceTutorEvaluation
+                || lastFeedbackValue.get(inputField) !== response
+            )
         );
 
-        if (!includeFeedback && lastSentValue.get(textarea) === response) {
+        if (!includeFeedback && lastSentValue.get(inputField) === response) {
             return;
         }
 
@@ -169,9 +243,7 @@
             return;
         }
 
-        const prompt = inferPromptFromTextarea(textarea);
-        const weekId = typeof getWeekId === 'function' ? getWeekId() : '';
-
+        const prompt = inferPromptFromInputField(inputField);
         try {
             const { response: apiResponse, data } = await apiClient.postJson(
                 '/api/teach/open-ended-response',
@@ -189,13 +261,54 @@
             );
 
             if (apiResponse.ok) {
-                lastSentValue.set(textarea, response);
+                if (trigger === 'continue') {
+                    console.warn('[TeachOpenEndedLogger] Continue evaluation response', {
+                        sectionId,
+                        weekId,
+                        responseLength,
+                        includeFeedback,
+                        passed: data?.passed,
+                        pass_reason: data?.pass_reason
+                    });
+                }
+                lastSentValue.set(inputField, response);
+                const hasPassedFlag = typeof data?.passed === 'boolean';
+                const passed = data?.passed === true;
+                const passReason = String(data?.pass_reason || '').trim().toLowerCase();
+                const tutorEvaluatedByReason =
+                    passReason === 'tutor_passed' || passReason === 'tutor_failed';
+                const tutorEvaluatedByPayload =
+                    hasPassedFlag && includeFeedback && responseLength >= 20;
+                const tutorEvaluated = tutorEvaluatedByReason || tutorEvaluatedByPayload;
+                if (weekId && sectionId && category === 'writing') {
+                    if (tutorEvaluated) {
+                        const resolvedStatus = passed ? 'passed' : 'failed';
+                        TeachStateRef?.setExerciseEvaluation?.(weekId, sectionId, {
+                            status: resolvedStatus,
+                            source: 'tutor'
+                        });
+                        updatePassIndicator(inputField, resolvedStatus);
+                        console.warn('[TeachOpenEndedLogger] Status applied', {
+                            sectionId,
+                            weekId,
+                            status: resolvedStatus,
+                            source: 'tutor'
+                        });
+                    } else if (responseLength < 20) {
+                        updatePassIndicator(inputField, 'pending_short');
+                        console.warn('[TeachOpenEndedLogger] Status skipped (too short)', {
+                            sectionId,
+                            weekId,
+                            responseLength
+                        });
+                    }
+                }
                 if (includeFeedback) {
                     const feedbackText = String(data?.feedback || '').trim();
                     if (feedbackText && showFeedback) {
-                        updateFeedback(textarea, feedbackText);
+                        updateFeedback(inputField, feedbackText);
                     }
-                    lastFeedbackValue.set(textarea, response);
+                    lastFeedbackValue.set(inputField, response);
                 }
             }
         } catch (error) {
@@ -207,42 +320,50 @@
         if (!container || typeof container.addEventListener !== 'function') {
             return;
         }
+        console.warn('[TeachOpenEndedLogger] Setup attached');
 
-        const knownTextareas = container.querySelectorAll('textarea');
-        knownTextareas.forEach((textarea) => {
-            if (shouldTrackTextarea(textarea)) {
-                ensureFeedbackButton(textarea, getWeekId);
+        const processSectionInputs = (sectionMessage) => {
+            if (!sectionMessage) {
+                return;
+            }
+            const inputs = sectionMessage.querySelectorAll('textarea, input[type="text"]');
+            if (inputs.length > 0) {
+                console.warn('[TeachOpenEndedLogger] Continue trigger captured', {
+                    sectionId: sectionMessage?.dataset?.sectionId || '',
+                    inputs: inputs.length
+                });
+            }
+            inputs.forEach((inputField) => {
+                if (!shouldTrackInputField(inputField)) {
+                    return;
+                }
+                sendResponse(inputField, getWeekId, {
+                    trigger: 'continue',
+                    forceFeedback: true,
+                    forceTutorEvaluation: true,
+                    showFeedback: false
+                });
+            });
+        };
+
+        const knownInputs = container.querySelectorAll('textarea, input[type="text"]');
+        knownInputs.forEach((inputField) => {
+            if (shouldTrackInputField(inputField)) {
+                ensureFeedbackButton(inputField, getWeekId);
             }
         });
 
         container.addEventListener('focusin', (event) => {
-            const textarea = event.target;
-            if (!shouldTrackTextarea(textarea)) {
+            const inputField = event.target;
+            if (!shouldTrackInputField(inputField)) {
                 return;
             }
-            ensureFeedbackButton(textarea, getWeekId);
+            ensureFeedbackButton(inputField, getWeekId);
         });
 
-        container.addEventListener('click', (event) => {
-            const continueBtn = event.target?.closest('.teach-next-button, .teach-sentence-send.continue');
-            if (!continueBtn) {
-                return;
-            }
-            const sectionMessage = continueBtn.closest('.teach-section-message');
-            if (!sectionMessage) {
-                return;
-            }
-            const textareas = sectionMessage.querySelectorAll('textarea');
-            textareas.forEach((textarea) => {
-                if (!shouldTrackTextarea(textarea)) {
-                    return;
-                }
-                sendResponse(textarea, getWeekId, {
-                    trigger: 'continue',
-                    forceFeedback: true,
-                    showFeedback: false
-                });
-            });
+        container.addEventListener('teach:section-continue', (event) => {
+            const sectionMessage = event?.detail?.messageEl || event.target?.closest?.('.teach-section-message');
+            processSectionInputs(sectionMessage);
         });
     }
 

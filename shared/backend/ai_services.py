@@ -813,7 +813,7 @@ async def ask_tutor_for_analysis(
         analysis_request = f"Analyze this text: '{text_to_analyze}'"
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": analysis_request}]
     if client is None:
-        return {"improvement_needed": False, "feedback": "", "briefly": ""}
+        return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
     try:
         chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
@@ -823,12 +823,17 @@ async def ask_tutor_for_analysis(
         if not is_valid:
             print(f"WARNING: Tutor analysis response validation failed for participant {participant_code}")
             log_message("tutor_validation_failed", f"Corrupted tutor response: {response_text[:200]}...", participant_code)
-            return {"improvement_needed": False, "feedback": "", "briefly": ""}
-        
-        return json.loads(validated_response)
+            return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
+
+        parsed = json.loads(validated_response)
+        if not isinstance(parsed, dict):
+            return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
+        if "passed" not in parsed:
+            parsed["passed"] = False
+        return parsed
     except (json.JSONDecodeError, Exception) as e:
         log_message("tutor_error", f"Could not parse tutor analysis JSON: {e}", participant_code)
-        return {"improvement_needed": False, "feedback": "", "briefly": ""}
+        return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
 
 async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str, original_message: str = "") -> dict:
     """A special function that calls the Tutor for an explanation and expects a JSON response."""

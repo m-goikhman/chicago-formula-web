@@ -86,6 +86,7 @@ const TeachContentLoader = (() => {
             heading,
             image: safeSection.image ?? null,
             portrait: safeSection.portrait === true,
+            describe: safeSection.describe === true,
             content,
             type: safeSection.type || classification.type,
             category: safeSection.category || classification.category,
@@ -368,8 +369,8 @@ const TeachContentLoader = (() => {
                 : String(item.content || '');
             const heading = String(item.heading || '').trim();
             const classification = classifyHeading(heading, settings, markdown);
-            const resolvedType = isStoryKind ? 'info' : item.type || classification.type || fallbackType;
-            const resolvedCategory = isStoryKind ? 'story' : item.category || classification.category || fallbackCategory;
+            const resolvedType = isStoryKind ? 'info' : item.type || fallbackType || classification.type;
+            const resolvedCategory = isStoryKind ? 'story' : item.category || fallbackCategory || classification.category;
 
             sections.push({
                 id,
@@ -377,6 +378,7 @@ const TeachContentLoader = (() => {
                 heading,
                 image: item.image ?? null,
                 portrait: item.portrait === true,
+                describe: item.describe === true,
                 content: markdown,
                 type: resolvedType,
                 category: resolvedCategory,

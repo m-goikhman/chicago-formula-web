@@ -905,10 +905,6 @@
     min-height: 140px;
 }
 
-.teach-blank-textarea-huge {
-    min-height: 260px;
-}
-
 /* Compact inline blanks (gap-fill / choose-and-write) */
 .teach-fill-blanks-compact .teach-blank-input {
     display: inline-block !important;
@@ -1237,6 +1233,20 @@
     border-radius: 6px;
 }
 
+.teach-exercise-pass-indicator {
+    margin-top: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.teach-exercise-pass-indicator.pass {
+    color: #1f8f4d;
+}
+
+.teach-exercise-pass-indicator.fail {
+    color: #c23b3b;
+}
+
 .teach-get-tutor-feedback-btn {
     margin-top: 8px;
     display: inline-flex;
@@ -1293,5 +1303,15 @@
 .teach-final-summary-status {
     font-size: 0.85rem;
     color: rgba(26, 85, 99, 0.82);
+}
+
+.teach-episode-completion-summary {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(31, 143, 77, 0.1);
+    border: 1px solid rgba(31, 143, 77, 0.25);
+    font-size: 0.92rem;
+    line-height: 1.4;
 }
 

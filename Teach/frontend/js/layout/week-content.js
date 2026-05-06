@@ -12,6 +12,7 @@ window.TeachWeekContent = (() => {
         const appendNextButton = deps.appendNextButton || (() => {});
         const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
         const requestTeachOutroQuestionnaire = deps.requestTeachOutroQuestionnaire || null;
+        const getWeekExerciseSummary = deps.getWeekExerciseSummary || (() => null);
         const stepProgressByWeek = deps.stepProgressByWeek || new Map();
         const TEACH_ONBOARDING_WELCOME_TEMPLATE = deps.TEACH_ONBOARDING_WELCOME_TEMPLATE;
 
@@ -22,7 +23,7 @@ window.TeachWeekContent = (() => {
         chatArea.innerHTML = '';
 
         if (!week) {
-            addMessage('system', 'Mentor', 'We could not find any weekly materials yet.');
+            addMessage('system', 'Tutor', 'We could not find any weekly materials yet.');
             return {};
         }
 
@@ -60,7 +61,7 @@ window.TeachWeekContent = (() => {
                         TEACH_ONBOARDING_WELCOME_TEMPLATE,
                         participantCode
                     );
-                    const onboardingMessage = addMessage('system', 'Mentor', onboardingText);
+                    const onboardingMessage = addMessage('system', 'Tutor', onboardingText);
                     if (onboardingMessage) {
                         onboardingMessage.classList.add('tutor-message', 'teach-onboarding-message');
                     }
@@ -86,7 +87,7 @@ window.TeachWeekContent = (() => {
                 factory: () => {
                     const ctaMessage = addMessage(
                         'system',
-                        'Mentor',
+                        'Tutor',
                         'Loading end-of-episode message...'
                     );
                     if (!ctaMessage) {
@@ -99,22 +100,62 @@ window.TeachWeekContent = (() => {
                         return ctaMessage;
                     }
                     const messageText = content.querySelector('.message-text');
+                    const outroLeadText =
+                        'You finished the missions. Please complete the questionnaire before the next episode.';
+                    let completionInfo = null;
+                    const updateCompletionInfo = () => {
+                        const summary = getWeekExerciseSummary(week.id);
+                        if (!summary || !content) {
+                            return;
+                        }
+                        if (!completionInfo || !content.contains(completionInfo)) {
+                            const existing = content.querySelector('.teach-episode-completion-summary');
+                            if (existing) {
+                                completionInfo = existing;
+                            } else {
+                                completionInfo = document.createElement('div');
+                                completionInfo.className = 'teach-episode-completion-summary';
+                                content.appendChild(completionInfo);
+                            }
+                        }
+                        completionInfo.textContent = (
+                            `Completed exercises: ${summary.completed}/${summary.total} (${summary.percent}%). `
+                            + `Required to unlock next episode: ${summary.requiredToUnlock}/${summary.total}. `
+                            + (summary.isUnlocked ? 'Next episode unlocked.' : 'Complete more exercises to continue.')
+                        );
+                    };
+                    const onProgressUpdated = (event) => {
+                        const detailWeekId = String(event?.detail?.currentWeekId || '').trim();
+                        if (!detailWeekId || detailWeekId === String(week.id)) {
+                            updateCompletionInfo();
+                        }
+                    };
+                    window.addEventListener('teach:progress-updated', onProgressUpdated);
+                    const renderOutroText = (extraText = '') => {
+                        if (!messageText) {
+                            return;
+                        }
+                        const normalizedExtra = String(extraText || '').trim();
+                        const fullText = normalizedExtra
+                            ? `${outroLeadText}\n\n${normalizedExtra}`
+                            : outroLeadText;
+                        if (typeof window.marked?.parse === 'function') {
+                            messageText.innerHTML = window.marked.parse(fullText);
+                        } else {
+                            messageText.textContent = fullText;
+                        }
+                        updateCompletionInfo();
+                    };
                     if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
                         requestTeachOutroQuestionnaire(week.id)
                             .then((outroText) => {
-                                if (typeof window.marked?.parse === 'function') {
-                                    messageText.innerHTML = window.marked.parse(outroText);
-                                } else {
-                                    messageText.textContent = outroText;
-                                }
+                                renderOutroText(outroText);
                             })
                             .catch(() => {
-                                messageText.textContent =
-                                    'You finished the missions. Please complete the questionnaire before the next episode.';
+                                renderOutroText();
                             });
                     } else if (messageText) {
-                        messageText.textContent =
-                            'You finished the missions. Please complete the questionnaire before the next episode.';
+                        renderOutroText();
                     }
 
                     const actions = document.createElement('div');

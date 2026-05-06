@@ -66,7 +66,7 @@
                 return;
             }
 
-            const messageDiv = addMessage('system', 'Mentor', report);
+            const messageDiv = addMessage('system', 'Tutor', report);
             if (!messageDiv) {
                 return;
             }
@@ -163,6 +163,11 @@
     }
 
     function handleWeekSelect(weekId) {
+        const availability = TeachState.getWeekAvailability();
+        if (availability.get(weekId)?.locked) {
+            window.alert('This episode is still locked. Complete at least 75% of the previous episode exercises first.');
+            return;
+        }
         TeachState.setCurrentWeek(weekId);
         render();
     }
@@ -191,7 +196,8 @@
         const currentWeek = TeachState.getCurrentWeek();
 
         TeachUI.renderWeekSelector(weeks, TeachState.getCurrentWeekId(), {
-            onSelect: handleWeekSelect
+            onSelect: handleWeekSelect,
+            weekAvailability: TeachState.getWeekAvailability()
         });
 
         if (!currentWeek) {

@@ -702,6 +702,8 @@ async def save_teach_open_ended_response(
         context_bits.append(f"prompt={prompt[:200]}")
 
     tutor_feedback = ""
+    passed = False
+    pass_reason = "pending_tutor"
     should_generate_feedback = (
         include_feedback
         and category == "writing"
@@ -717,12 +719,17 @@ async def save_teach_open_ended_response(
                 writing_space=writing_space,
                 task_text=prompt,
             )
+            passed = bool((analysis or {}).get("passed"))
             tutor_feedback = str((analysis or {}).get("feedback") or "").strip()
         except Exception as error:
             logger.warning("Teach writing feedback generation failed: %s", error)
             tutor_feedback = ""
+            passed = False
         if not tutor_feedback:
             tutor_feedback = _build_fallback_writing_feedback(cleaned_response)
+        pass_reason = "tutor_passed" if passed else "tutor_failed"
+    elif category == "writing":
+        pass_reason = "too_short" if len(cleaned_response) < 20 else "pending_tutor"
 
     stored_feedback = tutor_feedback or f"teach_open_ended_response::{section_id}"
     success = progress_manager.add_participant_writing_feedback(
@@ -737,6 +744,8 @@ async def save_teach_open_ended_response(
     return {
         "saved": bool(success),
         "feedback": tutor_feedback,
+        "passed": passed,
+        "pass_reason": pass_reason,
     }
 
 

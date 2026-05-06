@@ -97,7 +97,7 @@
         if (addMessage) {
             addMessage(
                 'system',
-                'Mentor',
+                'Tutor',
                 explainErrorMessage
             );
         }

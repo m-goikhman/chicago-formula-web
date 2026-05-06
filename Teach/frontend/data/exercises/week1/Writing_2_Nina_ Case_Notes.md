@@ -9,4 +9,4 @@ Include:
 - Outcome
 
 **CASE NOTES - Case #2024-1218**
-[huge_writing_space]
+[medium_writing_space]

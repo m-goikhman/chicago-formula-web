@@ -13,4 +13,4 @@ Include:
 Name: __________  Date: December 18th
 
 Statement:
-[huge_writing_space]
+[medium_writing_space]

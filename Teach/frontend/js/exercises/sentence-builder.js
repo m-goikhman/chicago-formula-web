@@ -172,30 +172,6 @@ window.TeachSentenceBuilder = (() => {
         updateStatus();
         container.appendChild(status);
 
-        if (section?.type !== 'task') {
-            const continueActions = document.createElement('div');
-            continueActions.className = 'teach-sentence-actions';
-            const continueButton = document.createElement('button');
-            continueButton.type = 'button';
-            continueButton.className = 'teach-sentence-send continue';
-            continueButton.textContent = 'Continue';
-            continueButton.addEventListener('click', () => {
-                // Try to find and click the next button if it exists
-                const nextButton = messageEl.querySelector('.teach-next-button');
-                if (nextButton && !nextButton.disabled) {
-                    nextButton.click();
-                } else {
-                    // If no next button, try to trigger next step via custom event
-                    const event = new CustomEvent('teach-continue-next', {
-                        bubbles: true,
-                        detail: { messageEl }
-                    });
-                    messageEl.dispatchEvent(event);
-                }
-            });
-            continueActions.appendChild(continueButton);
-            container.appendChild(continueActions);
-        }
 
         contentEl.appendChild(container);
     }
