@@ -11,6 +11,7 @@ window.TeachWeekContent = (() => {
         const resolveMessageElement = deps.resolveMessageElement || (() => null);
         const appendNextButton = deps.appendNextButton || (() => {});
         const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
+        const requestTeachOutroQuestionnaire = deps.requestTeachOutroQuestionnaire || null;
         const stepProgressByWeek = deps.stepProgressByWeek || new Map();
         const TEACH_ONBOARDING_WELCOME_TEMPLATE = deps.TEACH_ONBOARDING_WELCOME_TEMPLATE;
 
@@ -29,16 +30,6 @@ window.TeachWeekContent = (() => {
         const orderedSections = [...(week.sections ?? [])].sort((a, b) => a.order - b.order);
         const hasBeforeReadingSection = orderedSections.some((section) => isBeforeReadingSection(section));
         void hasBeforeReadingSection;
-        const summaryText = 'Review the story and missions below to get ready for your tutoring session.';
-        const missionCount = week.tasks?.length ?? 0;
-        const missionLine =
-            missionCount > 0
-                ? `_${missionCount} mission${missionCount === 1 ? '' : 's'} in this episode._`
-                : '';
-        const summaryParts = [`**${week.title}**`, summaryText];
-        if (missionLine) {
-            summaryParts.push(missionLine);
-        }
         if (isFirstWeek) {
             const suspectsExerciseId = 'week1-suspects-who-is-who';
             const suspectsIndex = orderedSections.findIndex((section) => section.id === suspectsExerciseId);
@@ -78,15 +69,6 @@ window.TeachWeekContent = (() => {
             });
         }
 
-        sequence.push({
-            type: 'summary',
-            factory: () => {
-                const summaryMessage = addMessage('bot', 'Mentor', summaryParts.join('\n\n'));
-                decorateHeading(summaryMessage);
-                return summaryMessage;
-            }
-        });
-
         orderedSections.forEach((section) => {
             sequence.push({
                 type: 'section',
@@ -105,7 +87,7 @@ window.TeachWeekContent = (() => {
                     const ctaMessage = addMessage(
                         'system',
                         'Mentor',
-                        'You finished the missions. Want feedback from your AI language tutor?'
+                        'Loading end-of-episode message...'
                     );
                     if (!ctaMessage) {
                         return null;
@@ -115,6 +97,24 @@ window.TeachWeekContent = (() => {
                     const content = ctaMessage.querySelector('.message-content');
                     if (!content) {
                         return ctaMessage;
+                    }
+                    const messageText = content.querySelector('.message-text');
+                    if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
+                        requestTeachOutroQuestionnaire(week.id)
+                            .then((outroText) => {
+                                if (typeof window.marked?.parse === 'function') {
+                                    messageText.innerHTML = window.marked.parse(outroText);
+                                } else {
+                                    messageText.textContent = outroText;
+                                }
+                            })
+                            .catch(() => {
+                                messageText.textContent =
+                                    'You finished the missions. Please complete the questionnaire before the next episode.';
+                            });
+                    } else if (messageText) {
+                        messageText.textContent =
+                            'You finished the missions. Please complete the questionnaire before the next episode.';
                     }
 
                     const actions = document.createElement('div');

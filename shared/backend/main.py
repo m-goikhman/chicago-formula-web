@@ -94,7 +94,12 @@ class TeachOpenEndedResponseRequest(BaseModel):
     week_id: Optional[str] = None
     renderer: Optional[str] = None
     category: Optional[str] = None
+    writing_space: Optional[str] = None
     include_feedback: Optional[bool] = False
+
+
+class TeachOutroQuestionnaireResponse(BaseModel):
+    text: str
 
 
 def _resolve_learning_source(source: Optional[str]) -> str:
@@ -682,6 +687,7 @@ async def save_teach_open_ended_response(
     week_id = str(request.week_id or "").strip()
     renderer = str(request.renderer or "").strip()
     category = str(request.category or "").strip().lower()
+    writing_space = str(request.writing_space or "").strip().lower()
     include_feedback = bool(request.include_feedback)
 
     # Keep context in `briefly`, full participant answer in `query`.
@@ -690,6 +696,8 @@ async def save_teach_open_ended_response(
         context_bits.append(f"week={week_id}")
     if renderer:
         context_bits.append(f"renderer={renderer}")
+    if writing_space:
+        context_bits.append(f"writing_space={writing_space}")
     if prompt:
         context_bits.append(f"prompt={prompt[:200]}")
 
@@ -706,6 +714,8 @@ async def save_teach_open_ended_response(
                 participant_code,
                 cleaned_response,
                 source=TEACH_SOURCE,
+                writing_space=writing_space,
+                task_text=prompt,
             )
             tutor_feedback = str((analysis or {}).get("feedback") or "").strip()
         except Exception as error:
@@ -765,6 +775,31 @@ async def get_teach_progress_report(current_user=Depends(get_current_user)):
     logs = progress_manager.get_participant_progress(participant_code, source=TEACH_SOURCE)
     report = _build_progress_report_message(logs)
     return {"report": report}
+
+
+@app.get("/api/teach/outro-questionnaire", response_model=TeachOutroQuestionnaireResponse)
+async def get_teach_outro_questionnaire(
+    week_id: Optional[str] = None,
+    current_user=Depends(get_current_user),
+):
+    """Return the EP1 outro questionnaire text with Teach-specific dynamic links."""
+    participant_code = current_user["participant_code"]
+    week_number = 1
+    if week_id:
+        normalized = str(week_id).strip().lower()
+        if normalized.startswith("week"):
+            normalized = normalized[4:]
+        try:
+            week_number = int(normalized)
+        except ValueError:
+            week_number = 1
+    week_number = max(1, min(4, week_number))
+
+    from .game_handlers import build_weekly_outro_questionnaire_text
+
+    pseudo_state = {"questionnaire_week": week_number, "current_stage": week_number}
+    text = build_weekly_outro_questionnaire_text(participant_code, pseudo_state)
+    return TeachOutroQuestionnaireResponse(text=text)
 
 
 # Multi-stage game endpoints

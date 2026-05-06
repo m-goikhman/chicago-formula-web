@@ -11,7 +11,7 @@ Output schema:
 Rules:
 - "feedback" must follow this structure:
   1. Start with something genuine that works well in the writing (a specific word, phrase, or idea — not generic praise).
-  2. Point out what needs to be improved, with a brief explanation of why.
+  2. Point out grammar and/or vocabulary errors.
   3. End with an encouraging closing line.
 - Write in simple, friendly English. Avoid technical grammar terms.
 - In the field "briefly" summarize errors only as you would do with a colleague teacher.

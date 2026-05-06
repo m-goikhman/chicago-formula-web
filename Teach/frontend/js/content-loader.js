@@ -389,6 +389,7 @@ const TeachContentLoader = (() => {
             ...fallbackWeek,
             id: manifest.id || fallbackWeek.id,
             title: manifest.title || fallbackWeek.title,
+            summaryText: manifest.summaryText || '',
             order: manifest.order ?? fallbackWeek.order ?? 0,
             source: manifest.source || fallbackWeek.source,
             sections

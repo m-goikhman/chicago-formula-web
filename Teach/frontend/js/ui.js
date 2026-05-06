@@ -259,6 +259,36 @@ const TeachUI = (() => {
         return summary;
     }
 
+    async function requestTeachOutroQuestionnaire(weekId) {
+        if (!apiClient || !TeachAuth || typeof TeachAuth.callWithSessionRecovery !== 'function') {
+            throw new Error('Outro is unavailable right now.');
+        }
+
+        const normalizedWeekId = String(weekId || '').trim() || 'week1';
+        const queryWeek = encodeURIComponent(normalizedWeekId);
+        const executeRequest = async () => apiClient.get(`/api/teach/outro-questionnaire?week_id=${queryWeek}`, {
+            token: TeachAuth.getToken?.() || ''
+        });
+
+        const { response, data, authFailureHandled } = await TeachAuth.callWithSessionRecovery(executeRequest, {
+            authFailureMessage: 'Could not load outro right now.'
+        });
+
+        if (authFailureHandled) {
+            throw new Error('Could not load outro right now.');
+        }
+        if (!response?.ok) {
+            const detail = data && (data.detail || data.error || data.message);
+            throw new Error(detail || 'Could not load outro right now.');
+        }
+
+        const text = String(data?.text || '').trim();
+        if (!text) {
+            throw new Error('Could not load outro right now.');
+        }
+        return text;
+    }
+
     function parseChoiceRevealConfig(rawContent = '') {
         const source = String(rawContent || '');
         const match = source.match(/\[button_reveal\]\s*([\s\S]*)$/i);
@@ -488,6 +518,7 @@ const TeachUI = (() => {
                 resolveMessageElement,
                 appendNextButton,
                 requestTutorFinalSummary,
+                requestTeachOutroQuestionnaire,
                 stepProgressByWeek,
                 TEACH_ONBOARDING_WELCOME_TEMPLATE
             }

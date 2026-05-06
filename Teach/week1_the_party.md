@@ -390,31 +390,19 @@ Answer in complete sentences:
 
 Answer each question in 2–4 sentences.
 
-**1.** What do you think is on the flash drive? Give your best theory and explain why.
+**1.** Nina has the flash drive. She is a police officer and the drive is evidence in her case. But the drive belongs to Alex — it is his private property. Should she open it? What do you think?
 
 _______________________________________________
 
 _______________________________________________
 
-**2.** Does Nina have the right to look at what's on the drive? Or should she need a warrant first?
+**2.** Alex created the formula. Is it okay to make money from it, never explain it to Pauline, and never share it with anyone? Or should he publish a scientific paper and tell everyone about the formula?
 
 _______________________________________________
 
 _______________________________________________
 
-**3.** The formula belongs to Alex — but Pauline has been using it for trading for two years. Who do you think really owns it?
-
-_______________________________________________
-
-_______________________________________________
-
-**4.** Pauline came to the apartment, argued with Alex, and left before the attack. Should she face any consequences? Why or why not?
-
-_______________________________________________
-
-_______________________________________________
-
-**5.** Do you think Tim deserves punishment even though he says he didn't mean to hurt Alex badly?
+**3.** Tim attacked Alex because he needed money to pay back Ronnie. Is Ronnie also responsible for what happened, even though he did not know about the formula? Or is Tim the only one to blame?
 
 _______________________________________________
 

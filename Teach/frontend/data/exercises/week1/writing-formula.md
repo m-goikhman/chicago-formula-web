@@ -1,0 +1,2 @@
+Alex created the formula. Is it okay to make money from it, never explain it to Pauline, and never share it with anyone? Or should he publish a scientific paper and tell everyone about the formula? Or at least explain it to Pauline?
+[medium_writing_space]

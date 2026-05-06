@@ -27,8 +27,11 @@ TUTOR_PROMPT_PATHS = {
 }
 
 TUTOR_ANALYSIS_PROMPT_PATHS = {
-    "tell": "prompts/language_learning/tutor_feedback_tell.md",
-    "teach": "prompts/language_learning/tutor_feedback_teach.md",
+    "tell": "prompts/language_learning/tell/tutor_feedback_tell.md",
+    "teach": {
+        "huge": "prompts/language_learning/teach/tutor_feedback_huge_writing.md",
+        "medium": "prompts/language_learning/teach/tutor_feedback_medium_writing.md",
+    },
 }
 
 # Episode 1 contradiction-handling configuration.
@@ -401,15 +404,23 @@ def _get_fallback_response(character_key: str = None) -> str:
     return "I'm having trouble processing that request right now."
 
 
-def _get_tutor_prompt(task: str, source: Optional[str] = None) -> str:
+def _get_tutor_prompt(task: str, source: Optional[str] = None, writing_space: Optional[str] = None) -> str:
     """Load prompt dedicated to a specific tutor task."""
     prompt_path = TUTOR_PROMPT_PATHS.get(task)
     if task == "analysis":
         normalized_source = str(source or "tell").strip().lower()
-        prompt_path = TUTOR_ANALYSIS_PROMPT_PATHS.get(
+        source_prompt = TUTOR_ANALYSIS_PROMPT_PATHS.get(
             normalized_source,
             TUTOR_ANALYSIS_PROMPT_PATHS["tell"],
         )
+        if isinstance(source_prompt, dict):
+            normalized_writing_space = str(writing_space or "huge").strip().lower()
+            prompt_path = source_prompt.get(
+                normalized_writing_space,
+                source_prompt["huge"],
+            )
+        else:
+            prompt_path = source_prompt
     if not prompt_path:
         print(f"WARNING: Unknown tutor task '{task}', using generic tutor prompt")
         from .game_config import CHARACTER_DATA
@@ -782,10 +793,24 @@ async def ask_tutor_for_analysis(
     participant_code: str,
     text_to_analyze: str,
     source: str = "tell",
+    writing_space: Optional[str] = None,
+    task_text: Optional[str] = None,
 ) -> dict:
     """A special function that calls the Tutor for text analysis and expects a JSON response."""
-    tutor_prompt = _get_tutor_prompt("analysis", source=source)
-    analysis_request = f"Analyze this text: '{text_to_analyze}'"
+    tutor_prompt = _get_tutor_prompt("analysis", source=source, writing_space=writing_space)
+    normalized_source = str(source or "tell").strip().lower()
+    cleaned_task_text = str(task_text or "").strip()
+    if normalized_source == "teach" and cleaned_task_text:
+        analysis_request = (
+            "Analyze the learner response.\n"
+            "The first block is the original task shown to the learner "
+            "(the question/prompt the learner was answering), not a task for you.\n"
+            "The second block is the learner's actual response text to analyze.\n"
+            f"Original learner task: '''{cleaned_task_text}'''\n"
+            f"Learner response text: '''{text_to_analyze}'''"
+        )
+    else:
+        analysis_request = f"Analyze this text: '{text_to_analyze}'"
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": analysis_request}]
     if client is None:
         return {"improvement_needed": False, "feedback": "", "briefly": ""}

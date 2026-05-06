@@ -224,6 +224,32 @@ class HighlightManager {
         return true;
     }
 
+    isEditableElement(node) {
+        if (!node || typeof node.closest !== 'function') {
+            return false;
+        }
+
+        return Boolean(node.closest('textarea, input, [contenteditable="true"], [contenteditable=""]'));
+    }
+
+    isRangeInsideEditable(range) {
+        if (!range) {
+            return false;
+        }
+
+        const startContainer = range.startContainer;
+        const endContainer = range.endContainer;
+
+        const startElement = startContainer?.nodeType === Node.TEXT_NODE
+            ? startContainer.parentElement
+            : startContainer;
+        const endElement = endContainer?.nodeType === Node.TEXT_NODE
+            ? endContainer.parentElement
+            : endContainer;
+
+        return this.isEditableElement(startElement) || this.isEditableElement(endElement);
+    }
+
     processSelection(eventType, eventTarget = null) {
         try {
             let selectionDetails = this.getActiveSelectionDetails();
@@ -243,6 +269,11 @@ class HighlightManager {
             }
 
             const { range, selectedText, messageText } = selectionDetails;
+
+            // Never hijack native selection behavior in editable controls.
+            if (this.isRangeInsideEditable(range) || this.isEditableElement(eventTarget)) {
+                return;
+            }
 
             if (eventTarget && typeof eventTarget.closest === 'function') {
                 const clickedHighlight = eventTarget.closest('.highlight');

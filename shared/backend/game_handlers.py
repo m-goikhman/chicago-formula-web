@@ -3357,7 +3357,8 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     return int(state.get("current_stage", 1)) == 1 and bool(state.get("game_completed", False))
 
 
-def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
+    """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", 1))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
     calendar_link = _build_next_episode_calendar_link(state)
@@ -3365,7 +3366,11 @@ def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict
         text = text.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, personalized_link)
     else:
         text = text.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalized_link)
-    text = text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
+    return text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
+
+
+def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+    text = build_weekly_outro_questionnaire_text(participant_code, state)
     return {
         "type": "system",
         "content": text,

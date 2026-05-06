@@ -44,11 +44,21 @@
 
     function getSectionMeta(textarea) {
         const sectionMessage = textarea.closest('.teach-section-message');
+        const className = String(textarea?.className || '');
+        let writingSpace = '';
+        if (className.includes('teach-blank-textarea-huge')) {
+            writingSpace = 'huge';
+        } else if (className.includes('teach-blank-textarea-medium')) {
+            writingSpace = 'medium';
+        } else if (className.includes('teach-pick-explain-why-textarea')) {
+            writingSpace = 'medium';
+        }
         return {
             sectionMessage,
             sectionId: sectionMessage?.dataset?.sectionId || 'unknown-section',
             renderer: sectionMessage?.dataset?.renderer || '',
-            category: String(sectionMessage?.dataset?.sectionCategory || '').trim().toLowerCase()
+            category: String(sectionMessage?.dataset?.sectionCategory || '').trim().toLowerCase(),
+            writingSpace
         };
     }
 
@@ -139,7 +149,7 @@
         const trigger = String(options.trigger || '').trim();
         const forceFeedback = Boolean(options.forceFeedback);
         const showFeedback = Boolean(options.showFeedback);
-        const { sectionId, renderer, category } = getSectionMeta(textarea);
+        const { sectionId, renderer, category, writingSpace } = getSectionMeta(textarea);
         const includeFeedback = (
             forceFeedback
             || trigger === 'feedback_button'
@@ -172,6 +182,7 @@
                     week_id: weekId || null,
                     renderer: renderer || null,
                     category: category || null,
+                    writing_space: writingSpace || null,
                     include_feedback: includeFeedback
                 },
                 { token }
