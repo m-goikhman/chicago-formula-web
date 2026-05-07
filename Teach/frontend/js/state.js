@@ -1,13 +1,15 @@
 const TeachState = (() => {
     const STORAGE_KEY = window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY;
     const EPISODE_COMPLETION_THRESHOLD = Number(window.TEACH_CONFIG?.TEACH_EPISODE_COMPLETION_THRESHOLD || 0.75);
+    const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
     const EXCLUDED_RENDERERS = new Set(window.TEACH_CONFIG?.TEACH_EXERCISE_PROGRESS_EXCLUDED_RENDERERS || []);
     let weeks = [];
     let currentWeekId = null;
     let state = {
         notes: {},
         exerciseStatusByWeek: {},
-        currentWeekId: null
+        currentWeekId: null,
+        firstLoginAt: null
     };
 
     function emitProgressEvent(detail = {}) {
@@ -42,7 +44,8 @@ const TeachState = (() => {
                 JSON.stringify({
                     notes: state.notes,
                     exerciseStatusByWeek: state.exerciseStatusByWeek,
-                    currentWeekId
+                    currentWeekId,
+                    firstLoginAt: state.firstLoginAt
                 })
             );
         } catch (error) {
@@ -61,7 +64,8 @@ const TeachState = (() => {
         const stored = loadFromStorage();
         state = {
             notes: stored?.notes ?? {},
-            exerciseStatusByWeek: stored?.exerciseStatusByWeek ?? {}
+            exerciseStatusByWeek: stored?.exerciseStatusByWeek ?? {},
+            firstLoginAt: Number(stored?.firstLoginAt) || Date.now()
         };
         currentWeekId = stored?.currentWeekId || weeks[0]?.id || null;
 
@@ -190,21 +194,36 @@ const TeachState = (() => {
     }
 
     function getWeekAvailability() {
+        const nowMs = Date.now();
+        const firstLoginAtMs = Number(state.firstLoginAt) || nowMs;
         const availability = new Map();
         weeks.forEach((week, index) => {
             if (index === 0) {
                 availability.set(week.id, {
                     locked: false,
-                    status: 'available'
+                    status: 'available',
+                    failedConditions: []
                 });
                 return;
             }
             const previousWeek = weeks[index - 1];
             const prevSummary = getWeekExerciseSummary(previousWeek.id);
-            const locked = !prevSummary.isUnlocked;
+            const requiredUnlockAtMs = firstLoginAtMs + (index * WEEK_IN_MS);
+            const timeUnlocked = nowMs >= requiredUnlockAtMs;
+            const progressUnlocked = prevSummary.isUnlocked;
+            const failedConditions = [];
+            if (!progressUnlocked) {
+                failedConditions.push('progress');
+            }
+            if (!timeUnlocked) {
+                failedConditions.push('time');
+            }
+            const locked = failedConditions.length > 0;
             availability.set(week.id, {
                 locked,
-                status: locked ? 'locked' : 'available'
+                status: locked ? 'locked' : 'available',
+                failedConditions,
+                unlockAt: new Date(requiredUnlockAtMs).toISOString()
             });
         });
         return availability;

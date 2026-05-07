@@ -1305,6 +1305,10 @@
     color: rgba(26, 85, 99, 0.82);
 }
 
+.message.tutor-message.teach-final-summary-cta .message-content {
+    background: linear-gradient(180deg, #ecfbf1 0%, #d7f2e0 100%);
+}
+
 .teach-episode-completion-summary {
     margin-top: 10px;
     padding: 10px 12px;

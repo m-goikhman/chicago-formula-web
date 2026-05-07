@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 import logging
+import json
 import uvicorn
 import os
 import time
@@ -117,7 +118,7 @@ def _build_fallback_writing_feedback(response_text: str) -> str:
         return "Good start. Add a bit more detail so your idea is clearer."
     if "." not in text and "!" not in text and "?" not in text:
         return "Nice idea. Add punctuation so your writing reads as a complete sentence."
-    return "Good job. Your writing is clear and complete."
+    return "Good job! Your writing is clear and complete."
 
 
 def _build_progress_report_message(logs: dict) -> str:
@@ -125,7 +126,10 @@ def _build_progress_report_message(logs: dict) -> str:
     writing_feedback = logs.get("writing_feedback") or []
     meaningful_feedback = [
         entry for entry in writing_feedback
-        if not str(entry.get("feedback") or "").startswith("teach_open_ended_response::")
+        if (
+            not str(entry.get("feedback") or "").startswith("teach_open_ended_response::")
+            and entry.get("improvement_needed") is not False
+        )
     ]
 
     if not words_learned and not meaningful_feedback:
@@ -690,18 +694,9 @@ async def save_teach_open_ended_response(
     writing_space = str(request.writing_space or "").strip().lower()
     include_feedback = bool(request.include_feedback)
 
-    # Keep context in `briefly`, full participant answer in `query`.
-    context_bits = [f"section={section_id}"]
-    if week_id:
-        context_bits.append(f"week={week_id}")
-    if renderer:
-        context_bits.append(f"renderer={renderer}")
-    if writing_space:
-        context_bits.append(f"writing_space={writing_space}")
-    if prompt:
-        context_bits.append(f"prompt={prompt[:200]}")
-
     tutor_feedback = ""
+    tutor_briefly = ""
+    improvement_needed = None
     passed = False
     pass_reason = "pending_tutor"
     should_generate_feedback = (
@@ -711,23 +706,46 @@ async def save_teach_open_ended_response(
     )
     if should_generate_feedback:
         try:
-            from .ai_services import ask_tutor_for_analysis
-            analysis = await ask_tutor_for_analysis(
-                participant_code,
-                cleaned_response,
-                source=TEACH_SOURCE,
-                writing_space=writing_space,
-                task_text=prompt,
-            )
-            passed = bool((analysis or {}).get("passed"))
-            tutor_feedback = str((analysis or {}).get("feedback") or "").strip()
+            from .ai_services import ask_teach_corrector, ask_teach_deliver_feedback
+
+            detected_errors = await ask_teach_corrector(participant_code, cleaned_response)
+            try:
+                log_message(
+                    "teach_corrector_output",
+                    json.dumps(
+                        {
+                            "section_id": section_id,
+                            "response_text": cleaned_response,
+                            "errors_count": len(detected_errors),
+                            "errors": detected_errors,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    participant_code,
+                    source=TEACH_SOURCE,
+                )
+            except Exception:
+                # Logging must never break feedback flow.
+                pass
+            error_count = len(detected_errors)
+            passed = 0 <= error_count <= 3
+            improvement_needed = error_count > 0
+
+            if improvement_needed:
+                tutor_feedback = await ask_teach_deliver_feedback(participant_code, detected_errors)
+                tutor_briefly = json.dumps(detected_errors, ensure_ascii=False)
+            else:
+                tutor_feedback = _build_fallback_writing_feedback(cleaned_response)
+                tutor_briefly = ""
         except Exception as error:
             logger.warning("Teach writing feedback generation failed: %s", error)
             tutor_feedback = ""
-            passed = False
+            tutor_briefly = ""
+            improvement_needed = False
+            passed = True
         if not tutor_feedback:
             tutor_feedback = _build_fallback_writing_feedback(cleaned_response)
-        pass_reason = "tutor_passed" if passed else "tutor_failed"
+        pass_reason = "error_threshold_passed" if passed else "error_threshold_failed"
     elif category == "writing":
         pass_reason = "too_short" if len(cleaned_response) < 20 else "pending_tutor"
 
@@ -736,7 +754,8 @@ async def save_teach_open_ended_response(
         participant_code=participant_code,
         user_text=cleaned_response,
         feedback=stored_feedback,
-        briefly=" | ".join(context_bits),
+        briefly=tutor_briefly,
+        improvement_needed=improvement_needed,
         source=TEACH_SOURCE,
         deduplicate_by_query=False,
     )
@@ -767,7 +786,11 @@ async def get_teach_final_summary(
         logger.warning("Failed to load Teach progress for final summary: %s", error)
         logs = {"words_learned": [], "writing_feedback": []}
 
-    summary_data = await ask_tutor_for_final_summary(participant_code, logs)
+    summary_data = await ask_tutor_for_final_summary(
+        participant_code,
+        logs,
+        source=TEACH_SOURCE,
+    )
     summary = str((summary_data or {}).get("summary") or "").strip()
     if not summary:
         summary = (

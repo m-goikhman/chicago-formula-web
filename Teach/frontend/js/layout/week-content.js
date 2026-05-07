@@ -88,7 +88,11 @@ window.TeachWeekContent = (() => {
                     const ctaMessage = addMessage(
                         'system',
                         'Tutor',
-                        'Loading end-of-episode message...'
+                        'Loading end-of-episode message...',
+                        null,
+                        null,
+                        false,
+                        { messageClass: 'tutor-message' }
                     );
                     if (!ctaMessage) {
                         return null;
@@ -100,8 +104,6 @@ window.TeachWeekContent = (() => {
                         return ctaMessage;
                     }
                     const messageText = content.querySelector('.message-text');
-                    const outroLeadText =
-                        'You finished the missions. Please complete the questionnaire before the next episode.';
                     let completionInfo = null;
                     const updateCompletionInfo = () => {
                         const summary = getWeekExerciseSummary(week.id);
@@ -136,13 +138,12 @@ window.TeachWeekContent = (() => {
                             return;
                         }
                         const normalizedExtra = String(extraText || '').trim();
-                        const fullText = normalizedExtra
-                            ? `${outroLeadText}\n\n${normalizedExtra}`
-                            : outroLeadText;
                         if (typeof window.marked?.parse === 'function') {
-                            messageText.innerHTML = window.marked.parse(fullText);
+                            messageText.innerHTML = normalizedExtra
+                                ? window.marked.parse(normalizedExtra, { breaks: true })
+                                : '';
                         } else {
-                            messageText.textContent = fullText;
+                            messageText.textContent = normalizedExtra;
                         }
                         updateCompletionInfo();
                     };

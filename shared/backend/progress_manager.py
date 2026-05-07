@@ -1,7 +1,7 @@
 import json
 import datetime
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from google.cloud import storage
 from .secrets import GCS_BUCKET_NAME
 import pytz
@@ -145,6 +145,7 @@ class ProgressManager:
         user_text: str,
         feedback: str,
         briefly: str = "",
+        improvement_needed: Optional[bool] = None,
         source: str = WEB_SOURCE,
         deduplicate_by_query: bool = True,
     ) -> bool:
@@ -158,6 +159,8 @@ class ProgressManager:
                 "feedback": feedback,
                 "briefly": briefly,
             }
+            if improvement_needed is not None:
+                new_entry["improvement_needed"] = bool(improvement_needed)
             if (
                 not deduplicate_by_query
                 or not any(entry.get('query') == user_text for entry in progress_data.get("writing_feedback", []))

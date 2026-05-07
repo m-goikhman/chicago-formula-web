@@ -98,9 +98,10 @@
         window.alert(
             [
                 'How to play:',
-                '1. Pick an episode from the dropdown under the title.',
-                '2. Read sections and complete tasks step-by-step.',
-                '3. Use Continue to move through each section in order.',
+                'Read the story and complete the tasks below.',
+                '🔍 Not sure about a word?Select it in the text to get an explanation.',
+                '✍️ Writing tasks can be done in any order — skip one and come back to it later, or update your answer whenever you like.',
+                '💬 After writing, you can get tutor feedback — or just press "Continue" for overall feedback at the end.',
             ].join('\n')
         );
     }
@@ -117,9 +118,6 @@
     function handleHorizontalMenuAction(action) {
         TeachUI.closeMenu();
         switch (action) {
-            case 'language_menu_difficulty':
-                window.alert('Language Level controls are not yet available in Teach mode.');
-                break;
             case 'language_menu_progress':
                 showProgressReport();
                 break;
@@ -164,8 +162,18 @@
 
     function handleWeekSelect(weekId) {
         const availability = TeachState.getWeekAvailability();
-        if (availability.get(weekId)?.locked) {
-            window.alert('This episode is still locked. Complete at least 75% of the previous episode exercises first.');
+        const weekAvailability = availability.get(weekId);
+        if (weekAvailability?.locked) {
+            const failedConditions = new Set(weekAvailability.failedConditions || []);
+            const reasons = [];
+            if (failedConditions.has('progress')) {
+                reasons.push('complete at least 75% of the previous episode exercises');
+            }
+            if (failedConditions.has('time')) {
+                reasons.push('wait until one week has passed since your first login');
+            }
+            const reasonText = reasons.length ? reasons.join(' and ') : 'meet the unlock requirements';
+            window.alert(`This episode is still locked. To unlock it, ${reasonText}.`);
             return;
         }
         TeachState.setCurrentWeek(weekId);

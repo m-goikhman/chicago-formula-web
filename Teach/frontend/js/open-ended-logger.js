@@ -11,6 +11,7 @@
 
     const lastSentValue = new WeakMap();
     const lastFeedbackValue = new WeakMap();
+    const MIN_TUTOR_FEEDBACK_LENGTH = 20;
     const TeachStateRef = (() => {
         if (global.TeachState) {
             return global.TeachState;
@@ -210,7 +211,9 @@
         const { sectionId, renderer, category, writingSpace } = getSectionMeta(inputField);
         const weekId = typeof getWeekId === 'function' ? getWeekId() : '';
         const responseLength = response.length;
-        if (category === 'writing' && responseLength < 20) {
+        const isTooShortForTutorFeedback =
+            category === 'writing' && responseLength < MIN_TUTOR_FEEDBACK_LENGTH;
+        if (isTooShortForTutorFeedback) {
             if (weekId && sectionId) {
                 TeachStateRef?.setExerciseEvaluation?.(weekId, sectionId, {
                     status: 'pending_short',
@@ -219,13 +222,16 @@
             }
             updatePassIndicator(inputField, 'pending_short');
         }
+        if (showFeedback && isTooShortForTutorFeedback) {
+            updateFeedback(inputField, 'The text is too short, write a bit more.');
+        }
         const includeFeedback = (
             forceFeedback
             || trigger === 'feedback_button'
             || trigger === 'continue'
         ) && (
             category === 'writing'
-            && responseLength >= 20
+            && responseLength >= MIN_TUTOR_FEEDBACK_LENGTH
             && (
                 trigger === 'feedback_button'
                 || 
@@ -278,7 +284,7 @@
                 const tutorEvaluatedByReason =
                     passReason === 'tutor_passed' || passReason === 'tutor_failed';
                 const tutorEvaluatedByPayload =
-                    hasPassedFlag && includeFeedback && responseLength >= 20;
+                    hasPassedFlag && includeFeedback && responseLength >= MIN_TUTOR_FEEDBACK_LENGTH;
                 const tutorEvaluated = tutorEvaluatedByReason || tutorEvaluatedByPayload;
                 if (weekId && sectionId && category === 'writing') {
                     if (tutorEvaluated) {
@@ -294,7 +300,7 @@
                             status: resolvedStatus,
                             source: 'tutor'
                         });
-                    } else if (responseLength < 20) {
+                    } else if (responseLength < MIN_TUTOR_FEEDBACK_LENGTH) {
                         updatePassIndicator(inputField, 'pending_short');
                         console.warn('[TeachOpenEndedLogger] Status skipped (too short)', {
                             sectionId,

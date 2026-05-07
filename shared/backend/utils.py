@@ -9,6 +9,12 @@ import pytz
 storage_client = None
 bucket = None
 TELL_SOURCE = "tell"
+TEACH_SOURCE = "teach"
+
+
+def _normalize_log_source(source: Optional[str]) -> str:
+    normalized = str(source or "").strip().lower()
+    return TEACH_SOURCE if normalized == TEACH_SOURCE else TELL_SOURCE
 
 def _get_bucket():
     """Lazy initialization of storage client and bucket."""
@@ -24,7 +30,7 @@ def _get_bucket():
     return bucket
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def log_message(role: str, content: str, participant_code: str):
+def log_message(role: str, content: str, participant_code: str, source: Optional[str] = None):
     """Write a message to participant chat history in Cloud Storage."""
     bucket = _get_bucket()
     if not bucket:
@@ -36,7 +42,8 @@ def log_message(role: str, content: str, participant_code: str):
         # This ensures complete data capture for both research and regular logs
         sanitized_content = content
 
-        blob_name = f"participant_logs/{TELL_SOURCE}/chat_history/{participant_code}_chat_history.txt"
+        source_key = _normalize_log_source(source)
+        blob_name = f"participant_logs/{source_key}/chat_history/{participant_code}_chat_history.txt"
         blob = bucket.blob(blob_name)
 
         try:
@@ -56,7 +63,7 @@ def log_message(role: str, content: str, participant_code: str):
         print(f"[ERROR] Failed to write log to Cloud Storage for participant {participant_code}: {e}")
 
 
-def clear_chat_history_log(participant_code: str) -> bool:
+def clear_chat_history_log(participant_code: str, source: Optional[str] = None) -> bool:
     """Delete a participant chat history log from Google Cloud Storage."""
     bucket = _get_bucket()
     if not bucket:
@@ -64,7 +71,8 @@ def clear_chat_history_log(participant_code: str) -> bool:
         return False
 
     try:
-        blob_name = f"participant_logs/{TELL_SOURCE}/chat_history/{participant_code}_chat_history.txt"
+        source_key = _normalize_log_source(source)
+        blob_name = f"participant_logs/{source_key}/chat_history/{participant_code}_chat_history.txt"
 
         blob = bucket.blob(blob_name)
         if blob.exists():

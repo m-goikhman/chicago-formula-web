@@ -28,11 +28,14 @@ TUTOR_PROMPT_PATHS = {
 
 TUTOR_ANALYSIS_PROMPT_PATHS = {
     "tell": "prompts/language_learning/tell/tutor_feedback_tell.md",
-    "teach": {
-        "huge": "prompts/language_learning/teach/tutor_feedback_huge_writing.md",
-        "medium": "prompts/language_learning/teach/tutor_feedback_medium_writing.md",
-    },
 }
+TUTOR_FINAL_SUMMARY_PROMPT_PATHS = {
+    "tell": "prompts/language_learning/tutor_final_summary.md",
+    "teach": "prompts/language_learning/teach/deliever_final_feedback.md",
+}
+
+TEACH_CORRECTOR_PROMPT_PATH = "prompts/language_learning/teach/corrector.md"
+TEACH_DELIVER_FEEDBACK_PROMPT_PATH = "prompts/language_learning/teach/deliever_feedback.md"
 
 # Episode 1 contradiction-handling configuration.
 # We keep this structured in code so runtime checks rely on deterministic fact slots.
@@ -404,7 +407,7 @@ def _get_fallback_response(character_key: str = None) -> str:
     return "I'm having trouble processing that request right now."
 
 
-def _get_tutor_prompt(task: str, source: Optional[str] = None, writing_space: Optional[str] = None) -> str:
+def _get_tutor_prompt(task: str, source: Optional[str] = None) -> str:
     """Load prompt dedicated to a specific tutor task."""
     prompt_path = TUTOR_PROMPT_PATHS.get(task)
     if task == "analysis":
@@ -413,14 +416,7 @@ def _get_tutor_prompt(task: str, source: Optional[str] = None, writing_space: Op
             normalized_source,
             TUTOR_ANALYSIS_PROMPT_PATHS["tell"],
         )
-        if isinstance(source_prompt, dict):
-            normalized_writing_space = str(writing_space or "huge").strip().lower()
-            prompt_path = source_prompt.get(
-                normalized_writing_space,
-                source_prompt["huge"],
-            )
-        else:
-            prompt_path = source_prompt
+        prompt_path = source_prompt
     if not prompt_path:
         print(f"WARNING: Unknown tutor task '{task}', using generic tutor prompt")
         from .game_config import CHARACTER_DATA
@@ -459,6 +455,37 @@ def _parse_director_json_payload(response_text: str) -> dict:
             return parsed
 
     raise json.JSONDecodeError("Director response does not contain a valid JSON object", candidate, 0)
+
+
+def _parse_json_array_payload(response_text: str) -> list:
+    """Parse JSON array with tolerance for fenced code blocks or wrappers."""
+    candidate = str(response_text or "").strip()
+    if not candidate:
+        raise json.JSONDecodeError("Empty response", candidate, 0)
+
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", candidate, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        fenced_json = fence_match.group(1).strip()
+        parsed = json.loads(fenced_json)
+        if isinstance(parsed, list):
+            return parsed
+
+    first_bracket = candidate.find("[")
+    last_bracket = candidate.rfind("]")
+    if first_bracket != -1 and last_bracket != -1 and last_bracket > first_bracket:
+        sliced = candidate[first_bracket:last_bracket + 1].strip()
+        parsed = json.loads(sliced)
+        if isinstance(parsed, list):
+            return parsed
+
+    raise json.JSONDecodeError("Response does not contain a valid JSON array", candidate, 0)
 
 def _resolve_history_key(participant_code: str) -> str:
     """Resolve in-memory history key for a participant and current episode."""
@@ -793,25 +820,29 @@ async def ask_tutor_for_analysis(
     participant_code: str,
     text_to_analyze: str,
     source: str = "tell",
-    writing_space: Optional[str] = None,
-    task_text: Optional[str] = None,
 ) -> dict:
     """A special function that calls the Tutor for text analysis and expects a JSON response."""
-    tutor_prompt = _get_tutor_prompt("analysis", source=source, writing_space=writing_space)
+    tutor_prompt = _get_tutor_prompt("analysis", source=source)
     normalized_source = str(source or "tell").strip().lower()
-    cleaned_task_text = str(task_text or "").strip()
-    if normalized_source == "teach" and cleaned_task_text:
-        analysis_request = (
-            "Analyze the learner response.\n"
-            "The first block is the original task shown to the learner "
-            "(the question/prompt the learner was answering), not a task for you.\n"
-            "The second block is the learner's actual response text to analyze.\n"
-            f"Original learner task: '''{cleaned_task_text}'''\n"
-            f"Learner response text: '''{text_to_analyze}'''"
-        )
-    else:
-        analysis_request = f"Analyze this text: '{text_to_analyze}'"
+    analysis_request = f"Analyze this text: '{text_to_analyze}'"
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": analysis_request}]
+    try:
+        log_message(
+            "tutor_analysis_input",
+            json.dumps(
+                {
+                    "source": normalized_source,
+                    "text_to_analyze": text_to_analyze,
+                    "analysis_request": analysis_request,
+                    "messages": messages,
+                },
+                ensure_ascii=False,
+            ),
+            participant_code,
+        )
+    except Exception:
+        # Logging must never break tutor flow.
+        pass
     if client is None:
         return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
     try:
@@ -834,6 +865,73 @@ async def ask_tutor_for_analysis(
     except (json.JSONDecodeError, Exception) as e:
         log_message("tutor_error", f"Could not parse tutor analysis JSON: {e}", participant_code)
         return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
+
+
+async def ask_teach_corrector(participant_code: str, text_to_analyze: str) -> list:
+    """Run Teach corrector prompt and return normalized list of errors."""
+    prompt = load_system_prompt(TEACH_CORRECTOR_PROMPT_PATH)
+    cleaned_text = str(text_to_analyze or "").strip()
+    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": cleaned_text}]
+    if client is None:
+        return []
+    try:
+        chat_completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.2,
+        )
+        response_text = chat_completion.choices[0].message.content
+        is_valid, validated_response = validate_ai_response(response_text)
+        if not is_valid:
+            log_message("teach_corrector_validation_failed", f"Corrupted response: {response_text[:200]}...", participant_code)
+            return []
+
+        parsed = _parse_json_array_payload(validated_response)
+        normalized_errors = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            fragment = str(item.get("fragment") or "").strip()
+            explanation = str(item.get("explanation") or "").strip()
+            suggestion = str(item.get("suggestion") or "").strip()
+            if not (fragment or explanation or suggestion):
+                continue
+            normalized_errors.append(
+                {
+                    "fragment": fragment,
+                    "explanation": explanation,
+                    "suggestion": suggestion,
+                }
+            )
+        return normalized_errors
+    except Exception as e:
+        log_message("teach_corrector_error", f"Could not parse corrector response: {e}", participant_code)
+        return []
+
+
+async def ask_teach_deliver_feedback(participant_code: str, errors: list) -> str:
+    """Run Teach feedback delivery prompt based on error list."""
+    prompt = load_system_prompt(TEACH_DELIVER_FEEDBACK_PROMPT_PATH)
+    safe_errors = errors if isinstance(errors, list) else []
+    user_payload = json.dumps(safe_errors, ensure_ascii=False)
+    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": user_payload}]
+    if client is None:
+        return ""
+    try:
+        chat_completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            temperature=0.5,
+        )
+        response_text = chat_completion.choices[0].message.content
+        is_valid, validated_response = validate_ai_response(response_text)
+        if not is_valid:
+            log_message("teach_deliver_feedback_validation_failed", f"Corrupted response: {response_text[:200]}...", participant_code)
+            return ""
+        return str(validated_response or "").strip()
+    except Exception as e:
+        log_message("teach_deliver_feedback_error", f"Failed to generate deliver feedback: {e}", participant_code)
+        return ""
 
 async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str, original_message: str = "") -> dict:
     """A special function that calls the Tutor for an explanation and expects a JSON response."""
@@ -930,7 +1028,11 @@ async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str,
         log_message("tutor_error", f"Could not parse tutor explanation JSON: {e}", participant_code)
         return {}
 
-async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict) -> dict:
+async def ask_tutor_for_final_summary(
+    participant_code: str,
+    progress_data: dict,
+    source: str = "tell",
+) -> dict:
     """A special function that calls the Tutor for final learning summary and expects plain text."""
 
     # Prepare summary of user's progress
@@ -952,7 +1054,12 @@ async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict
     if not (writing_feedback and words_learned):
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
 
-    tutor_prompt = _get_tutor_prompt("final_summary")
+    normalized_source = str(source or "tell").strip().lower()
+    summary_prompt_path = TUTOR_FINAL_SUMMARY_PROMPT_PATHS.get(
+        normalized_source,
+        TUTOR_FINAL_SUMMARY_PROMPT_PATHS["tell"],
+    )
+    tutor_prompt = load_system_prompt(summary_prompt_path)
     summary_request = f"Generate final learning summary. User learned {len(words_learned)} words"
 
     summary_request += f" (words: {', '.join([entry['query'] for entry in words_learned[:5]])}{'...' if len(words_learned) > 5 else ''})"
@@ -973,6 +1080,25 @@ async def ask_tutor_for_final_summary(participant_code: str, progress_data: dict
     summary_request += " Please provide a warm summary using the good-areas to improve-good structure."
 
     messages = [{"role": "system", "content": tutor_prompt}, {"role": "user", "content": summary_request}]
+    try:
+        log_message(
+            "tutor_final_summary_input",
+            json.dumps(
+                {
+                    "words_learned_count": len(words_learned),
+                    "writing_feedback_count": len(writing_feedback),
+                    "words_learned": words_learned,
+                    "full_error_corpus": full_error_corpus,
+                    "summary_request": summary_request,
+                    "messages": messages,
+                },
+                ensure_ascii=False,
+            ),
+            participant_code,
+        )
+    except Exception:
+        # Logging must never break tutor flow.
+        pass
     if client is None:
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
     try:
