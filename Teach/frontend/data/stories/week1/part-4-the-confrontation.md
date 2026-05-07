@@ -1,6 +1,6 @@
 Nina sits down opposite Tim.
 
-"Pauline Thompson arrived here at six o'clock this evening," she says. "You were already in the apartment. She confirms that. She left for the university shortly after — and when she came back at twenty to seven, you were gone. On her way back, she noticed a blue car parked outside that hadn't been there before. Someone sitting inside."
+"Pauline Thompson arrived here at six o'clock this evening," she says. "You were already in the apartment. She confirms that. She left for the university shortly after — and when she came back at twenty to seven, you were gone."
 
 Tim does not answer and doesn't raise his eyes.
 
@@ -19,16 +19,18 @@ Tim swallows. "Pauline was in that office this evening. You said so yourself. Sh
 
 Nina looks at him steadily. "Pauline drove here at ten o'clock and buzzed the intercom. When she heard there was a police officer inside, she could have said she had the wrong address and walked away. Instead she came up and answered every question." She pauses. "Why would she do that if she had something to hide?"
 
-Tim opens his mouth. Nothing comes out. Then, desperately: "And even if I wanted to — how would I have gotten in? I can't just walk into someone's apartment."
+ "What about Ronnie? - Tim asks desperately. - "His card was right there in the bathroom, I know he's the one who wrote it. Maybe he's the one who attacked Alex too."
 
-From across the room, Fiona's voice cuts in, sharp and flat. "He has the building entry code — Alex gave it to everyone he had invited. And the apartment door was unlocked. I found it that way when I arrived."
+"Ronnie has already told me," Nina says, " If he had really attacked Alex, he wouldn't tell me about the card." She pauses. "And you told me yourself that someone left a card like that on your desk at work. Ronnie wrote it for you — not for Alex. You took it with you tonight and left it there to point us in the wrong direction."
 
-Nina leans forward. "You were in this building before the party. You had the entry code. You had the trophy. And you had twenty-five minutes alone with Alex that you have not mentioned once."
+Tim says nothing.
+
+Nina leans forward. "You were in this building before the party. You had twenty-five minutes alone with Alex that you have not mentioned once."
 
 Nina leans forward slightly. "Tim. What happened in that apartment?"
 
 For a long moment, the room is completely silent.
-"I didn't mean to hurt him badly." Tim's voice breaks. "I just needed the drive. I owe Ronnie a lot of money — from investments that went wrong. I couldn't pay him back. Then this evening I found out Alex had a formula worth a fortune. I thought — if I could get the drive, I could sell the formula. I could pay everything back."
+"I didn't mean to hurt him badly." Tim's voice breaks. "I just needed the drive. I owe Ronnie a lot of money — from investments that went wrong. I couldn't pay him back. Then this evening I found out Alex had that magic trading formula. I thought — if I could get the drive, I could sell the formula. I could pay everything back."
 
 He stops.
 

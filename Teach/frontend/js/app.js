@@ -357,6 +357,10 @@
             TeachOpenEndedLogger.setup(chatArea, () => TeachState.getCurrentWeekId());
         }
 
+        window.addEventListener('teach:progress-updated', () => {
+            updateOverallChip();
+        });
+
     }
 
     async function bootstrap() {

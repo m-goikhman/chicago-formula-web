@@ -4,7 +4,7 @@ Her name is Fiona McAllister, second-year Biology student. She is Alex's girlfri
 
 "Then what?"
 
-"Then Tim and Ronnie arrived. That was around five past seven. Ronnie buzzed the intercom and I let them in. About five minutes later I went back to the bathroom and knocked again. Nothing. So I opened the door."
+"Then Tim and Ronnie arrived. That was around five past seven. Ronnie rang the intercom and I let them in. About five minutes later I went back to the bathroom and knocked again. Nothing. So I opened the door."
 
 Nina writes. "And before you arrived here — where were you this evening?"
 
@@ -12,7 +12,7 @@ Nina writes. "And before you arrived here — where were you this evening?"
 
 "The trophy we found in the bathroom — do you recognise it?"
 
-Fiona nods slowly. "It's from their office at the university, I've seen it there. It's been on the shelf forever — some old award, I think." She frowns. "I don't know what it was doing here."
+Fiona nods slowly. "It's from their office at the university, I've seen it there. It's been on the shelf forever — some old award, I think."
 
 Nina looks at her. "Is there anything else that seemed unusual to you this evening? Or recently?"
 

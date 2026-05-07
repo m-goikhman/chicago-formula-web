@@ -266,6 +266,12 @@ Alone with Nina, Pauline sits down and takes a breath.
 
 "We had an argument — earlier this evening. I've been asking him for weeks to explain the formula to me properly. I can't keep using it without understanding how it works. But he keeps making excuses and putting it off. Tonight was the same." She pauses. "He sent me to his university office to collect a USB drive. The formula is on it. I brought it to him, gave him back his keys, and left. That was around twenty to seven."
 
+"Can you describe the drive?"
+
+Pauline glances up. "Small. White. It had an unusual cap — shaped like the nose of a small plane, with a little propeller on it." She pauses. "You'd recognise it immediately. I always thought it was a strange thing for him to carry around."
+
+Nina writes something in her notebook, then looks up.
+
 "You came to his apartment before the party?"
 
 "Yes. When I arrived, one of his guest was already there — Alex's office mate, his name is Tim, I think. Alex came downstairs to speak to me privately; we talked in the stairwell." She pauses. "After that I went to the university. When I came back at around twenty to seven, Tim was gone."
@@ -331,7 +337,11 @@ Tim swallows. "Pauline was in that office this evening. You said so yourself. Sh
 
 Nina looks at him steadily. "Pauline drove here at ten o'clock and buzzed the intercom. When she heard there was a police officer inside, she could have said she had the wrong address and walked away. Instead she came up and answered every question." She pauses. "Why would she do that if she had something to hide?"
 
-Tim opens his mouth. Nothing comes out. Then, desperately: "And even if I wanted to — how would I have gotten in? I can't just walk into someone's apartment."
+Tim opens his mouth. Nothing comes out. Then, desperately: "What about Ronnie? His card was right there in the bathroom. Maybe he's the one who attacked Alex. He wrote it — he even admitted it."
+
+"He admitted it," Nina says, "because we found it and asked him. If Ronnie had attacked Alex, he would have stayed quiet about that card. Instead he told us immediately." She pauses. "And you told me yourself that someone left a card like that on your desk at work. Ronnie wrote it for you — not for Alex. You took it with you tonight and left it there to point us in the wrong direction."
+
+Tim says nothing.
 
 From across the room, Fiona's voice cuts in, sharp and flat. "He has the building entry code — Alex gave it to everyone he had invited. And the apartment door was unlocked. I found it that way when I arrived."
 

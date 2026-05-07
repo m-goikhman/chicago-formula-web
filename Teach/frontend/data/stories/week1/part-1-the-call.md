@@ -4,7 +4,7 @@ Sergeant Nina Reyes of the Chicago Police Department is sitting in her car outsi
 
 Nina drives fast.
 
-When she arrives, the paramedics are already there. She shows her badge and follows them inside. In the bathroom of a small third-floor apartment, a young man is lying on the floor. He is breathing, but he does not respond. There is a serious wound on the back of his head. The bathroom tap is running.
+When she arrives, the ambulance workers are already there. She shows her badge and follows them inside. In the bathroom of a small third-floor apartment, a young man is lying on the floor. He is breathing, but there is a serious wound on the back of his head. The bathroom tap is running.
 
 The paramedics lift Alex onto a stretcher. "He's stable," one of them tells Nina. "We're taking him now."
 

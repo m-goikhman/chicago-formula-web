@@ -214,17 +214,22 @@ const TeachState = (() => {
         if (!weeks.length) {
             return { completed: 0, total: 0 };
         }
+
         let completed = 0;
-        weeks.forEach((week, index) => {
-            if (index === 0) {
-                completed += 1;
-                return;
-            }
-            if (getWeekExerciseSummary(weeks[index - 1].id).isUnlocked) {
-                completed += 1;
-            }
+        let total = 0;
+
+        weeks.forEach((week) => {
+            const eligibleSections = (week.sections || []).filter(isCountableExercise);
+            total += eligibleSections.length;
+
+            const statuses = state.exerciseStatusByWeek[week.id] || {};
+            completed += eligibleSections.reduce((acc, section) => {
+                const sectionStatus = statuses[section.id];
+                return acc + (sectionStatus?.status === 'passed' ? 1 : 0);
+            }, 0);
         });
-        return { completed, total: weeks.length };
+
+        return { completed, total };
     }
 
     return {
