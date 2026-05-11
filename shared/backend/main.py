@@ -103,6 +103,14 @@ class TeachOutroQuestionnaireResponse(BaseModel):
     text: str
 
 
+class TeachClientStateRequest(BaseModel):
+    state: dict
+
+
+class TeachClientStateResponse(BaseModel):
+    state: dict
+
+
 def _resolve_learning_source(source: Optional[str]) -> str:
     normalized = str(source or "").strip().lower()
     if normalized == TEACH_SOURCE:
@@ -807,6 +815,33 @@ async def get_teach_progress_report(current_user=Depends(get_current_user)):
     logs = progress_manager.get_participant_progress(participant_code, source=TEACH_SOURCE)
     report = _build_progress_report_message(logs)
     return {"report": report}
+
+
+@app.get("/api/teach/state", response_model=TeachClientStateResponse)
+async def get_teach_client_state(current_user=Depends(get_current_user)):
+    """Load persisted Teach frontend state for cross-device restore."""
+    participant_code = current_user["participant_code"]
+    state = progress_manager.get_participant_client_state(
+        participant_code=participant_code,
+        source=TEACH_SOURCE,
+    )
+    return TeachClientStateResponse(state=state if isinstance(state, dict) else {})
+
+
+@app.post("/api/teach/state")
+async def save_teach_client_state(
+    request: TeachClientStateRequest,
+    current_user=Depends(get_current_user),
+):
+    """Persist Teach frontend state for cross-device resume."""
+    participant_code = current_user["participant_code"]
+    state = request.state if isinstance(request.state, dict) else {}
+    success = progress_manager.save_participant_client_state(
+        participant_code=participant_code,
+        client_state=state,
+        source=TEACH_SOURCE,
+    )
+    return {"saved": bool(success)}
 
 
 @app.get("/api/teach/outro-questionnaire", response_model=TeachOutroQuestionnaireResponse)

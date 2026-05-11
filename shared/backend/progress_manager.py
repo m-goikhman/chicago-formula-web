@@ -198,5 +198,38 @@ class ProgressManager:
             logger.error(f"Failed to clear progress for participant {participant_code}: {e}")
             return False
 
+    def get_participant_client_state(
+        self,
+        participant_code: str,
+        source: str = WEB_SOURCE,
+    ) -> Dict[str, Any]:
+        """Get frontend client state blob for a participant."""
+        try:
+            progress_data = self.get_participant_progress(participant_code, source=source)
+            state = progress_data.get("client_state")
+            if isinstance(state, dict):
+                return state
+            return {}
+        except Exception as e:
+            logger.error(f"Failed to get client state for participant {participant_code}: {e}")
+            return {}
+
+    def save_participant_client_state(
+        self,
+        participant_code: str,
+        client_state: Dict[str, Any],
+        source: str = WEB_SOURCE,
+    ) -> bool:
+        """Save frontend client state blob for a participant."""
+        if not isinstance(client_state, dict):
+            return False
+        try:
+            progress_data = self.get_participant_progress(participant_code, source=source)
+            progress_data["client_state"] = client_state
+            return self._save_progress_data(progress_data, participant_code, source=source)
+        except Exception as e:
+            logger.error(f"Failed to save client state for participant {participant_code}: {e}")
+            return False
+
 # Global instance
 progress_manager = ProgressManager()

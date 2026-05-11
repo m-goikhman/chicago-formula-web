@@ -13,7 +13,8 @@ window.TeachWeekContent = (() => {
         const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
         const requestTeachOutroQuestionnaire = deps.requestTeachOutroQuestionnaire || null;
         const getWeekExerciseSummary = deps.getWeekExerciseSummary || (() => null);
-        const stepProgressByWeek = deps.stepProgressByWeek || new Map();
+        const getWeekStepProgress = deps.getWeekStepProgress || (() => 1);
+        const setWeekStepProgress = deps.setWeekStepProgress || (() => {});
         const TEACH_ONBOARDING_WELCOME_TEMPLATE = deps.TEACH_ONBOARDING_WELCOME_TEMPLATE;
 
         if (!chatArea) {
@@ -85,25 +86,23 @@ window.TeachWeekContent = (() => {
             sequence.push({
                 type: 'final_summary_cta',
                 factory: () => {
-                    const ctaMessage = addMessage(
+                    const controlsMessage = addMessage(
                         'system',
                         'Tutor',
-                        'Loading end-of-episode message...',
+                        '',
                         null,
                         null,
                         false,
                         { messageClass: 'tutor-message' }
                     );
-                    if (!ctaMessage) {
+                    if (!controlsMessage) {
                         return null;
                     }
 
-                    ctaMessage.classList.add('teach-final-summary-cta');
-                    const content = ctaMessage.querySelector('.message-content');
+                    const content = controlsMessage.querySelector('.message-content');
                     if (!content) {
-                        return ctaMessage;
+                        return controlsMessage;
                     }
-                    const messageText = content.querySelector('.message-text');
                     let completionInfo = null;
                     const updateCompletionInfo = () => {
                         const summary = getWeekExerciseSummary(week.id);
@@ -123,7 +122,7 @@ window.TeachWeekContent = (() => {
                         completionInfo.textContent = (
                             `Completed exercises: ${summary.completed}/${summary.total} (${summary.percent}%). `
                             + `Required to unlock next episode: ${summary.requiredToUnlock}/${summary.total}. `
-                            + (summary.isUnlocked ? 'Next episode unlocked.' : 'Complete more exercises to continue.')
+                            + (summary.isUnlocked ? 'Congratulations! You have completed the episode.' : 'Complete more exercises to finish the episode.')
                         );
                     };
                     const onProgressUpdated = (event) => {
@@ -133,31 +132,6 @@ window.TeachWeekContent = (() => {
                         }
                     };
                     window.addEventListener('teach:progress-updated', onProgressUpdated);
-                    const renderOutroText = (extraText = '') => {
-                        if (!messageText) {
-                            return;
-                        }
-                        const normalizedExtra = String(extraText || '').trim();
-                        if (typeof window.marked?.parse === 'function') {
-                            messageText.innerHTML = normalizedExtra
-                                ? window.marked.parse(normalizedExtra, { breaks: true })
-                                : '';
-                        } else {
-                            messageText.textContent = normalizedExtra;
-                        }
-                        updateCompletionInfo();
-                    };
-                    if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
-                        requestTeachOutroQuestionnaire(week.id)
-                            .then((outroText) => {
-                                renderOutroText(outroText);
-                            })
-                            .catch(() => {
-                                renderOutroText();
-                            });
-                    } else if (messageText) {
-                        renderOutroText();
-                    }
 
                     const actions = document.createElement('div');
                     actions.className = 'teach-final-summary-actions';
@@ -193,7 +167,61 @@ window.TeachWeekContent = (() => {
                     actions.appendChild(button);
                     actions.appendChild(status);
                     content.appendChild(actions);
-                    return ctaMessage;
+                    updateCompletionInfo();
+                    return controlsMessage;
+                }
+            });
+
+            sequence.push({
+                type: 'final_outro',
+                factory: () => {
+                    const outroMessage = addMessage(
+                        'system',
+                        'Tutor',
+                        'Loading end-of-episode message...',
+                        '/images/Ep2-final_teach.png',
+                        null,
+                        false,
+                        { messageClass: 'tutor-message', imageFirst: true }
+                    );
+                    if (!outroMessage) {
+                        return null;
+                    }
+
+                    outroMessage.classList.add('teach-final-summary-cta');
+                    const content = outroMessage.querySelector('.message-content');
+                    if (!content) {
+                        return outroMessage;
+                    }
+
+                    const messageText = content.querySelector('.message-text');
+                    const renderOutroText = (extraText = '') => {
+                        if (!messageText) {
+                            return;
+                        }
+                        const normalizedExtra = String(extraText || '').trim();
+                        if (typeof window.marked?.parse === 'function') {
+                            messageText.innerHTML = normalizedExtra
+                                ? window.marked.parse(normalizedExtra, { breaks: true })
+                                : '';
+                        } else {
+                            messageText.textContent = normalizedExtra;
+                        }
+                    };
+
+                    if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
+                        requestTeachOutroQuestionnaire(week.id)
+                            .then((outroText) => {
+                                renderOutroText(outroText);
+                            })
+                            .catch(() => {
+                                renderOutroText();
+                            });
+                    } else if (messageText) {
+                        renderOutroText();
+                    }
+
+                    return outroMessage;
                 }
             });
         }
@@ -220,6 +248,10 @@ window.TeachWeekContent = (() => {
         sequence.forEach((step, index) => {
             const nextStep = sequence[index + 1];
             if (!nextStep) {
+                return;
+            }
+            if (step.type === 'final_outro') {
+                step.label = '';
                 return;
             }
             step.label = buildNextButtonLabel(step.type, {
@@ -253,7 +285,7 @@ window.TeachWeekContent = (() => {
         const totalSteps = sequence.length;
         const desiredProgress = Math.max(
             1,
-            Math.min(stepProgressByWeek.get(week.id) ?? 1, totalSteps)
+            Math.min(getWeekStepProgress(week.id), totalSteps)
         );
 
         let actualRendered = 0;
@@ -266,7 +298,7 @@ window.TeachWeekContent = (() => {
         }
 
         const unlockedSteps = Math.max(actualRendered, 1);
-        stepProgressByWeek.set(week.id, unlockedSteps);
+        setWeekStepProgress(week.id, unlockedSteps);
 
         const setupNextButton = (currentIndex) => {
             const current = renderedSteps[currentIndex];
@@ -284,10 +316,10 @@ window.TeachWeekContent = (() => {
                     }
 
                     const updatedProgress = Math.max(
-                        stepProgressByWeek.get(week.id) ?? 1,
+                        getWeekStepProgress(week.id),
                         nextIndex + 1
                     );
-                    stepProgressByWeek.set(week.id, updatedProgress);
+                    setWeekStepProgress(week.id, updatedProgress);
 
                     chatArea.scrollTop = chatArea.scrollHeight;
                     setupNextButton(nextIndex);

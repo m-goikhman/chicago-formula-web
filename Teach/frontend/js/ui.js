@@ -12,7 +12,6 @@ const TeachUI = (() => {
         ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
         ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY
     } = window.TEACH_CONFIG || {};
-    const stepProgressByWeek = new Map();
 
     function buildOnboardingQuestionnaireLink(participantCode = '') {
         const normalizedCode = String(participantCode || '').trim().toUpperCase();
@@ -485,7 +484,8 @@ const TeachUI = (() => {
                 requestTutorFinalSummary,
                 requestTeachOutroQuestionnaire,
                 getWeekExerciseSummary: TeachState?.getWeekExerciseSummary || (() => null),
-                stepProgressByWeek,
+                getWeekStepProgress: TeachState?.getWeekStepProgress || (() => 1),
+                setWeekStepProgress: TeachState?.setWeekStepProgress || (() => {}),
                 TEACH_ONBOARDING_WELCOME_TEMPLATE
             }
         });

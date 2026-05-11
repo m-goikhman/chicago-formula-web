@@ -432,6 +432,26 @@ const TeachContentLoader = (() => {
 
     async function loadTeachContent(weeksConfig = TEACH_WEEKS, settings = TEACH_CONTENT_SETTINGS) {
         const fetchPromises = weeksConfig.map(async (weekMeta) => {
+            const manifest = await fetchManifestForWeek(weekMeta.id);
+            if (manifest && Array.isArray(manifest.items)) {
+                const requiresLegacySections = manifest.items.some((item) => item?.fromLegacySectionId);
+                if (!requiresLegacySections) {
+                    return composeWeekFromManifest(manifest, null, settings);
+                }
+                try {
+                    const response = await fetch(weekMeta.source);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const markdown = await response.text();
+                    const legacyWeek = parseWeekMarkdown(markdown, weekMeta, settings);
+                    return composeWeekFromManifest(manifest, legacyWeek, settings);
+                } catch (error) {
+                    console.warn(`[TeachContentLoader] Failed to load legacy source ${weekMeta.source}:`, error);
+                    return composeWeekFromManifest(manifest, null, settings);
+                }
+            }
+
             try {
                 const response = await fetch(weekMeta.source);
                 if (!response.ok) {

@@ -20,6 +20,8 @@
     let notesSaveTimer = null;
     let notesStatusEl = null;
     let appInitialized = false;
+    let syncStateTimer = null;
+    let syncInFlight = false;
 
     const defaultLoginButtonLabel = loginButton ? loginButton.textContent : 'Start Reading Journey';
 
@@ -28,6 +30,64 @@
             return '0%';
         }
         return `${Math.round((completed / total) * 100)}%`;
+    }
+
+    async function pullStateFromServer() {
+        if (!apiClient || !TeachAuth || typeof TeachState.mergeSnapshot !== 'function') {
+            return;
+        }
+        const token = TeachAuth.getToken?.();
+        if (!token) {
+            return;
+        }
+        try {
+            const requestFn = () => apiClient.get('/api/teach/state', { token });
+            const { response, data } = TeachAuth.callWithSessionRecovery
+                ? await TeachAuth.callWithSessionRecovery(requestFn)
+                : await requestFn();
+            if (!response?.ok) {
+                return;
+            }
+            TeachState.mergeSnapshot(data?.state || {}, { preferRemote: true });
+        } catch (error) {
+            console.warn('[TeachApp] Failed to pull state from server:', error);
+        }
+    }
+
+    async function pushStateToServer() {
+        if (syncInFlight || !apiClient || !TeachAuth || typeof TeachState.toSerializableSnapshot !== 'function') {
+            return;
+        }
+        const token = TeachAuth.getToken?.();
+        if (!token) {
+            return;
+        }
+        syncInFlight = true;
+        try {
+            const payload = {
+                state: TeachState.toSerializableSnapshot()
+            };
+            const requestFn = () => apiClient.postJson('/api/teach/state', payload, { token });
+            if (TeachAuth.callWithSessionRecovery) {
+                await TeachAuth.callWithSessionRecovery(requestFn);
+            } else {
+                await requestFn();
+            }
+        } catch (error) {
+            console.warn('[TeachApp] Failed to push state to server:', error);
+        } finally {
+            syncInFlight = false;
+        }
+    }
+
+    function scheduleStateSync() {
+        if (syncStateTimer) {
+            clearTimeout(syncStateTimer);
+        }
+        syncStateTimer = setTimeout(() => {
+            syncStateTimer = null;
+            pushStateToServer();
+        }, 900);
     }
 
     async function showProgressReport() {
@@ -111,7 +171,18 @@
         if (!confirmed) {
             return;
         }
-        localStorage.removeItem(window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY);
+        const token = TeachAuth?.getToken?.();
+        if (token && apiClient) {
+            apiClient.postJson('/api/teach/state', { state: {} }, { token })
+                .catch((error) => {
+                    console.warn('[TeachApp] Failed to clear remote Teach state:', error);
+                });
+        }
+        if (typeof TeachState.clearPersistedProgress === 'function') {
+            TeachState.clearPersistedProgress();
+        } else {
+            localStorage.removeItem(window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY);
+        }
         window.location.reload();
     }
 
@@ -230,6 +301,10 @@
             }
         });
 
+        if (TeachOpenEndedLogger && typeof TeachOpenEndedLogger.restoreDrafts === 'function') {
+            TeachOpenEndedLogger.restoreDrafts(chatArea, () => TeachState.getCurrentWeekId());
+        }
+
         updateOverallChip();
     }
 
@@ -242,9 +317,14 @@
 
         TeachUI.setChatLoading(chatArea);
         try {
+            if (typeof TeachState.setStorageParticipantCode === 'function') {
+                TeachState.setStorageParticipantCode(TeachAuth?.getParticipantCode?.() || '');
+            }
             const weeks = await loadTeachContent();
             TeachState.initialize(weeks);
+            await pullStateFromServer();
             render();
+            scheduleStateSync();
         } catch (error) {
             console.error('[TeachApp] Failed to initialise Teach mode:', error);
             showErrorState('We could not load the detective course content. Please try reloading the page.');
@@ -367,6 +447,11 @@
 
         window.addEventListener('teach:progress-updated', () => {
             updateOverallChip();
+            scheduleStateSync();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            pushStateToServer();
         });
 
     }

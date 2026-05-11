@@ -11,6 +11,7 @@
 
     const lastSentValue = new WeakMap();
     const lastFeedbackValue = new WeakMap();
+    const draftSaveTimers = new Map();
     const MIN_TUTOR_FEEDBACK_LENGTH = 20;
     const TeachStateRef = (() => {
         if (global.TeachState) {
@@ -25,6 +26,70 @@
         }
         return null;
     })();
+
+    function draftKeyForInput(inputField) {
+        if (!inputField) {
+            return '';
+        }
+        if (inputField.id) {
+            return inputField.id;
+        }
+        const sectionMessage = inputField.closest('.teach-section-message');
+        const sectionId = sectionMessage?.dataset?.sectionId || 'unknown';
+        const siblings = sectionMessage
+            ? sectionMessage.querySelectorAll('textarea, input[type="text"]')
+            : [];
+        const idx = Array.prototype.indexOf.call(siblings, inputField);
+        return `${sectionId}::${idx >= 0 ? idx : 0}`;
+    }
+
+    function scheduleExerciseDraftSave(inputField, getWeekId) {
+        if (!shouldTrackInputField(inputField) || !TeachStateRef?.setExerciseDraft) {
+            return;
+        }
+        const weekId = typeof getWeekId === 'function' ? getWeekId() : '';
+        if (!weekId) {
+            return;
+        }
+        const key = draftKeyForInput(inputField);
+        if (!key) {
+            return;
+        }
+        const timerKey = `${weekId}\0${key}`;
+        if (draftSaveTimers.has(timerKey)) {
+            clearTimeout(draftSaveTimers.get(timerKey));
+        }
+        draftSaveTimers.set(
+            timerKey,
+            setTimeout(() => {
+                draftSaveTimers.delete(timerKey);
+                TeachStateRef.setExerciseDraft(weekId, key, String(inputField.value || ''));
+            }, 400)
+        );
+    }
+
+    function restoreDrafts(container, getWeekId) {
+        if (!container || typeof getWeekId !== 'function' || !TeachStateRef?.getExerciseDraft) {
+            return;
+        }
+        const weekId = getWeekId();
+        if (!weekId) {
+            return;
+        }
+        container.querySelectorAll('textarea, input[type="text"]').forEach((inputField) => {
+            if (!shouldTrackInputField(inputField)) {
+                return;
+            }
+            const key = draftKeyForInput(inputField);
+            const saved = TeachStateRef.getExerciseDraft(weekId, key);
+            if (!saved) {
+                return;
+            }
+            if (!String(inputField.value || '').trim()) {
+                inputField.value = saved;
+            }
+        });
+    }
 
     function shouldTrackInputField(inputField) {
         if (!inputField) {
@@ -367,6 +432,14 @@
             ensureFeedbackButton(inputField, getWeekId);
         });
 
+        container.addEventListener('input', (event) => {
+            const inputField = event.target;
+            if (!shouldTrackInputField(inputField)) {
+                return;
+            }
+            scheduleExerciseDraftSave(inputField, getWeekId);
+        });
+
         container.addEventListener('teach:section-continue', (event) => {
             const sectionMessage = event?.detail?.messageEl || event.target?.closest?.('.teach-section-message');
             processSectionInputs(sectionMessage);
@@ -374,7 +447,8 @@
     }
 
     global.TeachOpenEndedLogger = {
-        setup
+        setup,
+        restoreDrafts
     };
 })(window);
 

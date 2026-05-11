@@ -5,12 +5,32 @@ const TeachState = (() => {
     const EXCLUDED_RENDERERS = new Set(window.TEACH_CONFIG?.TEACH_EXERCISE_PROGRESS_EXCLUDED_RENDERERS || []);
     let weeks = [];
     let currentWeekId = null;
+    /** @type {'local'|string} Suffix for progress key (participant code or "local" without auth). */
+    let storageParticipantSuffix = 'local';
     let state = {
         notes: {},
         exerciseStatusByWeek: {},
         currentWeekId: null,
-        firstLoginAt: null
+        firstLoginAt: null,
+        stepProgressByWeek: {},
+        exerciseDraftsByWeek: {},
+        updatedAt: 0
     };
+
+    function normalizeParticipantSuffix(code) {
+        const normalized = String(code || '')
+            .trim()
+            .toUpperCase();
+        return normalized || 'local';
+    }
+
+    function getStorageKey() {
+        return `${STORAGE_KEY}:${storageParticipantSuffix}`;
+    }
+
+    function setStorageParticipantCode(participantCode) {
+        storageParticipantSuffix = normalizeParticipantSuffix(participantCode);
+    }
 
     function emitProgressEvent(detail = {}) {
         try {
@@ -22,7 +42,10 @@ const TeachState = (() => {
 
     function loadFromStorage() {
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
+            let raw = localStorage.getItem(getStorageKey());
+            if (!raw && storageParticipantSuffix === 'local') {
+                raw = localStorage.getItem(STORAGE_KEY);
+            }
             if (!raw) {
                 return null;
             }
@@ -39,15 +62,23 @@ const TeachState = (() => {
 
     function persist() {
         try {
-            localStorage.setItem(
-                STORAGE_KEY,
-                JSON.stringify({
-                    notes: state.notes,
-                    exerciseStatusByWeek: state.exerciseStatusByWeek,
-                    currentWeekId,
-                    firstLoginAt: state.firstLoginAt
-                })
-            );
+            const payload = {
+                notes: state.notes,
+                exerciseStatusByWeek: state.exerciseStatusByWeek,
+                currentWeekId,
+                firstLoginAt: state.firstLoginAt,
+                stepProgressByWeek: state.stepProgressByWeek,
+                exerciseDraftsByWeek: state.exerciseDraftsByWeek,
+                updatedAt: Number(state.updatedAt) || Date.now()
+            };
+            localStorage.setItem(getStorageKey(), JSON.stringify(payload));
+            if (storageParticipantSuffix === 'local' && localStorage.getItem(STORAGE_KEY)) {
+                try {
+                    localStorage.removeItem(STORAGE_KEY);
+                } catch (removeError) {
+                    console.warn('[TeachState] Failed to remove legacy progress key:', removeError);
+                }
+            }
         } catch (error) {
             console.warn('[TeachState] Failed to persist progress:', error);
         }
@@ -55,17 +86,45 @@ const TeachState = (() => {
             currentWeekId,
             overall: getOverallProgress(),
             notes: state.notes,
-            exerciseStatusByWeek: state.exerciseStatusByWeek
+            exerciseStatusByWeek: state.exerciseStatusByWeek,
+            updatedAt: Number(state.updatedAt) || Date.now()
         });
+    }
+
+    function touchUpdatedAt() {
+        state.updatedAt = Date.now();
+    }
+
+    function toSerializableSnapshot() {
+        return {
+            notes: state.notes,
+            exerciseStatusByWeek: state.exerciseStatusByWeek,
+            currentWeekId,
+            firstLoginAt: state.firstLoginAt,
+            stepProgressByWeek: state.stepProgressByWeek,
+            exerciseDraftsByWeek: state.exerciseDraftsByWeek,
+            updatedAt: Number(state.updatedAt) || Date.now()
+        };
     }
 
     function initialize(loadedWeeks) {
         weeks = loadedWeeks ?? [];
         const stored = loadFromStorage();
+        const storedSteps =
+            stored?.stepProgressByWeek && typeof stored.stepProgressByWeek === 'object'
+                ? stored.stepProgressByWeek
+                : {};
+        const storedDrafts =
+            stored?.exerciseDraftsByWeek && typeof stored.exerciseDraftsByWeek === 'object'
+                ? stored.exerciseDraftsByWeek
+                : {};
         state = {
             notes: stored?.notes ?? {},
             exerciseStatusByWeek: stored?.exerciseStatusByWeek ?? {},
-            firstLoginAt: Number(stored?.firstLoginAt) || Date.now()
+            firstLoginAt: Number(stored?.firstLoginAt) || Date.now(),
+            stepProgressByWeek: { ...storedSteps },
+            exerciseDraftsByWeek: { ...storedDrafts },
+            updatedAt: Number(stored?.updatedAt) || Date.now()
         };
         currentWeekId = stored?.currentWeekId || weeks[0]?.id || null;
 
@@ -75,6 +134,12 @@ const TeachState = (() => {
             }
             if (!state.exerciseStatusByWeek[week.id] || typeof state.exerciseStatusByWeek[week.id] !== 'object') {
                 state.exerciseStatusByWeek[week.id] = {};
+            }
+            if (typeof state.stepProgressByWeek[week.id] !== 'number' || !Number.isFinite(state.stepProgressByWeek[week.id])) {
+                state.stepProgressByWeek[week.id] = 1;
+            }
+            if (!state.exerciseDraftsByWeek[week.id] || typeof state.exerciseDraftsByWeek[week.id] !== 'object') {
+                state.exerciseDraftsByWeek[week.id] = {};
             }
         });
         const availability = getWeekAvailability();
@@ -107,6 +172,7 @@ const TeachState = (() => {
             return;
         }
         currentWeekId = weekId;
+        touchUpdatedAt();
         persist();
     }
 
@@ -116,6 +182,7 @@ const TeachState = (() => {
 
     function setNotes(weekId, text) {
         state.notes[weekId] = text;
+        touchUpdatedAt();
         persist();
     }
 
@@ -186,11 +253,136 @@ const TeachState = (() => {
             source: String(evaluation.source || '').trim() || 'unknown',
             updatedAt: Date.now()
         };
+        touchUpdatedAt();
         persist();
     }
 
     function getExerciseEvaluation(weekId, sectionId) {
         return state.exerciseStatusByWeek?.[weekId]?.[sectionId] || null;
+    }
+
+    function getWeekStepProgress(weekId) {
+        const n = Number(state.stepProgressByWeek?.[weekId]);
+        return Number.isFinite(n) && n >= 1 ? n : 1;
+    }
+
+    function setWeekStepProgress(weekId, unlockedStepCount) {
+        if (!weekId) {
+            return;
+        }
+        const n = Math.max(1, Math.floor(Number(unlockedStepCount) || 1));
+        if (!state.stepProgressByWeek || typeof state.stepProgressByWeek !== 'object') {
+            state.stepProgressByWeek = {};
+        }
+        if (state.stepProgressByWeek[weekId] === n) {
+            return;
+        }
+        state.stepProgressByWeek[weekId] = n;
+        touchUpdatedAt();
+        persist();
+    }
+
+    function getExerciseDraft(weekId, draftKey) {
+        if (!weekId || !draftKey) {
+            return '';
+        }
+        const bucket = state.exerciseDraftsByWeek?.[weekId];
+        if (!bucket || typeof bucket !== 'object') {
+            return '';
+        }
+        return String(bucket[draftKey] ?? '');
+    }
+
+    function setExerciseDraft(weekId, draftKey, text) {
+        if (!weekId || !draftKey) {
+            return;
+        }
+        if (!state.exerciseDraftsByWeek || typeof state.exerciseDraftsByWeek !== 'object') {
+            state.exerciseDraftsByWeek = {};
+        }
+        if (!state.exerciseDraftsByWeek[weekId] || typeof state.exerciseDraftsByWeek[weekId] !== 'object') {
+            state.exerciseDraftsByWeek[weekId] = {};
+        }
+        const trimmed = String(text ?? '');
+        if (!trimmed) {
+            if (!Object.prototype.hasOwnProperty.call(state.exerciseDraftsByWeek[weekId], draftKey)) {
+                return;
+            }
+            delete state.exerciseDraftsByWeek[weekId][draftKey];
+            touchUpdatedAt();
+            persist();
+            return;
+        }
+        if (state.exerciseDraftsByWeek[weekId][draftKey] === trimmed) {
+            return;
+        }
+        state.exerciseDraftsByWeek[weekId][draftKey] = trimmed;
+        touchUpdatedAt();
+        persist();
+    }
+
+    function clearPersistedProgress() {
+        try {
+            localStorage.removeItem(getStorageKey());
+            localStorage.removeItem(STORAGE_KEY);
+        } catch (error) {
+            console.warn('[TeachState] Failed to clear storage:', error);
+        }
+    }
+
+    function mergeSnapshot(remoteSnapshot, options = {}) {
+        if (!remoteSnapshot || typeof remoteSnapshot !== 'object') {
+            return false;
+        }
+        const preferRemote = options.preferRemote !== false;
+        const remoteUpdatedAt = Number(remoteSnapshot.updatedAt) || 0;
+        const localUpdatedAt = Number(state.updatedAt) || 0;
+        if (preferRemote && remoteUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
+            return false;
+        }
+
+        const nextNotes = (
+            remoteSnapshot.notes && typeof remoteSnapshot.notes === 'object'
+        ) ? remoteSnapshot.notes : {};
+        const nextStatus = (
+            remoteSnapshot.exerciseStatusByWeek && typeof remoteSnapshot.exerciseStatusByWeek === 'object'
+        ) ? remoteSnapshot.exerciseStatusByWeek : {};
+        const nextSteps = (
+            remoteSnapshot.stepProgressByWeek && typeof remoteSnapshot.stepProgressByWeek === 'object'
+        ) ? remoteSnapshot.stepProgressByWeek : {};
+        const nextDrafts = (
+            remoteSnapshot.exerciseDraftsByWeek && typeof remoteSnapshot.exerciseDraftsByWeek === 'object'
+        ) ? remoteSnapshot.exerciseDraftsByWeek : {};
+
+        state.notes = { ...nextNotes };
+        state.exerciseStatusByWeek = { ...nextStatus };
+        state.stepProgressByWeek = { ...nextSteps };
+        state.exerciseDraftsByWeek = { ...nextDrafts };
+        state.firstLoginAt = Number(remoteSnapshot.firstLoginAt) || state.firstLoginAt || Date.now();
+        state.updatedAt = remoteUpdatedAt || Date.now();
+
+        const candidateWeek = String(remoteSnapshot.currentWeekId || '').trim();
+        if (candidateWeek && getWeekById(candidateWeek)) {
+            currentWeekId = candidateWeek;
+        }
+
+        weeks.forEach((week) => {
+            if (!state.notes[week.id]) {
+                state.notes[week.id] = '';
+            }
+            if (!state.exerciseStatusByWeek[week.id] || typeof state.exerciseStatusByWeek[week.id] !== 'object') {
+                state.exerciseStatusByWeek[week.id] = {};
+            }
+            if (typeof state.stepProgressByWeek[week.id] !== 'number' || !Number.isFinite(state.stepProgressByWeek[week.id])) {
+                state.stepProgressByWeek[week.id] = 1;
+            }
+            if (!state.exerciseDraftsByWeek[week.id] || typeof state.exerciseDraftsByWeek[week.id] !== 'object') {
+                state.exerciseDraftsByWeek[week.id] = {};
+            }
+        });
+
+        persist();
+        return true;
     }
 
     function getWeekAvailability() {
@@ -253,6 +445,7 @@ const TeachState = (() => {
 
     return {
         initialize,
+        setStorageParticipantCode,
         getWeeks,
         getCurrentWeekId,
         setCurrentWeek,
@@ -261,6 +454,13 @@ const TeachState = (() => {
         getNotes,
         setExerciseEvaluation,
         getExerciseEvaluation,
+        getWeekStepProgress,
+        setWeekStepProgress,
+        getExerciseDraft,
+        setExerciseDraft,
+        toSerializableSnapshot,
+        mergeSnapshot,
+        clearPersistedProgress,
         getWeekExerciseSummary,
         getWeekAvailability,
         getOverallProgress

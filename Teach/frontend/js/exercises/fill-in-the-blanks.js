@@ -8,7 +8,7 @@ window.TeachFillInTheBlanks = (() => {
         };
     }
 
-    function renderFillInTheBlanksExercise(messageEl, section, correctAnswersFromKey = null) {
+    function renderFillInTheBlanksExercise(messageEl, section, correctAnswersFromKey = null, weekId = null) {
         if (!messageEl || messageEl.querySelector('.teach-fill-blanks')) {
             return;
         }
@@ -472,6 +472,9 @@ window.TeachFillInTheBlanks = (() => {
                     if (feedback) {
                         feedback.textContent = '';
                         feedback.classList.remove('correct', 'incorrect');
+                    }
+                    if (weekId && input.id && window.TeachState?.setExerciseDraft) {
+                        window.TeachState.setExerciseDraft(weekId, input.id, '');
                     }
                 });
             }

@@ -169,7 +169,7 @@ window.TeachSectionMessage = (() => {
                     /_{3,}|\[(?:small|medium|huge)_writing_space\]/i.test(section.content || '');
                 const isChooseAndWrite = /choose and write/i.test(section.heading || '');
                 if (hasWritingPlaceholders || isChooseAndWrite) {
-                    renderFillInTheBlanksExercise(messageEl, section, correctAnswers);
+                    renderFillInTheBlanksExercise(messageEl, section, correctAnswers, week?.id || null);
                 }
             }
 
