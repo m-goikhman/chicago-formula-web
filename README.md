@@ -49,7 +49,6 @@ Simple participant code authentication for research purposes:
 
 - **Interactive Detective Game**: Solve a murder mystery while learning English
 - **AI-Powered Characters**: Dynamic conversations with game characters using Groq LLM
-- **Language Level Adaptation**: A2, B1, B2 difficulty levels
 - **Vocabulary Learning**: Built-in tutor for word explanations
 - **Progress Tracking**: Learning progress and word tracking
 

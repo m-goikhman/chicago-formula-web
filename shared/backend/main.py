@@ -16,6 +16,7 @@ import random
 from . import bootstrap  # noqa: F401
 
 from .auth import validate_session_token, login_participant, is_test_mode_participant
+from . import study_onboarding
 from .progress_manager import (
     progress_manager,
     TELL_SOURCE,
@@ -50,6 +51,10 @@ app.add_middleware(
         "http://localhost:8001",  # For local development
         "http://localhost:8080",  # For local development
         "http://127.0.0.1:8001",  # For local development
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -69,6 +74,24 @@ class LoginResponse(BaseModel):
 
 class SessionResponse(BaseModel):
     participant_code: str
+
+
+class OnboardingQuestionnaireResponse(BaseModel):
+    questions: list
+
+
+class OnboardingSubmitRequest(BaseModel):
+    answers: dict
+
+
+class OnboardingSubmitResponse(BaseModel):
+    onboarding_token: str
+    arm: str
+    cefr_band: str
+
+
+class OnboardingAttachRequest(BaseModel):
+    onboarding_token: str
 
 
 class ResetGameResponse(BaseModel):
@@ -224,6 +247,49 @@ async def session_status(authorization: str = Header(...)):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     return SessionResponse(participant_code=session["participant_code"])
+
+
+@app.get("/api/study/questionnaire", response_model=OnboardingQuestionnaireResponse)
+async def study_questionnaire():
+    """Language learner profile items for the portal onboarding survey (EN copy bundled with backend)."""
+    try:
+        return OnboardingQuestionnaireResponse(questions=study_onboarding.load_questionnaire())
+    except FileNotFoundError:
+        logger.exception("Questionnaire data file missing (ensure shared/backend/data/language_learner_profile.json is in the image and not gitignored)")
+        raise HTTPException(
+            status_code=503,
+            detail="Questionnaire data is not available on this server. Redeploy the backend with data/language_learner_profile.json included.",
+        ) from None
+    except json.JSONDecodeError:
+        logger.exception("Questionnaire JSON is invalid")
+        raise HTTPException(status_code=503, detail="Questionnaire data is misconfigured.") from None
+
+
+@app.post("/api/study/onboarding", response_model=OnboardingSubmitResponse)
+async def study_onboarding_submit(request: OnboardingSubmitRequest):
+    """Accept onboarding answers, compute CEFR band, stratify Tell vs Teach, return one-time token."""
+    try:
+        token, arm, band, _norm = study_onboarding.submit_onboarding(request.answers)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return OnboardingSubmitResponse(
+        onboarding_token=token,
+        arm=arm,
+        cefr_band=band,
+    )
+
+
+@app.post("/api/study/onboarding/attach")
+async def study_onboarding_attach(
+    request: OnboardingAttachRequest,
+    current_user=Depends(get_current_user),
+):
+    """Link an onboarding token to the authenticated participant code (for analysis exports)."""
+    code = current_user["participant_code"]
+    ok = study_onboarding.attach_onboarding_token(request.onboarding_token, code)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Invalid or unknown onboarding token")
+    return {"success": True, "participant_code": code}
 
 
 @app.get("/api/images/{image_path:path}")

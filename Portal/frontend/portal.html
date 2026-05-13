@@ -6,91 +6,366 @@
     <title>Writing Confidence Experiment · Participant Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/portal.css">
 </head>
 <body>
+<div class="portal-page">
     <div class="portal-container">
+
+        <!-- ── Header ─────────────────────────────────── -->
         <header class="portal-header">
-            <h4>Building English Writing Confidence in Adult Learners through AI Text Detective Game</h4>
+            <div class="lang-switcher" aria-label="Language / Lingua">
+                <button class="lang-btn" data-lang="it" aria-pressed="false" onclick="portalSwitchLang('it')">IT</button>
+                <button class="lang-btn active" data-lang="en" aria-pressed="true" onclick="portalSwitchLang('en')">EN</button>
+            </div>
+            <p class="portal-meta">ETHICS APPROVAL · UNIVERSITY OF TRENTO PROT. 2025-065</p>
+            <h1>Try an AI detective for English learning</h1>
+            <p class="portal-subtitle">Building English Writing Confidence in Adult Learners through AI Text Detective Game</p>
         </header>
 
+        <!-- ── Study intro ─────────────────────────────── -->
+        <div class="portal-intro">
+            <div class="intro-grid">
+                <div class="intro-item" data-i18n-html="introHow">
+                    <h2 class="intro-heading">How it works</h2>
+                    <p>This research project explores different ways of learning English through detective stories. You will be assigned to one of two groups: one works with an interactive AI chatbot, the other with reading and writing activities. Both groups follow the same story and the same mystery.</p>
+                    <p>One episode per week, 4 weeks, approximately 40–60 minutes each. All online — phone or computer.</p>
+                </div>
+                <div class="intro-item" data-i18n-html="introWho">
+                    <h2 class="intro-heading">Who can join</h2>
+                    <p>Adults (18+) with intermediate English (B1–B2). You can read and write in English, even if it is not always easy.</p>
+                    <ul class="intro-highlights">
+                        <li>4 weeks, approx. 40–60 min/week</li>
+                        <li>All online — phone or computer</li>
+                        <li>SONA credits for UniTn students (5 hours)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Main flow ───────────────────────────────── -->
         <main class="portal-content">
+
+            <!-- Consent view -->
             <section class="card card-consent" data-view="consent" id="consentView">
-                <h2>Before you participate</h2>
-                <p class="consent-intro">
-                    Please read both documents and confirm your consent.
+                <h2 data-i18n="consentTitle">Before you participate</h2>
+                <p class="consent-intro" data-i18n="consentIntro">
+                    Please read both documents and confirm your consent to proceed.
                 </p>
 
+                <!-- Block 1: Study information sheet -->
                 <div class="consent-block">
                     <button type="button" class="consent-toggle" aria-expanded="false" aria-controls="consentExpandable1" id="consentToggle1">
-                        <span class="consent-toggle-title">Study information sheet</span>
+                        <span class="consent-toggle-title" data-i18n="toggle1Title">Study information sheet</span>
                         <span class="consent-toggle-icon" aria-hidden="true"></span>
                     </button>
                     <div class="consent-expandable" id="consentExpandable1">
                         <button type="button" class="consent-close" aria-label="Close">×</button>
                         <div class="consent-body" id="consentBody1">
-                            <p>
-                                This study explores how AI-supported detective story activities can help adult English learners
-                                improve writing confidence and reduce writing anxiety.
-                            </p>
-                            <p>
-                                Participation is voluntary and takes about 4-5 total hours over four weeks.
-                                You can withdraw at any time without penalty.
-                            </p>
-                            <p>
-                                The full study information sheet is provided by the research team before participation.
-                            </p>
-                        </div>
+
+                            <!-- ── ITALIANO ── -->
+                            <div data-lang="it" hidden>
+                                <p class="consent-doc-intro">Ti invitiamo a partecipare a uno studio di ricerca condotto dall'Università di Trento e dalla Fondazione Bruno Kessler. Prima di decidere se partecipare, leggi attentamente questo documento e contattaci per qualsiasi chiarimento.</p>
+
+                                <h3 class="consent-section-heading">Scopo dello studio</h3>
+                                <p>Questo studio vuole esplorare come la lettura e scrittura supportate dagli strumenti basati su Intelligenza Artificiale possano aiutare chi studia l'inglese come lingua straniera. In particolare, vogliamo capire se questo tipo di attività può:</p>
+                                <ul>
+                                    <li>Rendere la pratica della scrittura in inglese più coinvolgente</li>
+                                    <li>Ridurre l'ansia che alcune persone provano quando scrivono in inglese</li>
+                                </ul>
+                                <p>Lo studio è finanziato tramite una borsa di dottorato erogata da FBK (Fondazione Bruno Kessler), nell'ambito del programma congiunto con l'Università degli Studi di Trento.</p>
+
+                                <h3 class="consent-section-heading">Chi può partecipare</h3>
+                                <p>Stiamo cercando persone con queste caratteristiche:</p>
+                                <ul>
+                                    <li>Adulti (18+)</li>
+                                    <li>Livello di inglese intermedio (B1–B2)</li>
+                                </ul>
+                                <p>Per partecipare avrai bisogno di un computer, smartphone o tablet con connessione internet.</p>
+
+                                <h3 class="consent-section-heading">Cosa ti chiederemo di fare</h3>
+                                <p>Se decidi di partecipare, ti chiederemo di svolgere un'attività che durerà complessivamente quattro settimane:</p>
+                                <ol>
+                                    <li>Compilare un <strong>questionario iniziale</strong> (circa 10 minuti) sulle tue esperienze con l'inglese e su come ti senti quando scrivi in questa lingua.</li>
+                                    <li>Svolgere <strong>attività settimanali</strong> di scrittura in inglese (circa un'ora per episodio durante la settimana). Ti verrà assegnato casualmente uno di questi due gruppi:
+                                        <ul>
+                                            <li><strong>Gruppo Gioco:</strong> giocherai a un gioco investigativo con personaggi AI con cui chattare per risolvere un mistero</li>
+                                            <li><strong>Gruppo Lettura:</strong> leggerai un giallo in inglese, farai esercizi di lingua e risponderai a domande con l'aiuto di un tutor AI</li>
+                                        </ul>
+                                    </li>
+                                    <li>Tutte le attività si svolgeranno online (tramite applicazione web), e potrai farle in qualsiasi momento della settimana.</li>
+                                    <li>Compilare <strong>brevi questionari settimanali</strong> (circa 5 minuti) dopo ogni episodio.</li>
+                                    <li>Compilare un <strong>questionario finale</strong> (circa 10 minuti) sulla tua esperienza alla fine delle quattro settimane.</li>
+                                    <li>Partecipare a un'<strong>intervista opzionale</strong> (circa 20–30 minuti, online) in cui potrai raccontarci più nel dettaglio cosa hai pensato dell'attività. L'intervista è completamente facoltativa.</li>
+                                </ol>
+                                <p>In totale, lo studio richiederà circa <strong>4–5 ore</strong> distribuite nell'arco di un mese, più eventualmente 20–30 minuti per l'intervista.</p>
+
+                                <h3 class="consent-section-heading">Possibili rischi e benefici</h3>
+                                <p><strong>Rischi:</strong> Non prevediamo rischi significativi. Alcune persone potrebbero sentirsi leggermente in ansia mentre scrivono in inglese, ma questo fa parte della normale esperienza di apprendimento. Puoi interrompere in qualsiasi momento se ti senti a disagio.</p>
+                                <p><strong>Benefici:</strong> Partecipando, avrai l'opportunità di praticare l'inglese scritto in un contesto nuovo e senza giudizio e provare strumenti educativi innovativi con intelligenza artificiale. Agli studenti UniTn saranno attribuiti crediti SONA per 300 minuti (5 ore).</p>
+
+                                <h3 class="consent-section-heading">Partecipazione volontaria</h3>
+                                <p>La tua partecipazione è completamente volontaria. Hai il diritto di:</p>
+                                <ul>
+                                    <li>Rifiutare di partecipare senza dare spiegazioni.</li>
+                                    <li>Interrompere lo studio in qualsiasi momento senza alcuna penalità.</li>
+                                    <li>Non rispondere a domande specifiche o non fare esercizi specifici se non lo desideri.</li>
+                                </ul>
+
+                                <h3 class="consent-section-heading">Privacy e trattamento dei dati</h3>
+                                <p>I tuoi dati personali saranno trattati nel rispetto del GDPR (Regolamento Europeo 2016/679) e delle normative italiane sulla privacy.</p>
+                                <p><strong>Quali dati raccoglieremo:</strong></p>
+                                <ul>
+                                    <li>Informazioni generali (età, genere, lingua madre, livello di inglese)</li>
+                                    <li>Le tue risposte ai questionari</li>
+                                    <li>I testi che scriverai durante l'attività</li>
+                                    <li>Eventualmente, la registrazione audio dell'intervista (solo se consenti)</li>
+                                </ul>
+                                <p>Se <strong>NON partecipi all'intervista opzionale</strong>: la tua partecipazione sarà completamente anonima. Accederai allo studio tramite un codice alfanumerico personale senza fornire nome, email o altri dati di contatto. Non sapremo chi sei.</p>
+                                <p>Se <strong>partecipi all'intervista opzionale</strong>: ti chiederemo di fornire i tuoi dati di contatto per organizzare l'intervista. Il tuo codice partecipante sarà collegato ai tuoi dati di contatto, ma queste informazioni rimarranno strettamente riservate e non saranno condivise con nessuno al di fuori del gruppo di ricerca.</p>
+                                <p><strong>Conservazione dei dati:</strong></p>
+                                <ul>
+                                    <li>I dati di contatto (se forniti per l'intervista) saranno cancellati al termine dello studio</li>
+                                    <li>Le risposte ai questionari e i log di gioco saranno anonimizzati</li>
+                                    <li>I dati anonimizzati saranno conservati per il tempo necessario alla ricerca e alle pubblicazioni scientifiche</li>
+                                </ul>
+                                <p><strong>I tuoi diritti:</strong> accedere ai tuoi dati personali, richiederne la correzione o cancellazione, opporti al trattamento, revocare il consenso in qualsiasi momento.</p>
+
+                                <h3 class="consent-section-heading">Utilizzo dei risultati</h3>
+                                <p>I risultati di questo studio saranno usati per capire come l'intelligenza artificiale può supportare l'apprendimento delle lingue, per pubblicare articoli scientifici e presentazioni a conferenze, e per migliorare la progettazione di strumenti educativi. Tutti i risultati pubblicati saranno anonimi.</p>
+
+                                <h3 class="consent-section-heading">Contatti</h3>
+                                <p>Per domande o chiarimenti, contatta: Maria Goikhman · <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a></p>
+                                <p><em>Grazie per aver considerato la partecipazione!</em></p>
+                            </div>
+
+                            <!-- ── ENGLISH ── -->
+                            <div data-lang="en">
+                                <p class="consent-doc-intro">We invite you to participate in a research study conducted by the University of Trento and the Fondazione Bruno Kessler. Before deciding whether to participate, please read this document carefully and contact us if you have any questions.</p>
+
+                                <h3 class="consent-section-heading">Study purpose</h3>
+                                <p>This study aims to explore how AI-supported reading and writing activities can help adults learning English as a foreign language. In particular, we want to understand whether this type of activity can:</p>
+                                <ul>
+                                    <li>Make English writing practice more engaging</li>
+                                    <li>Reduce the anxiety that some people experience when writing in English</li>
+                                </ul>
+                                <p>The study is funded through a doctoral fellowship awarded by FBK (Fondazione Bruno Kessler), as part of its joint programme with the University of Trento.</p>
+
+                                <h3 class="consent-section-heading">Who can participate</h3>
+                                <p>We are looking for people with the following characteristics:</p>
+                                <ul>
+                                    <li>Adults (18+)</li>
+                                    <li>Intermediate English level (B1–B2)</li>
+                                </ul>
+                                <p>To participate you will need a computer, smartphone, or tablet with an internet connection.</p>
+
+                                <h3 class="consent-section-heading">What we will ask you to do</h3>
+                                <p>If you decide to participate, we will ask you to complete an activity lasting four weeks in total:</p>
+                                <ol>
+                                    <li>Complete an <strong>initial questionnaire</strong> (approximately 10 minutes) about your experiences with English and how you feel about writing in this language.</li>
+                                    <li>Complete <strong>weekly English writing activities</strong> (approximately one hour per episode per week). You will be randomly assigned to one of two groups:
+                                        <ul>
+                                            <li><strong>Game group:</strong> you will play a detective game with AI characters you can chat with to solve a mystery</li>
+                                            <li><strong>Reading group:</strong> you will read a detective story in English, complete language exercises, and answer questions with the help of an AI tutor</li>
+                                        </ul>
+                                    </li>
+                                    <li>All activities will take place online (via a web application), and you can complete them at any time during the week.</li>
+                                    <li>Complete <strong>brief weekly questionnaires</strong> (approximately 5 minutes) after each episode.</li>
+                                    <li>Complete a <strong>final questionnaire</strong> (approximately 10 minutes) about your experience at the end of the four weeks.</li>
+                                    <li>Participate in an <strong>optional interview</strong> (approximately 20–30 minutes, online) where you can tell us in more detail what you thought of the activity. The interview is entirely voluntary.</li>
+                                </ol>
+                                <p>In total, the study will require approximately <strong>4–5 hours</strong> spread over one month, plus optionally 20–30 minutes for the interview.</p>
+
+                                <h3 class="consent-section-heading">Possible risks and benefits</h3>
+                                <p><strong>Risks:</strong> We do not anticipate significant risks. Some people may feel slightly anxious when writing in English, but this is part of the normal learning experience. You can stop at any time if you feel uncomfortable.</p>
+                                <p><strong>Benefits:</strong> By participating, you will have the opportunity to practise written English in a new, judgement-free context and try innovative AI-based educational tools. University of Trento students will receive SONA credits for 300 minutes (5 hours).</p>
+
+                                <h3 class="consent-section-heading">Voluntary participation</h3>
+                                <p>Your participation is entirely voluntary. You have the right to:</p>
+                                <ul>
+                                    <li>Refuse to participate without giving reasons.</li>
+                                    <li>Withdraw from the study at any time without penalty.</li>
+                                    <li>Decline to answer specific questions or complete specific exercises if you do not wish to.</li>
+                                </ul>
+
+                                <h3 class="consent-section-heading">Privacy and data processing</h3>
+                                <p>Your personal data will be processed in accordance with the GDPR (EU Regulation 2016/679) and Italian privacy legislation.</p>
+                                <p><strong>Data we will collect:</strong></p>
+                                <ul>
+                                    <li>General information (age, gender, native language, English level)</li>
+                                    <li>Your responses to questionnaires</li>
+                                    <li>The texts you write during the activity</li>
+                                    <li>Optionally, an audio recording of the interview (only if you consent)</li>
+                                </ul>
+                                <p>If you do <strong>NOT participate in the optional interview</strong>: your participation will be entirely anonymous. You will access the study via a personal alphanumeric code without providing your name, email, or other contact details. We will not know who you are.</p>
+                                <p>If you <strong>participate in the optional interview</strong>: we will ask you to provide your contact details to arrange the interview. Your participant code will be linked to your contact details, but this information will remain strictly confidential and will not be shared with anyone outside the research team.</p>
+                                <p><strong>Data retention:</strong></p>
+                                <ul>
+                                    <li>Contact details (if provided for the interview) will be deleted at the end of the study</li>
+                                    <li>Questionnaire responses and game logs will be anonymised</li>
+                                    <li>Anonymised data will be retained for as long as needed for research and scientific publications</li>
+                                </ul>
+                                <p><strong>Your rights:</strong> to access your personal data, request correction or deletion, object to processing, and withdraw consent at any time.</p>
+
+                                <h3 class="consent-section-heading">Use of results</h3>
+                                <p>The results of this study will be used to understand how AI can support language learning, to publish scientific articles and conference presentations, and to improve the design of educational tools. All published results will be anonymous.</p>
+
+                                <h3 class="consent-section-heading">Contact</h3>
+                                <p>For questions or clarifications, contact: Maria Goikhman · <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a></p>
+                                <p><em>Thank you for considering participation!</em></p>
+                            </div>
+
+                        </div><!-- #consentBody1 -->
                         <label class="consent-checkbox-label">
                             <input type="checkbox" class="consent-checkbox" id="consentCheck1" autocomplete="off">
-                            <span>I have read and accept the study information sheet.</span>
+                            <span data-i18n="check1Label">I have read and accept the study information sheet.</span>
                         </label>
                     </div>
                 </div>
 
+                <!-- Block 2: Privacy notice -->
                 <div class="consent-block">
                     <button type="button" class="consent-toggle" aria-expanded="false" aria-controls="consentExpandable2" id="consentToggle2">
-                        <span class="consent-toggle-title">Privacy notice for research data processing</span>
+                        <span class="consent-toggle-title" data-i18n="toggle2Title">Privacy notice for research data processing</span>
                         <span class="consent-toggle-icon" aria-hidden="true"></span>
                     </button>
                     <div class="consent-expandable" id="consentExpandable2">
                         <button type="button" class="consent-close" aria-label="Close">×</button>
                         <div class="consent-body" id="consentBody2">
-                            <p>
-                                Data is processed in line with GDPR and used only for research purposes.
-                                Published results are anonymized and cannot identify participants.
-                            </p>
-                            <p>
-                                Contact details are requested only for participants who opt into the optional interview and are
-                                removed after the study.
-                            </p>
-                            <p>
-                                Full version:
-                                <a href="consent_forms/INFORMATIVA%20SUL%20TRATTAMENTO%20DEI%20DATI%20PERSONALI%20PER%20FINALIT%C3%80%20DI%20RICERCA%20SCIENTIFICA.html" target="_blank" rel="noopener noreferrer">
-                                    open the privacy notice
-                                </a>.
-                            </p>
-                        </div>
+
+                            <!-- ── ITALIANO ── -->
+                            <div data-lang="it" hidden>
+                                <p class="consent-doc-title">Informativa sul trattamento dei dati personali per finalità di ricerca scientifica (Art. 13 Reg. UE 2016/679)</p>
+                                <p class="consent-doc-intro">Gentile partecipante, desideriamo informarla che la normativa vigente in materia di protezione dei dati, con particolare riguardo all'ambito della ricerca scientifica, sancisce il diritto di ogni persona alla protezione dei dati di carattere personale che la riguardano. In qualità di Interessato, le forniamo le seguenti informazioni relative al trattamento dei suoi dati personali.</p>
+
+                                <h3 class="consent-section-heading">Titolare del trattamento</h3>
+                                <p><strong>Università degli Studi di Trento</strong>, via Calepina n. 14, 38122 Trento.<br>
+                                Email: <a href="mailto:ateneo@unitn.it">ateneo@unitn.it</a> · PEC: <a href="mailto:ateneo@pec.unitn.it">ateneo@pec.unitn.it</a></p>
+
+                                <h3 class="consent-section-heading">Responsabile della protezione dei dati</h3>
+                                <p>Il Responsabile della protezione dei dati (RPD) può essere contattato all'indirizzo: <a href="mailto:rpd@unitn.it">rpd@unitn.it</a></p>
+
+                                <h3 class="consent-section-heading">Finalità e base giuridica del trattamento</h3>
+                                <p>Il trattamento dei dati personali è effettuato per la realizzazione delle finalità scientifiche del Progetto: <em>Building English Writing Confidence in Adult Learners through AI Text Detective Game</em>.</p>
+                                <p>Il trattamento dei dati personali comuni è effettuato ai sensi dell'art. 6, par. 1, lett. e) del GDPR (esecuzione di compiti di interesse pubblico). Il Progetto è depositato e conservato per cinque anni dal 31/10/2026 presso il Dipartimento di Psicologia e Scienze Cognitive dell'Università degli Studi di Trento.</p>
+
+                                <h3 class="consent-section-heading">Categorie di dati personali trattati</h3>
+                                <p>Nella realizzazione del Progetto verranno trattati i seguenti dati personali:</p>
+                                <ul>
+                                    <li>Dati anagrafici e di contatto</li>
+                                    <li>Voce (registrazione audio dell'intervista opzionale, previo consenso)</li>
+                                    <li>Log di accesso e utilizzo dell'applicativo web</li>
+                                    <li>Opinioni personali espresse (solo nel corso dell'intervista opzionale, se associate a dati identificativi)</li>
+                                    <li>Eventuali dati particolari (salute, origine razziale/etnica, opinioni politiche, ecc.) nella misura in cui emergono spontaneamente nel corso dell'intervista</li>
+                                </ul>
+
+                                <h3 class="consent-section-heading">Modalità del trattamento</h3>
+                                <p>Il trattamento avviene mediante strumenti informatizzati, in particolare: piattaforme di analisi dati (Python, Google Sheets), il <strong>portale web dello studio</strong> per il questionario iniziale di screening (lingua madre e autovalutazione del livello), e applicazioni per questionari (ad es. Google Forms) ove utilizzate per questionari di follow-up. Misure di sicurezza adottate: pseudonimizzazione per l'intervista opzionale, archiviazione protetta, cifratura.</p>
+                                <p>I partecipanti che non aderiscono all'intervista personale vengono identificati esclusivamente tramite un codice partecipante non riconducibile alla persona. Gli indirizzi e-mail raccolti in fase di pre-registrazione sono usati solo per l'invio del link allo studio e non sono collegati ai codici dei partecipanti.</p>
+                                <p>Fanno eccezione solo i dati dei partecipanti che acconsentono all'intervista: in questo caso, il codice sarà temporaneamente associato all'indirizzo e-mail fornito (forma pseudonimizzata) per permettere il contatto. Al termine della ricerca, tutti i dati di contatto e le registrazioni audio verranno eliminati definitivamente.</p>
+
+                                <h3 class="consent-section-heading">Periodo di conservazione dei dati</h3>
+                                <p>Al termine del Progetto le registrazioni audio delle interviste e i dati di contatto saranno cancellati. Le risposte ai questionari, i log della web-app e le trascrizioni pseudonimizzate delle interviste saranno conservati per cinque anni ai fini della ricerca.</p>
+
+                                <h3 class="consent-section-heading">Natura del conferimento dei dati</h3>
+                                <p>Il conferimento dei dati è indispensabile per la realizzazione del Progetto di ricerca; il mancato conferimento determina l'impossibilità di parteciparvi.</p>
+
+                                <h3 class="consent-section-heading">Destinatari dei dati</h3>
+                                <p>I dati personali non saranno comunicati a soggetti terzi e non saranno trasferiti verso Paesi al di fuori dello Spazio Economico Europeo (SEE).</p>
+
+                                <h3 class="consent-section-heading">Divulgazione dei risultati</h3>
+                                <p>La divulgazione dei risultati statistici e/o scientifici (articoli, banche dati, convegni) avverrà soltanto in forma anonima e/o aggregata, secondo modalità che non rendano identificabile l'interessato.</p>
+
+                                <h3 class="consent-section-heading">Diritti dell'interessato</h3>
+                                <p>Gli interessati hanno diritto di richiedere al Titolare, in qualsiasi momento: l'accesso ai propri dati personali, la rettifica, l'integrazione e, se ricorrono i presupposti, la cancellazione, la limitazione del trattamento e il diritto di opporsi allo stesso (artt. 15 ss. GDPR). È possibile proporre reclamo all'Autorità Garante per la protezione dei dati personali ai sensi dell'art. 77 del GDPR.</p>
+                                <p>Gli interessati hanno il diritto di revocare il consenso in qualsiasi momento, senza pregiudicare la liceità del trattamento effettuato prima della revoca.</p>
+                                <p>Per informazioni relative al trattamento nel Progetto, rivolgersi al Preposto al Trattamento dei dati personali:<br>
+                                <strong>Massimo Zancanaro</strong> · <a href="mailto:massimo.zancanaro@unitn.it">massimo.zancanaro@unitn.it</a></p>
+                            </div>
+
+                            <!-- ── ENGLISH ── -->
+                            <div data-lang="en">
+                                <p class="consent-doc-title">Privacy Notice for Scientific Research Data Processing (Art. 13 EU Reg. 2016/679)</p>
+                                <p class="consent-doc-intro">Dear participant, we wish to inform you that current data protection legislation, with particular regard to the scientific research context, establishes every person's right to the protection of their personal data. As a data subject, we provide you with the following information regarding the processing of your personal data.</p>
+
+                                <h3 class="consent-section-heading">Data controller</h3>
+                                <p><strong>University of Trento</strong>, via Calepina 14, 38122 Trento.<br>
+                                Email: <a href="mailto:ateneo@unitn.it">ateneo@unitn.it</a> · PEC: <a href="mailto:ateneo@pec.unitn.it">ateneo@pec.unitn.it</a></p>
+
+                                <h3 class="consent-section-heading">Data protection officer</h3>
+                                <p>The Data Protection Officer (DPO) can be contacted at: <a href="mailto:rpd@unitn.it">rpd@unitn.it</a></p>
+
+                                <h3 class="consent-section-heading">Purpose and legal basis for processing</h3>
+                                <p>Personal data is processed in order to pursue the scientific purposes described in the participant information sheet for the following research project: <em>Building English Writing Confidence in Adult Learners through AI Text Detective Game</em>.</p>
+                                <p>Common personal data is processed pursuant to Art. 6(1)(e) GDPR (performance of a task carried out in the public interest). The project is filed and retained for five years from 31/10/2026 at the Department of Psychology and Cognitive Science of the University of Trento.</p>
+
+                                <h3 class="consent-section-heading">Categories of personal data processed</h3>
+                                <p>The following personal data will be processed in the course of the project:</p>
+                                <ul>
+                                    <li>Demographic and contact data</li>
+                                    <li>Voice (audio recording of the optional interview, subject to consent)</li>
+                                    <li>Access and usage logs of the web application</li>
+                                    <li>Personal opinions expressed (only during the optional interview, if linked to identifying data)</li>
+                                    <li>Any special category data (health, racial/ethnic origin, political opinions, etc.) to the extent that they arise spontaneously during the interview</li>
+                                </ul>
+
+                                <h3 class="consent-section-heading">Processing methods</h3>
+                                <p>Processing is carried out using computerised tools, in particular: data analysis platforms (Python, Google Sheets), the <strong>study web portal</strong> for the initial screening questionnaire (background and self-rated proficiency), and questionnaire applications (e.g. Google Forms) where used for follow-up surveys. Security measures include: pseudonymisation for information collected during the optional interview, protected storage, and encryption.</p>
+                                <p>Participants who do not take part in the personal interview are identified exclusively via a participant code that cannot be traced back to the individual. Email addresses collected during pre-registration are used solely to send the study link and are in no way linked to participant codes.</p>
+                                <p>The only exception applies to participants who consent to the interview: in this case, the code will be temporarily linked to the email address provided (pseudonymised form) to enable contact. At the end of the research, all contact data and audio recordings will be permanently deleted.</p>
+
+                                <h3 class="consent-section-heading">Data retention period</h3>
+                                <p>At the end of the project, audio recordings of interviews and contact data will be deleted. Questionnaire responses, web-app logs, and pseudonymised interview transcripts will be retained for five years for research purposes.</p>
+
+                                <h3 class="consent-section-heading">Nature of data provision</h3>
+                                <p>Providing data is essential for the realisation of the research project; failure to provide data makes participation impossible.</p>
+
+                                <h3 class="consent-section-heading">Recipients of data</h3>
+                                <p>Personal data will not be communicated to third parties and will not be transferred outside the European Economic Area (EEA).</p>
+
+                                <h3 class="consent-section-heading">Dissemination of results</h3>
+                                <p>Statistical and/or scientific results (scientific articles, databases, conferences) will be disseminated only in anonymous and/or aggregate form, in a manner that does not allow identification of the data subject.</p>
+
+                                <h3 class="consent-section-heading">Data subject rights</h3>
+                                <p>Data subjects have the right to request from the Controller, at any time: access to their personal data, rectification, supplementation and, where the legal conditions are met, erasure, restriction of processing, and the right to object (Arts. 15 et seq. GDPR). Data subjects have the right to withdraw consent at any time without affecting the lawfulness of prior processing. It is possible to lodge a complaint with the Italian Data Protection Authority pursuant to Art. 77 GDPR.</p>
+                                <p>For information regarding data processing in the project, please contact the appointed data processing officer:<br>
+                                <strong>Massimo Zancanaro</strong> · <a href="mailto:massimo.zancanaro@unitn.it">massimo.zancanaro@unitn.it</a></p>
+                            </div>
+
+                        </div><!-- #consentBody2 -->
                         <label class="consent-checkbox-label">
                             <input type="checkbox" class="consent-checkbox" id="consentCheck2" autocomplete="off">
-                            <span>I have read and accept the privacy notice.</span>
+                            <span data-i18n="check2Label">I have read and accept the privacy notice.</span>
                         </label>
                     </div>
                 </div>
 
-                <button type="button" class="button primary" id="consentContinueButton" disabled>Continue</button>
+                <button type="button" class="button primary" id="consentContinueButton" data-i18n="continueBtn" disabled>Continue</button>
             </section>
 
+            <!-- Onboarding questionnaire (study flow; hidden in dev / localhost) -->
+            <section class="card hidden" data-view="survey" id="surveyView" aria-labelledby="surveyTitle">
+                <h2 id="surveyTitle" data-i18n="surveyTitle">Language background</h2>
+                <p class="survey-lead" data-i18n="surveyLead">Please answer every question. English level items use two statements each; select all that apply.</p>
+                <form id="surveyForm" class="survey-form" novalidate></form>
+                <div class="survey-actions">
+                    <button type="submit" form="surveyForm" class="button primary" id="surveySubmitButton" data-i18n="surveySubmit">Submit and continue</button>
+                </div>
+                <div class="status-text error" id="surveyError" role="alert"></div>
+            </section>
+
+            <!-- Login view -->
             <section class="card hidden" data-view="login" id="loginView">
-                <h2>Unlock Your Session</h2>
-                <p>Participant codes are provided by the research team. The same code works for both modes.</p>
+                <div id="studyCodeInstructions" class="study-code-instructions hidden" data-i18n-html="studyCodeInstructions"></div>
+                <h2 data-i18n="loginTitle">Unlock Your Session</h2>
+                <p data-i18n="loginLead">Participant codes are provided by the research team. The same code works for both modes.</p>
 
                 <div class="input-group">
-                    <label for="participantCode">Participant code</label>
+                    <label for="participantCode" data-i18n="participantCodeLabel">Participant code</label>
                     <div class="input-row">
                         <input type="text" id="participantCode" placeholder="Enter code (e.g., AN0842)" autocomplete="one-time-code">
-                        <button class="button primary" id="loginButton">Unlock access</button>
+                        <button class="button primary" id="loginButton" data-i18n="unlockButton">Unlock access</button>
                     </div>
                 </div>
 
@@ -98,16 +373,23 @@
                 <div class="status-text" id="loginStatus"></div>
             </section>
 
+            <!-- Mode select view -->
             <section class="card" data-view="mode-select" id="modeSelectView">
                 <div class="session-chip">
-                    Active session · <span id="sessionCode">—</span>
+                    <span data-i18n="sessionChipPrefix">Active session</span>
+                    · <span id="sessionCode">—</span>
                 </div>
                 <div class="mode-details">
-                    <h2>Select how you want to continue</h2>
-                    <p>Both modes use the same participant progress. You can switch at any time.</p>
+                    <h2 data-i18n="modeSelectTitle">Select how you want to continue</h2>
+                    <p data-i18n="modeSelectLead">Both modes use the same participant progress. You can switch at any time.</p>
                 </div>
 
-                <div class="mode-grid">
+                <div id="modeAssignedWrap" class="mode-assigned-wrap hidden">
+                    <p class="assigned-blurb" data-i18n="assignedBlurb">You are continuing in your assigned study activity.</p>
+                    <button type="button" class="button primary" id="assignedContinueBtn" data-i18n="assignedContinueBtn">Continue to your activity</button>
+                </div>
+
+                <div class="mode-grid" id="modeGridDual">
                     <article class="mode-card">
                         <div class="mode-details">
                             <h3>Teach · Detective Reading Journey</h3>
@@ -141,21 +423,30 @@
 
                 <div class="status-text" id="modeStatus"></div>
             </section>
+
         </main>
 
+        <!-- ── Footer ──────────────────────────────────── -->
         <footer class="portal-footer">
-            Need support? Contact the study coordinator or refresh the page to start over.
+            <p data-i18n-html="footerContact">Questions? <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a></p>
+            <div class="portal-logos" aria-label="Research institutions">
+                <img src="./placeholder/images/UniTrento_logo_ITA_colore.jpg" alt="University of Trento logo">
+                <img src="./placeholder/images/FBK_logo.png" alt="Fondazione Bruno Kessler logo">
+            </div>
         </footer>
-    </div>
 
-    <script>
-        window.portalDestinations = Object.assign({}, window.portalDestinations, {
-            tellProduction: 'https://chicago-formula-n.web.app/',
-            teachProduction: 'https://chicago-formula-t.web.app/',
-            tellLocal: '../../Tell/frontend/index.html',
-            teachLocal: '../../Teach/frontend/index.html'
-        });
-    </script>
-    <script src="js/portal.js"></script>
+    </div><!-- .portal-container -->
+</div><!-- .portal-page -->
+
+<script src="js/i18n.js"></script>
+<script>
+    window.portalDestinations = Object.assign({}, window.portalDestinations, {
+        tellProduction: 'https://chicago-formula-n.web.app/',
+        teachProduction: 'https://chicago-formula-t.web.app/',
+        tellLocal: '../../Tell/frontend/index.html',
+        teachLocal: '../../Teach/frontend/index.html'
+    });
+</script>
+<script src="js/portal.js"></script>
 </body>
 </html>

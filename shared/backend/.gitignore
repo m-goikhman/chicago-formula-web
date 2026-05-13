@@ -53,6 +53,8 @@ logs/
 # Google Cloud credentials (if stored locally)
 *.json
 !firebase.json
+# Bundled study questionnaire (required in Docker image for /api/study/questionnaire)
+!data/language_learner_profile.json
 service-account*.json
 gcloud-key*.json
 

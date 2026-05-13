@@ -182,10 +182,27 @@
     }
 
     const CONSENT_STORAGE_KEY = 'portalConsentGiven';
+    const STORAGE_STUDY_ARM = 'portalStudyArm';
+    const SESSION_ONBOARDING_TOKEN = 'portalOnboardingToken';
+
+    function isStudyFlowEnabled() {
+        const params = new URLSearchParams(global.location.search || '');
+        if (params.get('dev') === '1') {
+            return false;
+        }
+        return !sharedConfig.isLocalhost;
+    }
 
     const consentView = document.getElementById('consentView');
+    const surveyView = document.getElementById('surveyView');
+    const surveyForm = document.getElementById('surveyForm');
+    const surveyError = document.getElementById('surveyError');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
+    const modeGridDual = document.getElementById('modeGridDual');
+    const modeAssignedWrap = document.getElementById('modeAssignedWrap');
+    const assignedContinueBtn = document.getElementById('assignedContinueBtn');
+    const studyCodeInstructions = document.getElementById('studyCodeInstructions');
     const participantInput = document.getElementById('participantCode');
     const consentToggle1 = document.getElementById('consentToggle1');
     const consentToggle2 = document.getElementById('consentToggle2');
@@ -205,15 +222,33 @@
     const enterTeachButton = document.querySelector('[data-action="enter-teach"]');
     const enterTellButton = document.querySelector('[data-action="enter-tell"]');
 
+    let cachedQuestionnaire = null;
+
+    function getUnlockButtonLabel() {
+        const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('portalLang')) || 'en';
+        if (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]) {
+            return PORTAL_TRANSLATIONS[lang].unlockButton || 'Unlock access';
+        }
+        return 'Unlock access';
+    }
+
+    function getCheckingLabel() {
+        const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('portalLang')) || 'en';
+        if (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]) {
+            return PORTAL_TRANSLATIONS[lang].unlockChecking || 'Checking code…';
+        }
+        return 'Checking code…';
+    }
+
     function setLoading(isLoading) {
         if (isLoading) {
             loginButton.classList.add('loading');
             loginButton.disabled = true;
-            loginButton.textContent = 'Checking code…';
+            loginButton.textContent = getCheckingLabel();
         } else {
             loginButton.classList.remove('loading');
             loginButton.disabled = false;
-            loginButton.textContent = 'Unlock access';
+            loginButton.textContent = getUnlockButtonLabel();
         }
     }
 
@@ -253,12 +288,210 @@
         localStorage.setItem(CONSENT_STORAGE_KEY, 'true');
     }
 
-    function hideConsentView() {
+    function hideAllMainSections() {
+        [consentView, surveyView, loginView, modeSelectView].forEach((el) => {
+            if (!el) {
+                return;
+            }
+            el.classList.add('hidden');
+            if (el === modeSelectView) {
+                el.classList.remove('active');
+            }
+        });
+    }
+
+    function hideConsentOnly() {
         if (consentView) {
             consentView.classList.add('hidden');
         }
-        if (loginView) {
-            loginView.classList.remove('hidden');
+    }
+
+    function showLoginDev() {
+        hideAllMainSections();
+        if (studyCodeInstructions) {
+            studyCodeInstructions.classList.add('hidden');
+        }
+        loginView.classList.remove('hidden');
+    }
+
+    function showLoginAfterSurvey() {
+        hideAllMainSections();
+        if (studyCodeInstructions) {
+            studyCodeInstructions.classList.remove('hidden');
+        }
+        loginView.classList.remove('hidden');
+        const lang = localStorage.getItem('portalLang') || 'en';
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
+        if (participantInput) {
+            participantInput.focus();
+        }
+    }
+
+    function renderQuestionField(q) {
+        const wrap = document.createElement('fieldset');
+        wrap.className = 'survey-fieldset';
+        wrap.dataset.questionId = q.question_id;
+
+        const leg = document.createElement('legend');
+        leg.className = 'survey-legend';
+        leg.textContent = q.text_en;
+        wrap.appendChild(leg);
+
+        if (q.type === 'single_select') {
+            (q.options_en || []).forEach((label, idx) => {
+                const row = document.createElement('label');
+                row.className = 'survey-option';
+                const inp = document.createElement('input');
+                inp.type = 'radio';
+                inp.name = q.question_id;
+                inp.value = String(idx);
+                if (q.required) {
+                    inp.required = true;
+                }
+                const span = document.createElement('span');
+                span.className = 'survey-option-text';
+                span.textContent = label;
+                row.appendChild(inp);
+                row.appendChild(span);
+                wrap.appendChild(row);
+            });
+        } else if (q.type === 'multi_select') {
+            (q.options_en || []).forEach((label, idx) => {
+                const row = document.createElement('label');
+                row.className = 'survey-option';
+                const inp = document.createElement('input');
+                inp.type = 'checkbox';
+                inp.name = q.question_id;
+                inp.value = String(idx);
+                const span = document.createElement('span');
+                span.className = 'survey-option-text';
+                span.textContent = label;
+                row.appendChild(inp);
+                row.appendChild(span);
+                wrap.appendChild(row);
+            });
+        } else if (q.type === 'open_text') {
+            const ta = document.createElement('textarea');
+            ta.className = 'survey-textarea';
+            ta.name = q.question_id;
+            ta.rows = 3;
+            if (q.required) {
+                ta.required = true;
+            }
+            wrap.appendChild(ta);
+        }
+
+        return wrap;
+    }
+
+    async function ensureQuestionnaire() {
+        if (cachedQuestionnaire) {
+            return cachedQuestionnaire;
+        }
+        const { response, data } = await apiClient.get('/api/study/questionnaire');
+        if (!response.ok) {
+            throw new Error((data && (data.detail || data.message)) || 'Could not load questionnaire');
+        }
+        cachedQuestionnaire = data.questions || [];
+        return cachedQuestionnaire;
+    }
+
+    async function loadAndRenderSurvey() {
+        surveyError.textContent = '';
+        const questions = await ensureQuestionnaire();
+        surveyForm.innerHTML = '';
+        questions.forEach((q) => {
+            surveyForm.appendChild(renderQuestionField(q));
+        });
+    }
+
+    function showSurveyView() {
+        clearMessages();
+        hideAllMainSections();
+        surveyView.classList.remove('hidden');
+        surveyError.textContent = '';
+        loadAndRenderSurvey().catch((err) => {
+            console.error('[Portal] Survey load failed:', err);
+            surveyError.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' &&
+                    PORTAL_TRANSLATIONS[localStorage.getItem('portalLang') || 'en']?.surveyLoadError) ||
+                'Could not load the questionnaire. Please check your connection and try again.';
+        });
+    }
+
+    function collectSurveyAnswers() {
+        const questions = cachedQuestionnaire;
+        if (!questions) {
+            return null;
+        }
+        const answers = {};
+        for (let i = 0; i < questions.length; i += 1) {
+            const q = questions[i];
+            if (q.type === 'single_select') {
+                const sel = surveyForm.querySelector(`input[name="${q.question_id}"]:checked`);
+                if (!sel) {
+                    return null;
+                }
+                answers[q.question_id] = parseInt(sel.value, 10);
+            } else if (q.type === 'multi_select') {
+                const sels = surveyForm.querySelectorAll(`input[name="${q.question_id}"]:checked`);
+                if (q.required && sels.length === 0) {
+                    return null;
+                }
+                answers[q.question_id] = Array.from(sels).map((el) => parseInt(el.value, 10));
+            } else if (q.type === 'open_text') {
+                const ta = surveyForm.querySelector(`textarea[name="${q.question_id}"]`);
+                const v = (ta && ta.value.trim()) || '';
+                if (q.required && !v) {
+                    return null;
+                }
+                answers[q.question_id] = v;
+            }
+        }
+        return answers;
+    }
+
+    async function handleSurveySubmit(event) {
+        event.preventDefault();
+        surveyError.textContent = '';
+        const answers = collectSurveyAnswers();
+        if (!answers) {
+            const lang = localStorage.getItem('portalLang') || 'en';
+            const msg =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.surveyValidationError) ||
+                'Please answer all required questions.';
+            surveyError.textContent = msg;
+            return;
+        }
+
+        const submitBtn = document.getElementById('surveySubmitButton');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+        try {
+            const { response, data } = await apiClient.postJson('/api/study/onboarding', { answers });
+            if (!response.ok) {
+                const detail =
+                    (data && (data.detail || data.error || data.message)) ||
+                    'Submission failed. Please check your answers.';
+                surveyError.textContent = detail;
+                return;
+            }
+            sessionStorage.setItem(SESSION_ONBOARDING_TOKEN, data.onboarding_token);
+            localStorage.setItem(STORAGE_STUDY_ARM, data.arm);
+            showLoginAfterSurvey();
+        } catch (err) {
+            console.error('[Portal] Onboarding submit failed:', err);
+            const lang = localStorage.getItem('portalLang') || 'en';
+            surveyError.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.surveySubmitError) ||
+                'Could not reach the server. Please try again later.';
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+            }
         }
     }
 
@@ -275,8 +508,17 @@
         if (consentView) {
             consentView.classList.add('hidden');
         }
+        if (surveyView) {
+            surveyView.classList.add('hidden');
+        }
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
+        if (modeGridDual) {
+            modeGridDual.classList.remove('hidden');
+        }
+        if (modeAssignedWrap) {
+            modeAssignedWrap.classList.add('hidden');
+        }
         if (options.showStatus) {
             modeStatus.textContent = options.showStatus;
         } else {
@@ -284,17 +526,60 @@
         }
     }
 
+    function showModeSelectAssigned(participantCode, arm, options = {}) {
+        sessionCodeEl.textContent = participantCode ?? '—';
+        if (consentView) {
+            consentView.classList.add('hidden');
+        }
+        if (surveyView) {
+            surveyView.classList.add('hidden');
+        }
+        loginView.classList.add('hidden');
+        modeSelectView.classList.add('active');
+        if (modeGridDual) {
+            modeGridDual.classList.add('hidden');
+        }
+        if (modeAssignedWrap) {
+            modeAssignedWrap.classList.remove('hidden');
+        }
+        if (assignedContinueBtn) {
+            assignedContinueBtn.onclick = () => navigateTo(arm);
+        }
+        if (options.showStatus) {
+            modeStatus.textContent = options.showStatus;
+        } else {
+            modeStatus.textContent = '';
+        }
+        const lang = localStorage.getItem('portalLang') || 'en';
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
+    }
+
     function showLoginView() {
+        hideAllMainSections();
+        if (studyCodeInstructions) {
+            studyCodeInstructions.classList.add('hidden');
+        }
         loginView.classList.remove('hidden');
         modeSelectView.classList.remove('active');
         clearMessages();
-        loginStatus.textContent = 'Session cleared. Enter a new participant code.';
+        const lang = localStorage.getItem('portalLang') || 'en';
+        loginStatus.textContent =
+            (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.sessionClearedHint) ||
+            'Session cleared. Enter a new participant code.';
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
     }
 
     async function handleLogin() {
         const rawCode = participantInput.value.trim();
         if (!rawCode) {
-            loginError.textContent = 'Please enter the participant code provided to you.';
+            const lang = localStorage.getItem('portalLang') || 'en';
+            loginError.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.loginCodeMissing) ||
+                'Please enter the participant code provided to you.';
             return;
         }
 
@@ -308,7 +593,9 @@
             });
 
             if (!response.ok) {
-                const detail = (data && (data.detail || data.error || data.message)) || 'Login failed. Please check your code.';
+                const detail =
+                    (data && (data.detail || data.error || data.message)) ||
+                    'Login failed. Please check your code.';
                 loginError.textContent = detail;
                 return;
             }
@@ -319,11 +606,44 @@
             persistSession(token, participantCode);
             participantInput.value = '';
 
-            loginStatus.textContent = 'Success! Choose your mode below.';
-            showModeSelect(participantCode, { showStatus: 'Session ready. You can move between Teach and Tell at any time.' });
+            const studyArm = localStorage.getItem(STORAGE_STUDY_ARM);
+            const onboardingToken = sessionStorage.getItem(SESSION_ONBOARDING_TOKEN);
+
+            if (isStudyFlowEnabled() && studyArm && onboardingToken) {
+                try {
+                    await apiClient.postJson(
+                        '/api/study/onboarding/attach',
+                        { onboarding_token: onboardingToken },
+                        { token }
+                    );
+                } catch (e) {
+                    console.warn('[Portal] onboarding attach failed:', e);
+                }
+                sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
+                navigateTo(studyArm);
+                return;
+            }
+
+            if (isStudyFlowEnabled() && studyArm) {
+                navigateTo(studyArm);
+                return;
+            }
+
+            const lang = localStorage.getItem('portalLang') || 'en';
+            loginStatus.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.loginSuccessDual) ||
+                'Success! Choose your mode below.';
+            showModeSelect(participantCode, {
+                showStatus:
+                    (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.sessionReadyDual) ||
+                    'Session ready. You can move between Teach and Tell at any time.'
+            });
         } catch (error) {
             console.error('[Portal] Login failed:', error);
-            loginError.textContent = 'Could not reach the server. Please check your connection or try again later.';
+            const lang = localStorage.getItem('portalLang') || 'en';
+            loginError.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.loginNetworkError) ||
+                'Could not reach the server. Please check your connection or try again later.';
         } finally {
             setLoading(false);
         }
@@ -336,7 +656,10 @@
         }
 
         clearMessages();
-        loginStatus.textContent = 'Restoring your previous session…';
+        const lang = localStorage.getItem('portalLang') || 'en';
+        loginStatus.textContent =
+            (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.restoringSession) ||
+            'Restoring your previous session…';
 
         try {
             const { response, data } = await apiClient.get('/api/auth/session', {
@@ -349,12 +672,26 @@
 
             const participantCode = (data && data.participant_code) || stored.code;
             persistSession(stored.token, participantCode);
-            showModeSelect(participantCode, { showStatus: 'Session restored. Choose a mode to continue.' });
+            const studyArm = localStorage.getItem(STORAGE_STUDY_ARM);
+            if (isStudyFlowEnabled() && studyArm) {
+                const msg =
+                    (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.sessionRestoredAssigned) ||
+                    'Session restored. Continue to your assigned activity.';
+                showModeSelectAssigned(participantCode, studyArm, { showStatus: msg });
+            } else {
+                showModeSelect(participantCode, {
+                    showStatus:
+                        (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.sessionRestoredDual) ||
+                        'Session restored. Choose a mode to continue.'
+                });
+            }
             return true;
         } catch (error) {
             console.warn('[Portal] Stored session is no longer valid:', error);
             clearStoredSession();
-            loginStatus.textContent = 'Your previous session expired. Please enter your participant code again.';
+            loginStatus.textContent =
+                (typeof PORTAL_TRANSLATIONS !== 'undefined' && PORTAL_TRANSLATIONS[lang]?.sessionExpired) ||
+                'Your previous session expired. Please enter your participant code again.';
             return false;
         }
     }
@@ -413,9 +750,14 @@
 
     function handleConsentContinue() {
         setConsentGiven();
-        hideConsentView();
-        if (participantInput) {
-            participantInput.focus();
+        hideConsentOnly();
+        if (isStudyFlowEnabled()) {
+            showSurveyView();
+        } else {
+            showLoginDev();
+            if (participantInput) {
+                participantInput.focus();
+            }
         }
     }
 
@@ -426,6 +768,10 @@
     }
     setupConsentToggles();
     setupConsentCheckboxes();
+
+    if (surveyForm) {
+        surveyForm.addEventListener('submit', handleSurveySubmit);
+    }
 
     participantInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
@@ -438,6 +784,12 @@
 
     switchCodeButton.addEventListener('click', () => {
         clearStoredSession();
+        sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
+        localStorage.removeItem(STORAGE_STUDY_ARM);
+        cachedQuestionnaire = null;
+        if (surveyForm) {
+            surveyForm.innerHTML = '';
+        }
         showLoginView();
         if (participantInput) {
             participantInput.focus();
@@ -445,14 +797,32 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        const lang = localStorage.getItem('portalLang') || 'en';
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
         if (hasConsentGiven()) {
-            hideConsentView();
-            tryRestoreSession().then((restored) => {
-                if (!restored && participantInput) {
-                    participantInput.focus();
-                }
-            });
+            hideConsentOnly();
+            if (!isStudyFlowEnabled()) {
+                showLoginDev();
+                tryRestoreSession().then((restored) => {
+                    if (!restored && participantInput) {
+                        participantInput.focus();
+                    }
+                });
+            } else {
+                tryRestoreSession().then((restored) => {
+                    if (restored) {
+                        return;
+                    }
+                    clearMessages();
+                    if (sessionStorage.getItem(SESSION_ONBOARDING_TOKEN) && localStorage.getItem(STORAGE_STUDY_ARM)) {
+                        showLoginAfterSurvey();
+                    } else {
+                        showSurveyView();
+                    }
+                });
+            }
         }
     });
 })(window);
-
