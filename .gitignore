@@ -26,6 +26,10 @@ frontend/.env.local
 *.log
 logs/
 
+# Local dev (dev-local.sh)
+.dev-local/
+.venv/
+
 # Temporary files
 *.tmp
 *.bak

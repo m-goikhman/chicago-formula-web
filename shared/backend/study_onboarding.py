@@ -6,23 +6,27 @@ Experimental arm = Tell; control arm = Teach (see research plan).
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 import os
 import random
 import secrets
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from google.api_core import exceptions as gcp_exceptions
 from google.cloud import storage
 
 from .cefr_self_rating import CEF_SKILL_KEYS, derive_cefr_band
+from .questionnaire_builtin import load_questionnaire
 
 logger = logging.getLogger(__name__)
 
-_DATA_PATH = Path(__file__).resolve().parent / "data" / "language_learner_profile.json"
 _GCS_PREFIX = "study_onboarding"
+_PARTICIPANTS_CSV_BLOB = f"{_GCS_PREFIX}/participants.csv"
+_CSV_MULTI_SEPARATOR = " | "
 
 
 def _bucket_name() -> str:
@@ -36,11 +40,7 @@ _COUNTERS: Dict[str, Dict[str, int]] = {
 }
 
 _ONBOARDING: Dict[str, Dict[str, Any]] = {}
-
-
-def load_questionnaire() -> List[dict]:
-    with _DATA_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
+_BY_PARTICIPANT: Dict[str, Dict[str, Any]] = {}
 
 
 def _validate_answers(raw: Any) -> Dict[str, Any]:
@@ -85,6 +85,50 @@ def _validate_answers(raw: Any) -> Dict[str, Any]:
     if set(raw.keys()) - set(spec_by_id.keys()):
         raise ValueError("Unknown answer keys present")
     return out
+
+
+def answers_to_readable(normalized: Dict[str, Any]) -> Dict[str, str]:
+    """Map stored answer indices to human-readable option labels."""
+    readable: Dict[str, str] = {}
+    for q in load_questionnaire():
+        qid = q["question_id"]
+        val = normalized.get(qid)
+        opts: List[str] = q.get("options_en") or []
+        typ = q["type"]
+        if typ == "single_select":
+            readable[qid] = opts[int(val)]
+        elif typ == "multi_select":
+            indices = val if isinstance(val, list) else []
+            labels = [opts[i] for i in indices if 0 <= i < len(opts)]
+            readable[qid] = _CSV_MULTI_SEPARATOR.join(labels)
+        elif typ == "open_text":
+            readable[qid] = str(val or "")
+    return readable
+
+
+def _participants_csv_fieldnames() -> List[str]:
+    meta = [
+        "participant_code",
+        "arm",
+        "cefr_band",
+        "questionnaire_completed_at",
+        "attached_at",
+    ]
+    question_ids = [q["question_id"] for q in load_questionnaire()]
+    return meta + question_ids
+
+
+def _participant_csv_row(record: Dict[str, Any], participant_code: str) -> Dict[str, str]:
+    readable = answers_to_readable(record.get("answers") or {})
+    row: Dict[str, str] = {
+        "participant_code": participant_code,
+        "arm": str(record.get("arm") or ""),
+        "cefr_band": str(record.get("cefr_band") or ""),
+        "questionnaire_completed_at": str(record.get("created_at") or ""),
+        "attached_at": str(record.get("attached_at") or ""),
+    }
+    row.update(readable)
+    return row
 
 
 def _assign_arm_stratified(band: str) -> str:
@@ -159,6 +203,89 @@ def _persist_attach(token: str, participant_code: str, payload: Dict[str, Any]) 
         logger.error("Failed to persist onboarding attach: %s", e)
 
 
+def _read_participants_csv_rows(blob) -> Tuple[List[str], List[Dict[str, str]]]:
+    fieldnames = _participants_csv_fieldnames()
+    if not blob.exists():
+        return fieldnames, []
+    text = blob.download_as_text(encoding="utf-8")
+    if not text.strip():
+        return fieldnames, []
+    reader = csv.DictReader(io.StringIO(text))
+    stored_fields = reader.fieldnames or fieldnames
+    rows: List[Dict[str, str]] = []
+    for raw in reader:
+        row = {name: str(raw.get(name) or "") for name in stored_fields}
+        rows.append(row)
+    return stored_fields, rows
+
+
+def _write_participants_csv(blob, fieldnames: List[str], rows: List[Dict[str, str]], *, generation: Optional[int]) -> None:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n", extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({name: row.get(name, "") for name in fieldnames})
+    payload = buffer.getvalue()
+    if generation is None:
+        blob.upload_from_string(payload, content_type="text/csv; charset=utf-8")
+    else:
+        blob.upload_from_string(
+            payload,
+            content_type="text/csv; charset=utf-8",
+            if_generation_match=generation,
+        )
+
+
+def _append_participants_csv(record: Dict[str, Any], participant_code: str) -> None:
+    """Append one participant row to study_onboarding/participants.csv in GCS."""
+    bucket = _gcs_bucket()
+    if not bucket:
+        logger.warning("Skipping participants CSV append (no bucket)")
+        return
+
+    code = participant_code.upper()
+    blob = bucket.blob(_PARTICIPANTS_CSV_BLOB)
+    new_row = _participant_csv_row(record, code)
+    fieldnames = _participants_csv_fieldnames()
+
+    for attempt in range(3):
+        try:
+            if blob.exists():
+                blob.reload()
+                generation = blob.generation
+                _, rows = _read_participants_csv_rows(blob)
+            else:
+                generation = None
+                rows = []
+
+            if any(str(r.get("participant_code", "")).upper() == code for r in rows):
+                logger.info("Participant %s already in %s", code, _PARTICIPANTS_CSV_BLOB)
+                return
+
+            merged_fields = list(fieldnames)
+            for row in rows:
+                for key in row:
+                    if key not in merged_fields:
+                        merged_fields.append(key)
+
+            normalized_rows: List[Dict[str, str]] = []
+            for row in rows:
+                normalized_rows.append({name: row.get(name, "") for name in merged_fields})
+            normalized_rows.append({name: new_row.get(name, "") for name in merged_fields})
+
+            _write_participants_csv(blob, merged_fields, normalized_rows, generation=generation)
+            logger.info("Appended participant %s to %s", code, _PARTICIPANTS_CSV_BLOB)
+            return
+        except gcp_exceptions.PreconditionFailed:
+            logger.warning("Participants CSV conflict (attempt %s), retrying", attempt + 1)
+            continue
+        except Exception as e:
+            logger.error("Failed to append participants CSV for %s: %s", code, e)
+            return
+
+    logger.error("Failed to append participants CSV for %s after retries", code)
+
+
 def submit_onboarding(answers_raw: dict) -> Tuple[str, str, str, Dict[str, Any]]:
     """
     Validate answers, compute CEFR band, assign arm, register token.
@@ -191,21 +318,45 @@ def submit_onboarding(answers_raw: dict) -> Tuple[str, str, str, Dict[str, Any]]
     return token, arm, band, normalized
 
 
+def get_participant_study(participant_code: str) -> Optional[Dict[str, Any]]:
+    """Return onboarding record for a participant code after attach, else None."""
+    code = (participant_code or "").strip().upper()
+    if not code:
+        return None
+    return _BY_PARTICIPANT.get(code)
+
+
 def attach_onboarding_token(token: str, participant_code: str) -> bool:
     rec = _ONBOARDING.get(token)
     if not rec:
         return False
-    rec["participant_code"] = participant_code.upper()
+    code = participant_code.upper()
+    existing = _BY_PARTICIPANT.get(code)
+    if existing:
+        if existing.get("token") == token:
+            _append_participants_csv(rec, code)
+            return True
+        logger.warning("Participant %s already has onboarding attached", code)
+        return False
+    rec["participant_code"] = code
     rec["attached_at"] = datetime.now(timezone.utc).isoformat()
+    _BY_PARTICIPANT[code] = {
+        "token": token,
+        "arm": rec.get("arm"),
+        "cefr_band": rec.get("cefr_band"),
+        "attached_at": rec["attached_at"],
+    }
     _persist_attach(
         token,
-        participant_code.upper(),
+        code,
         {
             "token": token,
-            "participant_code": participant_code.upper(),
+            "participant_code": code,
             "arm": rec.get("arm"),
             "cefr_band": rec.get("cefr_band"),
             "attached_at": rec["attached_at"],
+            "answers_readable": answers_to_readable(rec.get("answers") or {}),
         },
     )
+    _append_participants_csv(rec, code)
     return True

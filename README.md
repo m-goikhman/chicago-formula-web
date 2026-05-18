@@ -1,119 +1,72 @@
-# Teach or Tell - Web Version
+# Chicago Formula: LLM-powered Text Detective Game
 
 Web application version of the Chicago Formula language learning game - an interactive detective mystery game for English language learners.
 
-## 📁 Project Structure
+This game has been developed as a part of a PhD project and will be used in an experimental study.
 
-```
-web_teach_and_tell/
-├── Tell/                     # Character-driven conversation app
-│   ├── backend/              # FastAPI backend
-│   │   ├── main.py          # FastAPI application entrypoint
-│   │   ├── auth.py          # Authentication module
-│   │   ├── ai_services.py   # AI integration (Groq)
-│   │   ├── game_handlers.py # Game logic handlers
-│   │   ├── config.py        # Configuration & secrets
-│   │   └── prompts/         # AI prompts for characters
-│   │
-│   └── frontend/            # Static HTML/CSS/JS frontend
-│       └── index.html       # Single-page application
-│
-├── shared/                   # Reusable frontend/backend modules
-│   ├── frontend/
-│   │   ├── css/
-│   │   └── js/
-│   └── backend/
-│       └── __init__.py
-├── Portal/                   # Unified participant portal (login & mode switch)
-│   └── frontend/
-│       ├── index.html
-│       ├── css/
-│       └── js/
-│
-├── Teach/                    # Detective reading course
-│   ├── week1_the_party.md
-│   ├── week2_secrets_and_shadows.md
-│   ├── week3_the_attack.md
-│   └── week4_the_investigation.md
-│
-└── deploy.sh                 # Deployment helper script
-```
-
-## 🔑 Authentication
-
-Simple participant code authentication for research purposes:
-- Enter participant code (e.g., "AN0842")
-- Session tokens valid for 7 days
-
-## 🎮 Features
-
-- **Interactive Detective Game**: Solve a murder mystery while learning English
-- **AI-Powered Characters**: Dynamic conversations with game characters using Groq LLM
-- **Vocabulary Learning**: Built-in tutor for word explanations
-- **Progress Tracking**: Learning progress and word tracking
-
-## 🔧 Development
-
-```bash
-# Portal (login + Teach/Tell selector)
-cd Portal/frontend
-npx serve # or any static server
-
-# Backend with hot reload
-cd shared/backend
-uvicorn shared.backend.main:app --reload --port 8000
-
-# Access API docs
-open http://localhost:8000/docs
-
-```
-
-Teach markdown supports section images via heading metadata:
-
-```md
-## Part 1: The Call [image=teach/week1/part1_call.png]
-### Fiona Interview [image=teach/week1/fiona_intro.png]
-```
-
-The `image=...` value is optional and, when present, is attached to that rendered section.
-
-Production Firebase sites:
+## Production Firebase sites:
 
 - Portal → https://chicago-formula.web.app/
 - Tell → https://chicago-formula-n.web.app/
 - Teach → https://chicago-formula-t.web.app/
 
-To point the portal at production URLs, inject overrides before loading `js/portal.js`:
+### 🔑 Authentication
+Use code DEMO to try the game.
 
-```html
-<script>
-window.portalDestinations = {
-  tellProduction: 'https://chicago-formula-n.web.app/',
-  teachProduction: 'https://chicago-formula-t.web.app/'
-};
-</script>
+## Project Structure
+
+```
+web_teach_and_tell/
+├── shared/                   # Source of truth for shared code
+│   ├── backend/              # FastAPI backend (Cloud Run)
+│   │   ├── main.py           # Application entrypoint
+│   │   ├── auth.py           # Participant authentication
+│   │   ├── ai_services.py    # Groq LLM integration
+│   │   ├── game_handlers.py  # Tell game logic
+│   │   ├── prompts/          # Character & tutor prompts
+│   │   ├── game_texts/       # Scripted in-game messages
+│   │   └── requirements.txt
+│   └── frontend/             # Shared UI & API client (copied on deploy)
+│       ├── css/
+│       └── js/
+│
+├── Portal/                   # Study portal (login, consent, mode switch)
+│   ├── frontend/
+│   │   ├── portal.html       # Main portal app
+│   │   ├── index.html        # Redirects to portal or placeholder
+│   │   ├── css/
+│   │   └── js/
+│   ├── consent_forms/
+│   └── questionnaire/
+│
+├── Tell/                     # Character-driven conversation app (frontend only)
+│   └── frontend/
+│       ├── index.html
+│       ├── js/               # Tell-specific game UI
+│       └── shared/           # Copy of shared/frontend (do not edit here)
+│
+├── Teach/                    # Detective reading course
+│   ├── frontend/
+│   │   ├── index.html
+│   │   ├── js/               # Teach-specific reader & exercises
+│   │   ├── data/             # stories/, exercises/, teach-manifest
+│   │   └── shared/           # Copy of shared/frontend (do not edit here)
+│   ├── week1_the_party.md    # Source markdown (also under frontend/data/)
+│   └── week2_the_formula.md
+│
+├── Dockerfile                # Cloud Run image (builds from shared/backend)
+├── dev-local.sh              # Local dev: API + all three frontends
+└── deploy.sh                 # Deploy backend + Firebase frontends
 ```
 
-## 🚀 Deployment
+**Shared assets:** edit `shared/frontend/` and `shared/backend/`. `Teach/frontend/shared/` and `Tell/frontend/shared/` are deployment copies; `dev-local.sh` and `deploy.sh` sync them from `shared/frontend/`.
 
-The `deploy.sh` helper script will:
+## Features
 
-- deploy the backend to Cloud Run using root `Dockerfile` (which builds from `shared/backend`)
-- push the Portal, Tell, and Teach frontends to Firebase Hosting
-
-Environment variables:
-
-- `DEPLOY_PORTAL_FRONTEND`, `DEPLOY_TELL_FRONTEND`, `DEPLOY_TEACH_FRONTEND` — set to `false` to skip individual frontends
-- `PORTAL_FIREBASE_TARGET`, `TELL_FIREBASE_TARGET`, `TEACH_FIREBASE_TARGET` — Firebase hosting targets (defaults: `chicago-formula`, `chicago-formula-n`, `chicago-formula-t`)
-
-Example:
-
-```bash
-DEPLOY_PORTAL_FRONTEND=true PORTAL_FIREBASE_TARGET=portal \
-DEPLOY_TEACH_FRONTEND=true TEACH_FIREBASE_TARGET=teach \
-DEPLOY_TELL_FRONTEND=true TELL_FIREBASE_TARGET=tell \
-./deploy.sh
-```
+- **Interactive Detective Game**: Solve a murder mystery while learning English
+- **AI-Powered Characters**: Dynamic conversations with game characters using Groq LLM (Llama 3.3 70B)
+- **Vocabulary Learning**: Built-in tutor for word explanations
+- **Progress Tracking**: Learning progress and word tracking
 
 ## 🤖 AI Development Disclosure
 
@@ -123,6 +76,6 @@ DEPLOY_TELL_FRONTEND=true TELL_FIREBASE_TARGET=tell \
 - Bug fixing and debugging
 - Architecture decisions
 
-## 📝 Notes
+## Notes
 
 The shorter game version is available as a Telegram bot (t.me/lingo_n_bot).

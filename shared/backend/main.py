@@ -55,6 +55,12 @@ app.add_middleware(
         "http://127.0.0.1:5500",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3080",  # dev-local.sh — Portal
+        "http://127.0.0.1:3080",
+        "http://localhost:3081",  # dev-local.sh — Tell
+        "http://127.0.0.1:3081",
+        "http://localhost:3082",  # dev-local.sh — Teach
+        "http://127.0.0.1:3082",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -70,10 +76,12 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     token: str
     participant_code: str
+    study_arm: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
     participant_code: str
+    study_arm: Optional[str] = None
 
 
 class OnboardingQuestionnaireResponse(BaseModel):
@@ -227,10 +235,15 @@ async def login(request: LoginRequest):
     
     if not token:
         raise HTTPException(status_code=401, detail="Invalid participant code")
-    
+
+    code = request.participant_code.upper()
+    study = study_onboarding.get_participant_study(code)
+    study_arm = study.get("arm") if study else None
+
     return LoginResponse(
         token=token,
-        participant_code=request.participant_code.upper()
+        participant_code=code,
+        study_arm=study_arm,
     )
 
 
@@ -246,23 +259,17 @@ async def session_status(authorization: str = Header(...)):
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    return SessionResponse(participant_code=session["participant_code"])
+    code = session["participant_code"]
+    study = study_onboarding.get_participant_study(code)
+    study_arm = study.get("arm") if study else None
+
+    return SessionResponse(participant_code=code, study_arm=study_arm)
 
 
 @app.get("/api/study/questionnaire", response_model=OnboardingQuestionnaireResponse)
 async def study_questionnaire():
     """Language learner profile items for the portal onboarding survey (EN copy bundled with backend)."""
-    try:
-        return OnboardingQuestionnaireResponse(questions=study_onboarding.load_questionnaire())
-    except FileNotFoundError:
-        logger.exception("Questionnaire data file missing (ensure shared/backend/data/language_learner_profile.json is in the image and not gitignored)")
-        raise HTTPException(
-            status_code=503,
-            detail="Questionnaire data is not available on this server. Redeploy the backend with data/language_learner_profile.json included.",
-        ) from None
-    except json.JSONDecodeError:
-        logger.exception("Questionnaire JSON is invalid")
-        raise HTTPException(status_code=503, detail="Questionnaire data is misconfigured.") from None
+    return OnboardingQuestionnaireResponse(questions=study_onboarding.load_questionnaire())
 
 
 @app.post("/api/study/onboarding", response_model=OnboardingSubmitResponse)

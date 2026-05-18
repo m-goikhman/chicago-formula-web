@@ -49,6 +49,8 @@ var PORTAL_TRANSLATIONS = {
         unlockButton: 'Sblocca accesso',
         unlockChecking: 'Verifica codice…',
         loginCodeMissing: 'Inserisci il tuo codice partecipante.',
+        loginRequiresSurvey:
+            'Completa prima il questionario. Ogni codice partecipante deve essere collegato a un profilo linguistico.',
         loginSuccessDual: 'Accesso riuscito! Scegli la modalità qui sotto.',
         sessionReadyDual: 'Sessione pronta. Puoi passare tra Teach e Tell in qualsiasi momento.',
         loginNetworkError: 'Impossibile contattare il server. Controlla la connessione e riprova.',
@@ -104,12 +106,14 @@ var PORTAL_TRANSLATIONS = {
             '<p><strong>Participant code.</strong> Create it yourself: <strong>two letters</strong> (first letters of your first name) followed by <strong>four digits</strong> ' +
             '(two-digit day of birth + last two digits of your phone number). Use the same code here and in the study app.</p>',
         loginTitle: 'Unlock your session',
-        loginLead: 'Use the participant code you just defined. You will use it in the study app as well.',
+        loginLead: 'Use the participant code you just created.',
         participantCodeLabel: 'Participant code',
         participantCodePlaceholder: 'e.g. AN0842',
         unlockButton: 'Unlock access',
         unlockChecking: 'Checking code…',
         loginCodeMissing: 'Please enter your participant code.',
+        loginRequiresSurvey:
+            'Please complete the questionnaire first. Every participant code must be linked to a language profile.',
         loginSuccessDual: 'Success! Choose your mode below.',
         sessionReadyDual: 'Session ready. You can move between Teach and Tell at any time.',
         loginNetworkError: 'Could not reach the server. Please check your connection and try again later.',
