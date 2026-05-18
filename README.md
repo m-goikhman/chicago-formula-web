@@ -5,10 +5,17 @@ Web application version of the Chicago Formula language learning game - an inter
 This game has been developed as a part of a PhD project and will be used in an experimental study.
 
 ## Production Firebase sites:
+For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participant participants and direct them between game versions.
 
 - Portal → https://chicago-formula.web.app/
-- Tell → https://chicago-formula-n.web.app/
-- Teach → https://chicago-formula-t.web.app/
+- Interactive Narative version *(solve the mystery by talking to AI characters)* → https://chicago-formula-n.web.app/
+
+![Interactive Version Screenshot](shared/backend/images/screenshots/tell_start.png)
+
+*Screenshot from the mobile version*
+
+- Traditional version *(read the same mystery story, answer short questions related to the story)* → https://chicago-formula-t.web.app/
+
 
 ### 🔑 Authentication
 Use code DEMO to try the game.
