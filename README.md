@@ -7,18 +7,20 @@ This game has been developed as a part of a PhD project and will be used in an e
 ## Production Firebase sites:
 For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participant participants and direct them between game versions.
 
-- Portal → https://chicago-formula.web.app/
-- Interactive Narative version *(solve the mystery by talking to AI characters)* → https://chicago-formula-n.web.app/
+### Interactive Narative version
+*(solve the mystery by talking to AI characters)* 
+📎 Link: https://chicago-formula-n.web.app/
+🔑 Authentication: use code DEMO to try the game.
 
-![Interactive Version Screenshot](shared/backend/images/screenshots/tell_start.png)
+![Interactive Version Screenshot](shared/backend/images/screenshots/tell_mobile.png)
 
-*Screenshot from the mobile version*
+### Traditional version 
+*(read the same mystery story, answer short questions related to the story)*
+📎 Link: https://chicago-formula-t.web.app/
+🔑 Authentication: use code DEMO to try the game.
 
-- Traditional version *(read the same mystery story, answer short questions related to the story)* → https://chicago-formula-t.web.app/
-
-
-### 🔑 Authentication
-Use code DEMO to try the game.
+### Portal
+📎 Link: https://chicago-formula.web.app/
 
 ## Project Structure
 
