@@ -11,19 +11,19 @@ For the puprposes of the experiment, there are two versions of the game and a te
 
 *(solve the mystery by talking to AI characters)* 
 
-📎 Link: https://chicago-formula-n.web.app/
+📎 **Link:** https://chicago-formula-n.web.app/
 
-🔑 Authentication: use code DEMO to try the game.
+🔑 **Authentication:** use code DEMO to try the game.
 
 ### Traditional version 
 *(read the same mystery story, answer short questions related to the story)*
 
-📎 Link: https://chicago-formula-t.web.app/
+📎 **Link:** https://chicago-formula-t.web.app/
 
-🔑 Authentication: use code DEMO to try the game.
+🔑 **Authentication:** use code DEMO to try the game.
 
 ### Portal
-📎 Link: https://chicago-formula.web.app/
+📎 **Link:** https://chicago-formula.web.app/
 
 ## Features
 

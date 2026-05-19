@@ -119,7 +119,7 @@ web_teach_and_tell/
 | `Teach/frontend/shared/**` | `shared/frontend/**` |
 | `Tell/frontend/shared/**` | `shared/frontend/**` |
 
-`deploy.sh` and `dev-local.sh` run `rsync`-style copy from `shared/frontend` into both app frontends. Local edits under `Teach/frontend/shared/` are lost on sync unless moved upstream.
+`deploy.sh` and `dev-local.sh` run `rsync`-style copy from `shared/frontend` into both app frontends. **Do not edit** `Teach/frontend/shared/` or `Tell/frontend/shared/` directly — change `shared/frontend/` instead. Local edits under the copies are lost on sync unless moved upstream.
 
 Shared frontend modules include:
 
@@ -159,18 +159,20 @@ Shared frontend modules include:
 
 Environment overrides: `DEV_API_PORT`, `DEV_PORTAL_PORT`, `DEV_TELL_PORT`, `DEV_TEACH_PORT`.
 
-- Creates `.venv` at repo root and installs `shared/backend/requirements.txt`.
+- Creates a local Python virtual environment (not committed; managed by `dev-local.sh`) and installs `shared/backend/requirements.txt`.
 - Sets `SKIP_GCS=1` by default so local runs work without GCS credentials (game state / logs may not persist).
 
 ### Manual backend only
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv venv && source venv/bin/activate
 pip install -r shared/backend/requirements.txt
 export PYTHONPATH="$(pwd)"
 export SKIP_GCS=1   # optional
 uvicorn shared.backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+Prefer `./dev-local.sh` if you want the same virtualenv and port setup the script uses.
 
 Frontends: serve `Tell/frontend`, `Teach/frontend`, or `Portal/frontend` with any static server on ports matching CORS entries in `shared/backend/main.py`.
 
@@ -550,4 +552,3 @@ Local dev: `SKIP_GCS=1` skips reliance on bucket for some paths; game state may 
 | [`shared/backend/DEPLOY_CLOUD_RUN.md`](../shared/backend/DEPLOY_CLOUD_RUN.md) | GCP deploy (RU/EN mix) |
 | [`Teach/frontend/data/teach-manifest/README.md`](../Teach/frontend/data/teach-manifest/README.md) | Teach week manifest |
 | [`shared/backend/prompts/ep2/README.md`](../shared/backend/prompts/ep2/README.md) | EP2 location prompts |
-| [`.cursor/rules/shared-source-of-truth.mdc`](../.cursor/rules/shared-source-of-truth.mdc) | Edit shared copies rule |
