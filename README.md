@@ -7,7 +7,7 @@ This game has been developed as a part of a PhD project and will be used in an e
 ## Production Firebase sites:
 For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participant participants and direct them between game versions.
 
-![Interactive and Traditional versions](docs/images/teach_tell_slide.png)
+![Interactive and Traditional versions](docs/images/teach_tell_slide_white.png)
 
 ### Interactive Narative version
 
