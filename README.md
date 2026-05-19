@@ -1,11 +1,9 @@
 # Chicago Formula: LLM-powered Text Detective Game
 
-Web application version of the Chicago Formula language learning game - an interactive detective mystery game for English language learners.
+*Chicago Formula* is a browser interactive detective game for English language learners. It has been developed as a part of a PhD project and will be used in an experimental study.
 
-This game has been developed as a part of a PhD project and will be used in an experimental study.
-
-## Game Versions
-For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participant participants and direct them between game versions.
+## Two Game Versions
+For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participants and direct them between game versions.
 
 ![Interactive and Traditional versions](docs/images/teach_tell_slide_white.png)
 
@@ -35,6 +33,10 @@ For the puprposes of the experiment, there are two versions of the game and a te
 - **LLM Tutor Feedback**: AI tutor silently analyzes players' input and provides on-demand feedback.
 - **Progress Tracking**: Learning progress and word tracking
 
+## Technical documentation
+
+[Technical documentation](docs/TECHNICAL_README.md) is in a separate Readme file.
+
 ## 🤖 AI Development Disclosure
 
 **This project extensively used large language models (LLMs) during development**, including:
@@ -42,3 +44,7 @@ For the puprposes of the experiment, there are two versions of the game and a te
 - Documentation writing
 - Bug fixing and debugging
 - Architecture decisions
+- Game images creation
+
+## Original Mystery Dinner Game Link
+The detective plot is adapted from an offline mystery dinner party game by J.H. Kim (https://www.darkshire.net/jhkim/rpg/murder/business.html), substantially expanded and rewritten for multi-episode digital format.
