@@ -541,14 +541,23 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
         # Handle private conversation mode
         if mode == "private":
             messages = await handle_private_message(participant_code, request.text)
-            if messages:
-                state = GAME_STATE.get(participant_code)
-                if state is not None:
-                    episode = state.get("current_stage", 1)
-                    episode_messages = state.get("episode_messages", {})
-                    episode_messages.setdefault(str(episode), []).extend(messages)
-                    state["episode_messages"] = episode_messages
-                    await game_state_manager.save_game_state(participant_code, state)
+            state = GAME_STATE.get(participant_code)
+            if state is not None:
+                episode = state.get("current_stage", 1)
+                char_key = str(state.get("current_character") or "").strip()
+                request_text = str(request.text or "").strip()
+                episode_messages = state.get("episode_messages", {})
+                ep_list = episode_messages.setdefault(str(episode), [])
+                if request_text and char_key:
+                    ep_list.append({
+                        "type": "user",
+                        "content": request_text,
+                        "chat_scope": f"private:{char_key}",
+                    })
+                if messages:
+                    ep_list.extend(messages)
+                state["episode_messages"] = episode_messages
+                await game_state_manager.save_game_state(participant_code, state)
             return {"messages": messages}
 
         # During EP1 accusation rationale step, keep all free-text inside the

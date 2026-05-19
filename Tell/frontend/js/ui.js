@@ -267,22 +267,44 @@ function setActiveCharacterDrawerItem(characterName = null) {
     }
 }
 
-function resolveCurrentCharacterKey() {
-    if (currentCharacter?.key) {
-        return String(currentCharacter.key).trim().toLowerCase();
+function resolveActiveDrawerCharacterKey() {
+    const activeDrawer = document.querySelector('#charactersList .drawer-item.active');
+    if (!activeDrawer || activeDrawer.classList.contains('chat-target-public')) {
+        return '';
     }
 
-    const currentName = (currentCharacter?.name || '').trim().toLowerCase();
-    if (!currentName) {
+    const drawerName = (activeDrawer.querySelector('.name')?.textContent || '').trim().toLowerCase();
+    if (!drawerName || drawerName === 'everyone') {
         return '';
     }
 
     const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
     const matched = stageCharacters.find((character) => {
         const fullName = (character?.full_name || '').trim().toLowerCase();
-        return fullName && fullName === currentName;
+        return fullName && fullName === drawerName;
     });
     return (matched?.key || '').trim().toLowerCase();
+}
+
+function resolveCurrentCharacterKey() {
+    if (currentCharacter?.key) {
+        return String(currentCharacter.key).trim().toLowerCase();
+    }
+
+    const currentName = (currentCharacter?.name || '').trim().toLowerCase();
+    if (currentName) {
+        const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+        const matched = stageCharacters.find((character) => {
+            const fullName = (character?.full_name || '').trim().toLowerCase();
+            return fullName && fullName === currentName;
+        });
+        const matchedKey = (matched?.key || '').trim().toLowerCase();
+        if (matchedKey) {
+            return matchedKey;
+        }
+    }
+
+    return resolveActiveDrawerCharacterKey();
 }
 
 function getActiveChatScope() {

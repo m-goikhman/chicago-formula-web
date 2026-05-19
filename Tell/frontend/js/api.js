@@ -437,7 +437,14 @@ async function loadGame() {
         
         // Display all messages from backend (instant: full history from server, e.g. after reload)
         if (data.messages && Array.isArray(data.messages)) {
+            const chatArea = document.getElementById('chatArea');
+            if (chatArea) {
+                chatArea.innerHTML = '';
+            }
             await displayMessagesSequentially(data.messages, 0, { instant: true });
+            if (typeof window.applyChatScopeVisibility === 'function') {
+                window.applyChatScopeVisibility();
+            }
             restoreTellChatScrollPosition();
             requestAnimationFrame(() => {
                 restoreTellChatScrollPosition();
@@ -723,6 +730,12 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         } else if (data.detail) {
             // Handle error messages from backend
             addMessage('error', 'Error', data.detail);
+        }
+
+        if (normalizedAction === 'mode_public' || normalizedAction.startsWith('talk_')) {
+            if (typeof window.applyChatScopeVisibility === 'function') {
+                window.applyChatScopeVisibility();
+            }
         }
         syncNinaFloatingButtonVisibility();
     } catch (error) {

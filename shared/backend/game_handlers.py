@@ -2658,6 +2658,7 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
                 opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
                 if opener_buttons:
                     opener_message["buttons"] = opener_buttons
+                opener_message["chat_scope"] = f"private:{character_key}"
                 messages.append(opener_message)
         elif character_key in CHARACTER_DATA:
             # Guaranteed short opener if both AI and file opener are unavailable.

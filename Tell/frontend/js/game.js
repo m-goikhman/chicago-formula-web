@@ -81,6 +81,8 @@ function displayMessage(msg) {
         } else {
             sender = 'System';
         }
+    } else if (type === 'user') {
+        sender = 'You';
     } else if (type === 'character') {
         // For character messages, use character_name (without emoji)
         sender = msg.character_name || msg.character || 'Character';
