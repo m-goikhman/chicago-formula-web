@@ -1319,3 +1319,23 @@
     line-height: 1.4;
 }
 
+.teach-demo-survey-fold {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(18, 63, 77, 0.18);
+    background: rgba(255, 255, 255, 0.55);
+}
+
+.teach-demo-survey-fold summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #1a5563;
+}
+
+.teach-demo-survey-fold-body {
+    margin-top: 10px;
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+

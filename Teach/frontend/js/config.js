@@ -17,6 +17,15 @@ const ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
     + '1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform'
 );
 const ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = '326737977';
+const TEACH_DEMO_ONBOARDING_INTRO = [
+    'Hi! 👋',
+    'Welcome to the Teach demo.',
+    '',
+    'Read the story, complete the exercises, and try the writing tasks with tutor feedback.',
+].join('\n');
+
+const TEACH_DEMO_SURVEY_FOLD_LABEL = 'Study questionnaires (not required for demo)';
+
 const TEACH_ONBOARDING_WELCOME_TEMPLATE = [
     'Hi! 👋',
     'Thank you for participating in this experiment.',
@@ -95,7 +104,9 @@ window.TEACH_CONFIG = {
     ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
     ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
     ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY,
-    TEACH_ONBOARDING_WELCOME_TEMPLATE
+    TEACH_ONBOARDING_WELCOME_TEMPLATE,
+    TEACH_DEMO_ONBOARDING_INTRO,
+    TEACH_DEMO_SURVEY_FOLD_LABEL
 };
 
 if (typeof window !== 'undefined') {

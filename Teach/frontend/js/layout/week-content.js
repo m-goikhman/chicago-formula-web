@@ -16,6 +16,10 @@ window.TeachWeekContent = (() => {
         const getWeekStepProgress = deps.getWeekStepProgress || (() => 1);
         const setWeekStepProgress = deps.setWeekStepProgress || (() => {});
         const TEACH_ONBOARDING_WELCOME_TEMPLATE = deps.TEACH_ONBOARDING_WELCOME_TEMPLATE;
+        const TEACH_DEMO_ONBOARDING_INTRO = deps.TEACH_DEMO_ONBOARDING_INTRO;
+        const TEACH_DEMO_SURVEY_FOLD_LABEL = deps.TEACH_DEMO_SURVEY_FOLD_LABEL;
+        const renderMarkdownInto = deps.renderMarkdownInto || (() => {});
+        const isDemoMode = options.isDemoMode === true;
 
         if (!chatArea) {
             return {};
@@ -58,6 +62,37 @@ window.TeachWeekContent = (() => {
             sequence.push({
                 type: 'onboarding',
                 factory: () => {
+                    if (isDemoMode && TEACH_DEMO_ONBOARDING_INTRO) {
+                        const onboardingMessage = addMessage('system', 'Tutor', TEACH_DEMO_ONBOARDING_INTRO);
+                        if (!onboardingMessage) {
+                            return null;
+                        }
+                        onboardingMessage.classList.add('tutor-message', 'teach-onboarding-message', 'teach-demo-onboarding');
+
+                        const content = onboardingMessage.querySelector('.message-content');
+                        const messageText = content?.querySelector('.message-text');
+                        if (messageText) {
+                            const studyBlock = personalizeOnboardingQuestionnaireLink(
+                                TEACH_ONBOARDING_WELCOME_TEMPLATE,
+                                participantCode
+                            );
+                            const details = document.createElement('details');
+                            details.className = 'teach-demo-survey-fold';
+
+                            const summary = document.createElement('summary');
+                            summary.textContent = TEACH_DEMO_SURVEY_FOLD_LABEL || 'Study questionnaires (not required for demo)';
+                            details.appendChild(summary);
+
+                            const studyBody = document.createElement('div');
+                            studyBody.className = 'teach-demo-survey-fold-body';
+                            renderMarkdownInto(studyBody, studyBlock);
+                            details.appendChild(studyBody);
+                            messageText.appendChild(details);
+                        }
+
+                        return onboardingMessage;
+                    }
+
                     const onboardingText = personalizeOnboardingQuestionnaireLink(
                         TEACH_ONBOARDING_WELCOME_TEMPLATE,
                         participantCode

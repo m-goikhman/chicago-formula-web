@@ -8,6 +8,13 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 import logging
 
+from .demo_slots import (
+    is_demo_login_code,
+    is_demo_mode_participant,
+    is_demo_slot_code,
+    resolve_demo_participant_code,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,6 +61,8 @@ def is_valid_participant_code(code: str) -> bool:
     code = code.strip().upper()
     if code in SPECIAL_PARTICIPANT_CODES:
         return True
+    if is_demo_slot_code(code):
+        return True
     # Participant code format: 2 uppercase letters + 4 digits (e.g. "HE2103")
     return bool(re.fullmatch(r"[A-Z]{2}\d{4}", code))
 
@@ -63,16 +72,28 @@ def is_test_mode_participant(code: str) -> bool:
     return isinstance(code, str) and code.strip().upper() in TEST_MODE_PARTICIPANT_CODES
 
 
-def login_participant(participant_code: str) -> Optional[str]:
-    """Authenticate a participant and return session token."""
-    code = participant_code.upper()
-    
+def login_participant(
+    participant_code: str,
+    demo_slot: Optional[str] = None,
+) -> Optional[tuple]:
+    """
+    Authenticate a participant and return (session_token, demo_mode).
+
+    Entering DEMO allocates or resumes a DEMO{n} slot (see demo_slots.py).
+    """
+    code = participant_code.strip().upper()
+
+    if is_demo_login_code(code):
+        resolved = resolve_demo_participant_code(demo_slot)
+        token = create_session_token(resolved)
+        return token, True
+
     if not is_valid_participant_code(code):
         logger.warning(f"Invalid participant code attempted: {code}")
         return None
-    
+
     token = create_session_token(code)
-    return token
+    return token, is_demo_mode_participant(code)
 
 
 def logout_participant(token: str) -> bool:

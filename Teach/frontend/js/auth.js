@@ -25,6 +25,26 @@
             .toUpperCase();
     }
 
+    function isDemoSlotCode(code) {
+        return /^DEMO\d+$/i.test(normalizeCode(code));
+    }
+
+    function isDemoMode() {
+        return isDemoSlotCode(getParticipantCode());
+    }
+
+    function buildLoginPayload(rawCode) {
+        const participantCode = normalizeCode(rawCode);
+        const payload = { participant_code: participantCode };
+        if (participantCode === 'DEMO') {
+            const stored = getParticipantCode();
+            if (isDemoSlotCode(stored)) {
+                payload.demo_slot = stored;
+            }
+        }
+        return payload;
+    }
+
     function clearStorage() {
         sessionStore.clearSession();
     }
@@ -47,9 +67,7 @@
             throw new Error('Enter your participant code.');
         }
 
-        const { response, data } = await apiClient.postJson('/api/auth/login', {
-            participant_code: participantCode
-        });
+        const { response, data } = await apiClient.postJson('/api/auth/login', buildLoginPayload(rawCode));
 
         if (!response.ok) {
             const detail = data && (data.detail || data.error || data.message);
@@ -115,9 +133,7 @@
         }
 
         try {
-            const { response, data } = await apiClient.postJson('/api/auth/login', {
-                participant_code: code
-            });
+            const { response, data } = await apiClient.postJson('/api/auth/login', buildLoginPayload(code));
 
             if (!response.ok || !data?.token) {
                 return false;
@@ -158,6 +174,7 @@
         restoreSession,
         getToken,
         getParticipantCode,
+        isDemoMode,
         persistSession,
         logout,
         silentReauthenticate,

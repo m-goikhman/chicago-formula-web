@@ -221,7 +221,8 @@ Implementation: `shared/backend/auth.py`.
 
 | Code pattern | Purpose |
 |--------------|---------|
-| `DEMO` | Public try-out; normal player rules |
+| `DEMO` | Colleague demo: login allocates `DEMO1`, `DEMO2`, … (browser remembers slot); study questionnaires collapsed/hidden |
+| `DEMO{n}` | Issued demo slot (re-login on same browser resumes the same slot) |
 | `TEST`, `ROBERTA` | **Test mode** — all episodes unlocked, debug defaults, reset history, hidden chat commands |
 | `AA1234` | Research participant: 2 letters + 4 digits |
 

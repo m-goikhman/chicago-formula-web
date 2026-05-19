@@ -16,6 +16,7 @@ import random
 from . import bootstrap  # noqa: F401
 
 from .auth import validate_session_token, login_participant, is_test_mode_participant
+from .demo_slots import is_demo_mode_participant
 from . import study_onboarding
 from .progress_manager import (
     progress_manager,
@@ -71,17 +72,20 @@ app.add_middleware(
 # Request/Response models
 class LoginRequest(BaseModel):
     participant_code: str
+    demo_slot: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
     token: str
     participant_code: str
     study_arm: Optional[str] = None
+    demo_mode: bool = False
 
 
 class SessionResponse(BaseModel):
     participant_code: str
     study_arm: Optional[str] = None
+    demo_mode: bool = False
 
 
 class OnboardingQuestionnaireResponse(BaseModel):
@@ -231,12 +235,17 @@ async def login(request: LoginRequest):
     """Login with participant code."""
     logger.info(f"Login attempt for participant code: {request.participant_code}")
     
-    token = login_participant(request.participant_code)
-    
-    if not token:
+    login_result = login_participant(
+        request.participant_code,
+        demo_slot=request.demo_slot,
+    )
+
+    if not login_result:
         raise HTTPException(status_code=401, detail="Invalid participant code")
 
-    code = request.participant_code.upper()
+    token, demo_mode = login_result
+    session = validate_session_token(token)
+    code = (session or {}).get("participant_code") or request.participant_code.upper()
     study = study_onboarding.get_participant_study(code)
     study_arm = study.get("arm") if study else None
 
@@ -244,6 +253,7 @@ async def login(request: LoginRequest):
         token=token,
         participant_code=code,
         study_arm=study_arm,
+        demo_mode=demo_mode or is_demo_mode_participant(code),
     )
 
 
@@ -263,7 +273,11 @@ async def session_status(authorization: str = Header(...)):
     study = study_onboarding.get_participant_study(code)
     study_arm = study.get("arm") if study else None
 
-    return SessionResponse(participant_code=code, study_arm=study_arm)
+    return SessionResponse(
+        participant_code=code,
+        study_arm=study_arm,
+        demo_mode=is_demo_mode_participant(code),
+    )
 
 
 @app.get("/api/study/questionnaire", response_model=OnboardingQuestionnaireResponse)

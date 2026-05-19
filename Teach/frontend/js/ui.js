@@ -41,6 +41,22 @@ const TeachUI = (() => {
         return result;
     }
 
+    function renderMarkdownInto(element, markdownText) {
+        if (!element) {
+            return;
+        }
+        const text = String(markdownText || '').trim();
+        if (!text) {
+            element.textContent = '';
+            return;
+        }
+        if (typeof window.marked?.parse === 'function') {
+            element.innerHTML = window.marked.parse(text, { breaks: true });
+        } else {
+            element.textContent = text;
+        }
+    }
+
     const parseAnswerKey =
         window.TeachAnswerKey?.parseAnswerKey ??
         (() => ({}));
@@ -486,7 +502,10 @@ const TeachUI = (() => {
                 getWeekExerciseSummary: TeachState?.getWeekExerciseSummary || (() => null),
                 getWeekStepProgress: TeachState?.getWeekStepProgress || (() => 1),
                 setWeekStepProgress: TeachState?.setWeekStepProgress || (() => {}),
-                TEACH_ONBOARDING_WELCOME_TEMPLATE
+                TEACH_ONBOARDING_WELCOME_TEMPLATE,
+                TEACH_DEMO_ONBOARDING_INTRO: window.TEACH_CONFIG?.TEACH_DEMO_ONBOARDING_INTRO,
+                TEACH_DEMO_SURVEY_FOLD_LABEL: window.TEACH_CONFIG?.TEACH_DEMO_SURVEY_FOLD_LABEL,
+                renderMarkdownInto
             }
         });
     };

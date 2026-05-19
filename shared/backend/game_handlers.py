@@ -3360,6 +3360,14 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
 
 def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
     """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
+    from .demo_slots import is_demo_mode_participant
+
+    if is_demo_mode_participant(participant_code):
+        return (
+            "Thanks for playing!\n\n"
+            "You can keep exploring the next episode whenever you like."
+        )
+
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", 1))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
     calendar_link = _build_next_episode_calendar_link(state)
