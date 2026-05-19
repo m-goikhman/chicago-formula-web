@@ -7,6 +7,8 @@ This game has been developed as a part of a PhD project and will be used in an e
 ## Production Firebase sites:
 For the puprposes of the experiment, there are two versions of the game and a technical portal to gather data from participant participants and direct them between game versions.
 
+![Interactive and Traditional versions](docs/images/teach_tell_slide.png)
+
 ### Interactive Narative version
 
 *(solve the mystery by talking to AI characters)* 
@@ -15,15 +17,12 @@ For the puprposes of the experiment, there are two versions of the game and a te
 
 🔑 Authentication: use code DEMO to try the game.
 
-![Interactive Version Screenshot](docs/images/tell_mobile.png)
-
 ### Traditional version 
 *(read the same mystery story, answer short questions related to the story)*
+
 📎 Link: https://chicago-formula-t.web.app/
 
 🔑 Authentication: use code DEMO to try the game.
-
-![Traditional Version Screenshot](docs/images/fiona_teach.png)
 
 ### Portal
 📎 Link: https://chicago-formula.web.app/
