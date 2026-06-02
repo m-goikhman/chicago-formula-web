@@ -1,10 +1,10 @@
 question_id,type,required,text_en,options_en
-age,single_select,yes,What is your current age range?,"18 - 25
+age,single_select,no,What is your current age range?,"18 - 25
 26 - 35
 36 - 45
 46 - 55
 Over 55"
-gender,single_select,yes,What is your gender identity?,"Female
+gender,single_select,no,What is your gender identity?,"Female
 Male
 Non-binary
 Prefer not to say"

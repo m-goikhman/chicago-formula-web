@@ -5,7 +5,7 @@ if (!sharedTeachConfig) {
 
 const teachIsLocalhost = sharedTeachConfig.isLocalhost;
 const API_URL = sharedTeachConfig.resolveApiBase({
-    local: 'http://localhost:8000',
+    local: sharedTeachConfig.getLocalDevApiBase(8000),
     production: 'https://teach-tell-backend-801526931549.europe-west4.run.app'
 });
 

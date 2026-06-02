@@ -59,9 +59,14 @@ def _validate_answers(raw: Any) -> Dict[str, Any]:
         opts: List[str] = q.get("options_en") or []
 
         if typ == "single_select":
-            if not isinstance(val, int) or val < 0 or val >= len(opts):
+            if val is None:
+                if required:
+                    raise ValueError(f"Missing answer for {qid}")
+                out[qid] = None
+            elif not isinstance(val, int) or val < 0 or val >= len(opts):
                 raise ValueError(f"Invalid index for {qid}")
-            out[qid] = val
+            else:
+                out[qid] = val
         elif typ == "multi_select":
             if not isinstance(val, list) or not val:
                 if required:
@@ -96,7 +101,10 @@ def answers_to_readable(normalized: Dict[str, Any]) -> Dict[str, str]:
         opts: List[str] = q.get("options_en") or []
         typ = q["type"]
         if typ == "single_select":
-            readable[qid] = opts[int(val)]
+            if val is None:
+                readable[qid] = ""
+            else:
+                readable[qid] = opts[int(val)]
         elif typ == "multi_select":
             indices = val if isinstance(val, list) else []
             labels = [opts[i] for i in indices if 0 <= i < len(opts)]

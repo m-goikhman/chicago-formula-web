@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        (function () {
+            try {
+                var params = new URLSearchParams(location.search);
+                var fromPortal = params.has('session_token') && params.has('participant_code');
+                var fromStore = !!(localStorage.getItem('sessionToken') && localStorage.getItem('participantCode'));
+                if (fromPortal || fromStore) {
+                    document.documentElement.classList.add('auth-resume-pending');
+                } else {
+                    document.documentElement.classList.add('teach-login-visible');
+                }
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Chicago Formula</title>
@@ -12,9 +26,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./shared/css/styles.css">
+    <link rel="stylesheet" href="./shared/css/styles.css?v=20260520">
     <link rel="stylesheet" href="./shared/css/components.css">
-    <link rel="stylesheet" href="css/teach.css?v=20260506-progress-gating-v1">
+    <link rel="stylesheet" href="css/teach.css?v=20260520-login-burger">
+    <script src="./shared/js/auth-handoff.js?v=20260520"></script>
 </head>
 <body>
     <div class="container teach-container">

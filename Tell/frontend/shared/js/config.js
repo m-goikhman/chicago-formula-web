@@ -10,8 +10,17 @@
         global.location.protocol === 'file:'
     );
 
+    function getLocalDevApiBase(port = 8000) {
+        const hostname = global.location?.hostname;
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return `http://${hostname}:${port}`;
+        }
+        return `http://127.0.0.1:${port}`;
+    }
+
     const sharedConfig = Object.assign(existingConfig, {
         isLocalhost,
+        getLocalDevApiBase,
         apiBaseUrl: existingConfig.apiBaseUrl ?? null,
         resolveApiBase(options = {}) {
             if (options.override) {

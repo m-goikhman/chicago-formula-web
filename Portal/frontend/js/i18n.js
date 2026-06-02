@@ -7,12 +7,16 @@
 
 var PORTAL_TRANSLATIONS = {
     it: {
+        pageTitle: 'English Writing Confidence Experiment · Portale partecipanti',
+        portalMeta: 'APPROVAZIONE COMITATO ETICO · UNIVERSITÀ DI TRENTO PROT. 2025-065',
+        headerTitle: 'Impara l\'inglese con un detective AI',
+
         introHow:
             '<h2 class="intro-heading">Come funziona</h2>' +
             '<p>Questo progetto di ricerca esplora diversi modi di imparare l’inglese attraverso storie investigative.' +
             ' Sarai assegnato a uno di due gruppi: uno lavora con un chatbot AI interattivo,' +
             ' l’altro con attività di lettura e scrittura.' +
-            ' Entrambi i gruppi seguono la stessa storia e lo stesso mistero.</p>' +
+            ' Entrambi i gruppi seguono la stessa storia.</p>' +
             '<p>Un episodio a settimana, 4 settimane, circa 40–60 minuti ciascuno.' +
             ' Tutto online — telefono o computer.</p>',
 
@@ -37,11 +41,11 @@ var PORTAL_TRANSLATIONS = {
 
         surveyTitle: 'Profilo di apprendente linguistico',
         surveyLead:
-            'Rispondi a tutte le domande. Per lettura, parlato e scrittura ci sono due affermazioni ciascuna: seleziona tutte quelle che ti descrivono.',
+            'Rispondi alle domande obbligatorie (contrassegnate con *). Per lettura, parlato e scrittura ci sono due affermazioni ciascuna: seleziona tutte quelle che ti descrivono.',
         surveySubmit: 'Invia e continua',
         studyCodeInstructions:
             '<p><strong>Codice partecipante.</strong> Crealo tu: <strong>due lettere</strong> (prime lettere del tuo nome) seguite da <strong>quattro cifre</strong> ' +
-            '(giorno di nascita a due cifre + ultime due cifre del tuo numero di telefono). Lo stesso codice serve qui e nell’app.</p>',
+            '(giorno di nascita a due cifre + ultime due cifre del tuo numero di telefono).</p>',
         loginTitle: 'Accedi',
         loginLead: 'Il codice partecipante è quello che hai appena definito. Lo userai anche nell’applicazione dello studio.',
         participantCodeLabel: 'Codice partecipante',
@@ -51,12 +55,8 @@ var PORTAL_TRANSLATIONS = {
         loginCodeMissing: 'Inserisci il tuo codice partecipante.',
         loginRequiresSurvey:
             'Completa prima il questionario. Ogni codice partecipante deve essere collegato a un profilo linguistico.',
-        loginSuccessDual: 'Accesso riuscito! Scegli la modalità qui sotto.',
-        sessionReadyDual: 'Sessione pronta. Puoi passare tra Teach e Tell in qualsiasi momento.',
         loginNetworkError: 'Impossibile contattare il server. Controlla la connessione e riprova.',
         sessionChipPrefix: 'Sessione attiva',
-        modeSelectTitle: 'Come vuoi continuare',
-        modeSelectLead: 'Entrambe le modalità condividono i progressi. Puoi passare dall’una all’altra.',
         assignedBlurb: 'Continui con l’attività assegnata per lo studio.',
         assignedContinueBtn: 'Vai all’attività',
         surveyLoadError: 'Impossibile caricare il questionario. Controlla la connessione.',
@@ -65,11 +65,14 @@ var PORTAL_TRANSLATIONS = {
         sessionClearedHint: 'Sessione azzerata. Inserisci un nuovo codice partecipante.',
         restoringSession: 'Ripristino sessione…',
         sessionRestoredAssigned: 'Sessione ripristinata. Continua con l’attività assegnata.',
-        sessionRestoredDual: 'Sessione ripristinata. Scegli una modalità per continuare.',
         sessionExpired: 'Sessione scaduta. Inserisci di nuovo il codice partecipante.'
     },
 
     en: {
+        pageTitle: 'Writing Confidence Experiment · Participant Portal',
+        portalMeta: 'ETHICS APPROVAL · UNIVERSITY OF TRENTO PROT. 2025-065',
+        headerTitle: 'Try an AI detective for English learning',
+
         introHow:
             '<h2 class="intro-heading">How it works</h2>' +
             '<p>This research project explores different ways of learning English through detective stories.' +
@@ -100,11 +103,11 @@ var PORTAL_TRANSLATIONS = {
 
         surveyTitle: 'Language learner profile',
         surveyLead:
-            'Please answer every question. For Reading, Speaking, and Writing there are two statements each: select all that apply to you.',
+            'Please answer all required questions (marked with *). For Reading, Speaking, and Writing there are two statements each: select all that apply to you.',
         surveySubmit: 'Submit and continue',
         studyCodeInstructions:
             '<p><strong>Participant code.</strong> Create it yourself: <strong>two letters</strong> (first letters of your first name) followed by <strong>four digits</strong> ' +
-            '(two-digit day of birth + last two digits of your phone number). Use the same code here and in the study app.</p>',
+            '(two-digit day of birth + last two digits of your phone number).</p>',
         loginTitle: 'Unlock your session',
         loginLead: 'Use the participant code you just created.',
         participantCodeLabel: 'Participant code',
@@ -114,12 +117,8 @@ var PORTAL_TRANSLATIONS = {
         loginCodeMissing: 'Please enter your participant code.',
         loginRequiresSurvey:
             'Please complete the questionnaire first. Every participant code must be linked to a language profile.',
-        loginSuccessDual: 'Success! Choose your mode below.',
-        sessionReadyDual: 'Session ready. You can move between Teach and Tell at any time.',
         loginNetworkError: 'Could not reach the server. Please check your connection and try again later.',
         sessionChipPrefix: 'Active session',
-        modeSelectTitle: 'Select how you want to continue',
-        modeSelectLead: 'Both modes use the same participant progress. You can switch at any time.',
         assignedBlurb: 'You are continuing in your assigned study activity.',
         assignedContinueBtn: 'Continue to your activity',
         surveyLoadError: 'Could not load the questionnaire. Please check your connection and try again.',
@@ -128,7 +127,6 @@ var PORTAL_TRANSLATIONS = {
         sessionClearedHint: 'Session cleared. Enter a new participant code.',
         restoringSession: 'Restoring your previous session…',
         sessionRestoredAssigned: 'Session restored. Continue to your assigned activity.',
-        sessionRestoredDual: 'Session restored. Choose a mode to continue.',
         sessionExpired: 'Your previous session expired. Please enter your participant code again.'
     }
 };
@@ -180,7 +178,13 @@ function portalSwitchLang(lang) {
         }
     }
 
-    // 5. Persist choice
+    // 5. Page title and document language
+    if (t.pageTitle) {
+        document.title = t.pageTitle;
+    }
+    document.documentElement.lang = lang;
+
+    // 6. Persist choice
     try { localStorage.setItem('portalLang', lang); } catch (e) {}
 
     var pc = document.getElementById('participantCode');

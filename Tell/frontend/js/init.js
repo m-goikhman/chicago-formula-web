@@ -7,8 +7,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         window.initTellChatScrollPersistence();
     }
 
+    if (window.authHandoff && typeof window.authHandoff.consumeHandoffFromLocation === 'function') {
+        window.authHandoff.consumeHandoffFromLocation();
+    }
+
     // Try to restore session from localStorage
     const sessionRestored = await restoreSession();
+
+    if (!sessionRestored && window.authHandoff?.clearAuthResumePending) {
+        window.authHandoff.clearAuthResumePending();
+    }
     
     const textarea = document.getElementById('messageInput');
     

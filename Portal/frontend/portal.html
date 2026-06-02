@@ -19,8 +19,8 @@
                 <button class="lang-btn" data-lang="it" aria-pressed="false" onclick="portalSwitchLang('it')">IT</button>
                 <button class="lang-btn active" data-lang="en" aria-pressed="true" onclick="portalSwitchLang('en')">EN</button>
             </div>
-            <p class="portal-meta">ETHICS APPROVAL · UNIVERSITY OF TRENTO PROT. 2025-065</p>
-            <h1>Try an AI detective for English learning</h1>
+            <p class="portal-meta" data-i18n="portalMeta">ETHICS APPROVAL · UNIVERSITY OF TRENTO PROT. 2025-065</p>
+            <h1 data-i18n="headerTitle">Try an AI detective for English learning</h1>
             <p class="portal-subtitle">Building English Writing Confidence in Adult Learners through AI Text Detective Game</p>
         </header>
 
@@ -347,7 +347,7 @@
             <!-- Onboarding questionnaire (study flow; hidden in dev / localhost) -->
             <section class="card hidden" data-view="survey" id="surveyView" aria-labelledby="surveyTitle">
                 <h2 id="surveyTitle" data-i18n="surveyTitle">Language background</h2>
-                <p class="survey-lead" data-i18n="surveyLead">Please answer every question. English level items use two statements each; select all that apply.</p>
+                <p class="survey-lead" data-i18n="surveyLead">Please answer all required questions (marked with *). For Reading, Speaking, and Writing there are two statements each: select all that apply to you.</p>
                 <form id="surveyForm" class="survey-form" novalidate></form>
                 <div class="survey-actions">
                     <button type="submit" form="surveyForm" class="button primary" id="surveySubmitButton" data-i18n="surveySubmit">Submit and continue</button>
@@ -359,7 +359,7 @@
             <section class="card hidden" data-view="login" id="loginView">
                 <div id="studyCodeInstructions" class="study-code-instructions hidden" data-i18n-html="studyCodeInstructions"></div>
                 <h2 data-i18n="loginTitle">Unlock Your Session</h2>
-                <p data-i18n="loginLead">Participant codes are provided by the research team. The same code works for both modes.</p>
+                <p data-i18n="loginLead">Use the participant code you just created.</p>
 
                 <div class="input-group">
                     <label for="participantCode" data-i18n="participantCodeLabel">Participant code</label>
@@ -373,48 +373,16 @@
                 <div class="status-text" id="loginStatus"></div>
             </section>
 
-            <!-- Mode select view -->
+            <!-- Continue view (restored session) -->
             <section class="card" data-view="mode-select" id="modeSelectView">
                 <div class="session-chip">
                     <span data-i18n="sessionChipPrefix">Active session</span>
                     · <span id="sessionCode">—</span>
                 </div>
-                <div class="mode-details">
-                    <h2 data-i18n="modeSelectTitle">Select how you want to continue</h2>
-                    <p data-i18n="modeSelectLead">Both modes use the same participant progress. You can switch at any time.</p>
-                </div>
 
-                <div id="modeAssignedWrap" class="mode-assigned-wrap hidden">
+                <div id="modeAssignedWrap" class="mode-assigned-wrap">
                     <p class="assigned-blurb" data-i18n="assignedBlurb">You are continuing in your assigned study activity.</p>
                     <button type="button" class="button primary" id="assignedContinueBtn" data-i18n="assignedContinueBtn">Continue to your activity</button>
-                </div>
-
-                <div class="mode-grid" id="modeGridDual">
-                    <article class="mode-card">
-                        <div class="mode-details">
-                            <h3>Teach · Detective Reading Journey</h3>
-                            <p>Four-week storyline with guided reading, reflection notes, and mission-style tasks for each chapter.</p>
-                            <div class="mode-badges">
-                                <span class="badge">Weekly chapters</span>
-                                <span class="badge">Notes &amp; tasks</span>
-                                <span class="badge">Self-paced</span>
-                            </div>
-                        </div>
-                        <button class="button primary" data-action="enter-teach">Enter Teach</button>
-                    </article>
-
-                    <article class="mode-card">
-                        <div class="mode-details">
-                            <h3>Tell · Interactive Mystery</h3>
-                            <p>Chat with suspects, collect clues, and collaborate with the AI director to solve the Chicago Formula case.</p>
-                            <div class="mode-badges">
-                                <span class="badge">Live dialogue</span>
-                                <span class="badge">AI assistants</span>
-                                <span class="badge">Level adaptable</span>
-                            </div>
-                        </div>
-                        <button class="button primary" data-action="enter-tell">Enter Tell</button>
-                    </article>
                 </div>
 
                 <div class="actions-row">
@@ -447,6 +415,7 @@
         teachLocal: '../../Teach/frontend/index.html'
     });
 </script>
+<script src="../../shared/frontend/js/auth-handoff.js"></script>
 <script src="js/dev-local.js"></script>
 <script src="js/portal.js"></script>
 </body>

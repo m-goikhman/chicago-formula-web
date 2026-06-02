@@ -202,6 +202,10 @@ function displayMessage(msg) {
         }
     }
 
+    if (messageDiv && typeof window.tellDemoMode?.applyDemoMessagePresentation === 'function') {
+        window.tellDemoMode.applyDemoMessagePresentation(messageDiv, msg);
+    }
+
     if (isTutorMessage) {
         const hasHideButton = buttons.some(btn => btn.action === 'hide_message');
         if (!hasHideButton) {

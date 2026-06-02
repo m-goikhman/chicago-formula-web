@@ -780,6 +780,16 @@
     border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
+/* Hide burger on login; show after #teachApp gets .active (or session resume) */
+html.teach-login-visible .teach-container .header .burger-button {
+    display: none !important;
+}
+
+html.auth-resume-pending .teach-container .header .burger-button,
+.teach-container:has(#teachApp.active) .header .burger-button {
+    display: flex !important;
+}
+
 @media (max-width: 900px) {
     .teach-container .header {
         padding: 16px 20px;

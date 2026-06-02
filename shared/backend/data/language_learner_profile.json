@@ -2,7 +2,7 @@
   {
     "question_id": "age",
     "type": "single_select",
-    "required": true,
+    "required": false,
     "text_en": "What is your current age range?",
     "options_en": [
       "18 - 25",
@@ -15,7 +15,7 @@
   {
     "question_id": "gender",
     "type": "single_select",
-    "required": true,
+    "required": false,
     "text_en": "What is your gender identity?",
     "options_en": [
       "Female",

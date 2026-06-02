@@ -46,9 +46,10 @@ async function silentReauthenticate() {
     }
 
     try {
-        const { response, data } = await apiClient.postJson('/api/auth/login', {
-            participant_code: code
-        });
+        const loginPayload = window.tellDemoMode?.buildLoginPayload
+            ? window.tellDemoMode.buildLoginPayload(code)
+            : { participant_code: String(code || '').trim().toUpperCase() };
+        const { response, data } = await apiClient.postJson('/api/auth/login', loginPayload);
 
         if (!response.ok || !data || !data.token) {
             return false;
@@ -338,9 +339,10 @@ async function login() {
     loginBtn.innerHTML = 'Logging in...';
 
     try {
-        const { response, data } = await apiClient.postJson('/api/auth/login', {
-            participant_code: code
-        });
+        const loginPayload = window.tellDemoMode?.buildLoginPayload
+            ? window.tellDemoMode.buildLoginPayload(code)
+            : { participant_code: String(code || '').trim().toUpperCase() };
+        const { response, data } = await apiClient.postJson('/api/auth/login', loginPayload);
 
         const payload = data || {};
 
@@ -392,6 +394,7 @@ async function login() {
             loginBtn.innerHTML = 'Start Game';
         }
     } catch (error) {
+        console.error('Login failed:', error);
         errorDiv.textContent = 'Connection error. Is the backend running?';
         loginBtn.disabled = false;
         loginBtn.innerHTML = 'Start Game';
@@ -955,6 +958,10 @@ function logout() {
     syncDialogueModeUI();
     updateResetHistoryMenuVisibility();
     
+    if (window.authHandoff?.clearAuthResumePending) {
+        window.authHandoff.clearAuthResumePending();
+    }
+
     // Hide game screen, show login screen
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('loginScreen').style.display = 'flex';

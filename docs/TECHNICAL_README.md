@@ -180,7 +180,7 @@ Frontends: serve `Tell/frontend`, `Teach/frontend`, or `Portal/frontend` with an
 
 Both `Tell/frontend/js/config.js` and `Teach/frontend/js/config.js` use `sharedConfig.resolveApiBase()`:
 
-- **Localhost:** `http://localhost:8000`
+- **Localhost:** `http://127.0.0.1:8000` or `http://localhost:8000` (same hostname as the page — avoids IPv6 `::1` vs `127.0.0.1` mismatch when using `dev-local.sh` URLs)
 - **Production:** Cloud Run URL (see config files; update when redeploying backend)
 
 ---
@@ -221,7 +221,7 @@ Implementation: `shared/backend/auth.py`.
 
 | Code pattern | Purpose |
 |--------------|---------|
-| `DEMO` | Colleague demo: login allocates `DEMO1`, `DEMO2`, … (browser remembers slot); study questionnaires collapsed/hidden |
+| `DEMO` | Colleague demo (Tell + Teach): login allocates `DEMO1`, `DEMO2`, … (browser remembers slot); study questionnaires collapsed in UI |
 | `DEMO{n}` | Issued demo slot (re-login on same browser resumes the same slot) |
 | `TEST`, `ROBERTA` | **Test mode** — all episodes unlocked, debug defaults, reset history, hidden chat commands |
 | `AA1234` | Research participant: 2 letters + 4 digits |
@@ -366,7 +366,7 @@ Categories (`writing`, `info`, …) control UI policies (e.g. hide Check/Reset o
 - **CEFR scoring:** [`shared/backend/docs/cefr_self_rating_scoring.md`](../shared/backend/docs/cefr_self_rating_scoring.md) — sum of three blocks → B1 vs B2 for stratification.
 - **Consent HTML:** `Portal/frontend/consent_forms/` (and related paths under `Portal/consent_forms/`).
 
-After onboarding, participant receives `arm` (`tell` | `teach`) and should open the matching hosted app with their assigned code.
+After onboarding, participant receives `arm` (`tell` | `teach`). Portal login redirects to the matching hosted app with a one-time URL handoff (`session_token`, `participant_code` query params). Teach/Tell consume those via `shared/frontend/js/auth-handoff.js`, persist to `localStorage`, and strip the params from the address bar so participants are not prompted to log in again.
 
 ---
 
@@ -474,7 +474,7 @@ There is **no automated pytest suite** in this repository; validation is manual 
 
 | Code | Behavior |
 |------|----------|
-| `DEMO` | Public demo; normal unlock schedule |
+| `DEMO` | Colleague demo (Tell + Teach): `DEMO{n}` slots, questionnaires folded (Tell/Teach UI) or shortened outro (backend) |
 | `TEST`, `ROBERTA` | Full test mode (see below) |
 
 ### Test mode capabilities (`TEST` / `ROBERTA`)

@@ -333,6 +333,10 @@
     }
 
     function showLoginScreen() {
+        if (window.authHandoff?.clearAuthResumePending) {
+            window.authHandoff.clearAuthResumePending();
+        }
+        document.documentElement.classList.add('teach-login-visible');
         if (loginScreen) {
             loginScreen.style.display = 'flex';
         }
@@ -347,6 +351,7 @@
     }
 
     function showAppContainer() {
+        document.documentElement.classList.remove('teach-login-visible');
         if (loginScreen) {
             loginScreen.style.display = 'none';
         }
@@ -460,6 +465,10 @@
     async function bootstrap() {
         attachEventListeners();
 
+        if (window.authHandoff && typeof window.authHandoff.consumeHandoffFromLocation === 'function') {
+            window.authHandoff.consumeHandoffFromLocation();
+        }
+
         if (!TeachAuth) {
             console.warn('[TeachApp] TeachAuth not available, skipping login check.');
             showAppContainer();
@@ -469,9 +478,15 @@
 
         const restored = await TeachAuth.restoreSession();
         if (restored) {
+            if (window.authHandoff?.clearAuthResumePending) {
+                window.authHandoff.clearAuthResumePending();
+            }
             showAppContainer();
             await startTeachApp();
         } else {
+            if (window.authHandoff?.clearAuthResumePending) {
+                window.authHandoff.clearAuthResumePending();
+            }
             showLoginScreen();
             if (loginInput) {
                 setTimeout(() => loginInput.focus(), 50);

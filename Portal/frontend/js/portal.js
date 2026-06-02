@@ -45,8 +45,17 @@
             return setApiBase(resolved);
         }
 
+        function getLocalDevApiBase(port = 8000) {
+            const hostname = global.location?.hostname;
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                return `http://${hostname}:${port}`;
+            }
+            return `http://127.0.0.1:${port}`;
+        }
+
         return {
             isLocalhost,
+            getLocalDevApiBase,
             resolveApiBase,
             setApiBase,
             getApiBase
@@ -147,9 +156,9 @@
     const sharedConfig = createSharedConfig();
 
     const API_URL = sharedConfig.resolveApiBase({
-        local: 'http://localhost:8000',
+        local: sharedConfig.getLocalDevApiBase(8000),
         production: 'https://teach-tell-backend-801526931549.europe-west4.run.app',
-        fallback: 'http://localhost:8000'
+        fallback: sharedConfig.getLocalDevApiBase(8000)
     });
 
     const apiClient = createApiClient(sharedConfig);
@@ -199,8 +208,6 @@
     const surveyError = document.getElementById('surveyError');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
-    const modeGridDual = document.getElementById('modeGridDual');
-    const modeAssignedWrap = document.getElementById('modeAssignedWrap');
     const assignedContinueBtn = document.getElementById('assignedContinueBtn');
     const studyCodeInstructions = document.getElementById('studyCodeInstructions');
     const participantInput = document.getElementById('participantCode');
@@ -219,8 +226,6 @@
     const sessionCodeEl = document.getElementById('sessionCode');
     const modeStatus = document.getElementById('modeStatus');
     const switchCodeButton = document.getElementById('switchCodeButton');
-    const enterTeachButton = document.querySelector('[data-action="enter-teach"]');
-    const enterTellButton = document.querySelector('[data-action="enter-tell"]');
 
     let cachedQuestionnaire = null;
 
@@ -360,6 +365,13 @@
         localStorage.removeItem(CONSENT_STORAGE_KEY);
     }
 
+    function updateConsentToggleAccepted(toggle, checkbox) {
+        if (!toggle || !checkbox) {
+            return;
+        }
+        toggle.classList.toggle('is-accepted', checkbox.checked);
+    }
+
     function resetConsentUI() {
         if (consentCheck1) {
             consentCheck1.checked = false;
@@ -367,6 +379,8 @@
         if (consentCheck2) {
             consentCheck2.checked = false;
         }
+        updateConsentToggleAccepted(consentToggle1, consentCheck1);
+        updateConsentToggleAccepted(consentToggle2, consentCheck2);
         closeExpandable(consentToggle1, consentExpandable1);
         closeExpandable(consentToggle2, consentExpandable2);
         updateConsentContinueButton();
@@ -436,7 +450,14 @@
 
         const leg = document.createElement('legend');
         leg.className = 'survey-legend';
-        leg.textContent = q.text_en;
+        leg.appendChild(document.createTextNode(q.text_en));
+        if (q.required) {
+            const star = document.createElement('span');
+            star.className = 'survey-required-mark';
+            star.setAttribute('aria-hidden', 'true');
+            star.textContent = ' *';
+            leg.appendChild(star);
+        }
         wrap.appendChild(leg);
 
         if (q.type === 'single_select') {
@@ -532,9 +553,13 @@
             if (q.type === 'single_select') {
                 const sel = surveyForm.querySelector(`input[name="${q.question_id}"]:checked`);
                 if (!sel) {
-                    return null;
+                    if (q.required) {
+                        return null;
+                    }
+                    answers[q.question_id] = null;
+                } else {
+                    answers[q.question_id] = parseInt(sel.value, 10);
                 }
-                answers[q.question_id] = parseInt(sel.value, 10);
             } else if (q.type === 'multi_select') {
                 const sels = surveyForm.querySelectorAll(`input[name="${q.question_id}"]:checked`);
                 if (q.required && sels.length === 0) {
@@ -603,7 +628,7 @@
         consentContinueButton.disabled = !bothChecked;
     }
 
-    function showModeSelect(participantCode, options = {}) {
+    function showContinueView(participantCode, arm, options = {}) {
         sessionCodeEl.textContent = participantCode ?? '—';
         if (consentView) {
             consentView.classList.add('hidden');
@@ -613,35 +638,6 @@
         }
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
-        if (modeGridDual) {
-            modeGridDual.classList.remove('hidden');
-        }
-        if (modeAssignedWrap) {
-            modeAssignedWrap.classList.add('hidden');
-        }
-        if (options.showStatus) {
-            modeStatus.textContent = options.showStatus;
-        } else {
-            modeStatus.textContent = '';
-        }
-    }
-
-    function showModeSelectAssigned(participantCode, arm, options = {}) {
-        sessionCodeEl.textContent = participantCode ?? '—';
-        if (consentView) {
-            consentView.classList.add('hidden');
-        }
-        if (surveyView) {
-            surveyView.classList.add('hidden');
-        }
-        loginView.classList.add('hidden');
-        modeSelectView.classList.add('active');
-        if (modeGridDual) {
-            modeGridDual.classList.add('hidden');
-        }
-        if (modeAssignedWrap) {
-            modeAssignedWrap.classList.remove('hidden');
-        }
         if (assignedContinueBtn) {
             assignedContinueBtn.onclick = () => navigateTo(arm);
         }
@@ -654,6 +650,12 @@
         if (typeof portalSwitchLang === 'function') {
             portalSwitchLang(lang);
         }
+    }
+
+    function resolveLoginArm(data) {
+        const serverArm = data && data.study_arm;
+        const pendingArm = localStorage.getItem(STORAGE_STUDY_ARM);
+        return serverArm || pendingArm || null;
     }
 
     function showLoginView() {
@@ -701,33 +703,31 @@
             const participantCode = (data?.participant_code || normalizedCode).toUpperCase();
             participantInput.value = '';
 
-            if (isStudyFlowEnabled()) {
-                const serverArm = data?.study_arm;
-                const pendingArm = localStorage.getItem(STORAGE_STUDY_ARM);
+            const arm = resolveLoginArm(data);
 
-                if (!serverArm && !hasPendingOnboarding()) {
-                    requireSurveyBeforeCode();
-                    return;
-                }
-
-                persistSession(token, participantCode);
-                storeStudyArm(serverArm || pendingArm);
-
-                if (serverArm) {
-                    sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
-                } else if (hasPendingOnboarding()) {
-                    await attachPendingOnboarding(token);
-                }
-
-                navigateTo(localStorage.getItem(STORAGE_STUDY_ARM));
+            if (isStudyFlowEnabled() && !arm && !hasPendingOnboarding()) {
+                requireSurveyBeforeCode();
                 return;
             }
 
             persistSession(token, participantCode);
-            loginStatus.textContent = t('loginSuccessDual') || 'Success! Choose your mode below.';
-            showModeSelect(participantCode, {
-                showStatus: t('sessionReadyDual') || 'Session ready. You can move between Teach and Tell at any time.'
-            });
+            storeStudyArm(arm);
+
+            if (data?.study_arm) {
+                sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
+            } else if (hasPendingOnboarding()) {
+                await attachPendingOnboarding(token);
+            }
+
+            const resolvedArm = localStorage.getItem(STORAGE_STUDY_ARM);
+            if (!resolvedArm) {
+                loginError.textContent =
+                    t('loginRequiresSurvey') ||
+                    'Please complete the questionnaire first. Every participant code must be linked to a language profile.';
+                return;
+            }
+
+            navigateTo(resolvedArm);
         } catch (error) {
             console.error('[Portal] Login failed:', error);
             loginError.textContent =
@@ -762,29 +762,25 @@
             const participantCode = (data && data.participant_code) || stored.code;
             const studyArm = resolveStudyArm(data && data.study_arm);
 
-            if (isStudyFlowEnabled()) {
-                if (!studyArm) {
-                    clearStoredSession();
+            if (!studyArm) {
+                clearStoredSession();
+                if (isStudyFlowEnabled()) {
                     showLoginAfterSurvey();
-                    loginStatus.textContent =
-                        t('sessionExpired') ||
-                        'Your previous session expired. Please enter your participant code again.';
-                    return false;
+                } else {
+                    showLoginView();
                 }
-                persistSession(stored.token, participantCode);
-                storeStudyArm(studyArm);
-                showModeSelectAssigned(participantCode, studyArm, {
-                    showStatus:
-                        t('sessionRestoredAssigned') ||
-                        'Session restored. Continue to your assigned activity.'
-                });
-                return true;
+                loginStatus.textContent =
+                    t('sessionExpired') ||
+                    'Your previous session expired. Please enter your participant code again.';
+                return false;
             }
 
             persistSession(stored.token, participantCode);
-            showModeSelect(participantCode, {
+            storeStudyArm(studyArm);
+            showContinueView(participantCode, studyArm, {
                 showStatus:
-                    t('sessionRestoredDual') || 'Session restored. Choose a mode to continue.'
+                    t('sessionRestoredAssigned') ||
+                    'Session restored. Continue to your assigned activity.'
             });
             return true;
         } catch (error) {
@@ -797,13 +793,33 @@
         }
     }
 
+    function buildHandoffDestination(destination) {
+        const token = localStorage.getItem('sessionToken');
+        const participantCode = localStorage.getItem('participantCode');
+        if (!token || !participantCode) {
+            return destination;
+        }
+        if (global.authHandoff && typeof global.authHandoff.buildHandoffUrl === 'function') {
+            return global.authHandoff.buildHandoffUrl(destination, token, participantCode);
+        }
+        try {
+            const url = new URL(destination, global.location.href);
+            url.searchParams.set('session_token', token);
+            url.searchParams.set('participant_code', participantCode.toUpperCase());
+            return url.toString();
+        } catch (error) {
+            console.warn('[Portal] Could not append session handoff params:', error);
+            return destination;
+        }
+    }
+
     function navigateTo(mode) {
         const destination = resolveDestination(mode);
         if (!destination) {
             modeStatus.textContent = `Destination for ${mode} mode is not configured.`;
             return;
         }
-        window.location.assign(destination);
+        window.location.assign(buildHandoffDestination(destination));
     }
 
     function closeExpandable(toggle, expandable) {
@@ -837,12 +853,14 @@
         const update = updateConsentContinueButton;
         if (consentCheck1) {
             consentCheck1.addEventListener('change', () => {
+                updateConsentToggleAccepted(consentToggle1, consentCheck1);
                 update();
                 if (consentCheck1.checked) closeExpandable(consentToggle1, consentExpandable1);
             });
         }
         if (consentCheck2) {
             consentCheck2.addEventListener('change', () => {
+                updateConsentToggleAccepted(consentToggle2, consentCheck2);
                 update();
                 if (consentCheck2.checked) closeExpandable(consentToggle2, consentExpandable2);
             });
@@ -879,9 +897,6 @@
             handleLogin();
         }
     });
-
-    enterTeachButton.addEventListener('click', () => navigateTo('teach'));
-    enterTellButton.addEventListener('click', () => navigateTo('tell'));
 
     switchCodeButton.addEventListener('click', () => {
         clearStoredSession();

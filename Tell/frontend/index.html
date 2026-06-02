@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        (function () {
+            try {
+                var params = new URLSearchParams(location.search);
+                var fromPortal = params.has('session_token') && params.has('participant_code');
+                var fromStore = !!(localStorage.getItem('sessionToken') && localStorage.getItem('participantCode'));
+                if (fromPortal || fromStore) {
+                    document.documentElement.classList.add('auth-resume-pending');
+                }
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>The Chicago Formula</title>
@@ -20,6 +32,7 @@
     <link rel="preload" as="image" href="https://teach-tell-backend-801526931549.europe-west4.run.app/api/images/ep1/pauline.png">
     <link rel="stylesheet" href="./shared/css/styles.css?v=20260216">
     <link rel="stylesheet" href="./shared/css/components.css?v=20260128">
+    <script src="./shared/js/auth-handoff.js?v=20260520"></script>
     <!-- Removed inline styles - now in external CSS files -->
 </head>
 <body>
@@ -219,6 +232,7 @@
     <script src="./shared/js/api-client.js"></script>
     <script src="./shared/js/auth-recovery.js"></script>
     <script src="./shared/js/explain-client.js"></script>
+    <script src="js/demo-mode.js"></script>
     <script src="js/api.js"></script>
     <script src="js/game.js"></script>
     <script src="js/ui.js"></script>
