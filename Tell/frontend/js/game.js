@@ -122,7 +122,8 @@ function displayMessage(msg) {
     if (type === 'character' && senderAvatar && typeof window.openCharacterProfile === 'function') {
         messageOptions.onAvatarClick = () => window.openCharacterProfile({
             name: sender,
-            image: senderAvatar
+            image: senderAvatar,
+            key: typeof msg.character === 'string' ? msg.character : null,
         });
     }
 

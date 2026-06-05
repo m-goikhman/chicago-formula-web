@@ -1,9 +1,12 @@
-They arrested Tim Kane last night. Officially, that's the end of it.
-But we have that flash drive now, and I want to know what's on it. Someone hit a man over the head for this thing.
-Come on, I'll go with you. We could start at the university — find someone who knows Alex's work — or go straight to the hospital, he woke up this morning. Up to you.
+They arrested Tim Kane last night. But he told us something important.
+Tim said the money for Alex's business came from Ronnie Snapper — and the Snappers aren't just rich, they're a criminal family.
+----
+If Alex was making their dirty money look clean through his trading, that's a serious crime. That's enough for a judge. We have permission to see what's in the drive.
+-----
+Come on, I'll go with you. We could start at the university — find someone who knows Alex's work — or go straight to Alex. Up to you.
 
 ---
 [buttons]
 Go to the university|go_university_ep2
-Go to the hospital|go_hospital_ep2
+Go to Alex's apartment|go_alex_apartment_ep2
 Hold on, Nina|talk_nina

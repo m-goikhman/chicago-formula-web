@@ -33,16 +33,21 @@ import pytz
 logger = logging.getLogger(__name__)
 
 EP2_DEFAULT_LOCATION = "default_ep2"
-EP2_SCRIPTED_LOCATIONS = {"university_ep2", "hospital_ep2"}
+EP2_SCRIPTED_LOCATIONS = {"university_ep2", "alex_apartment_ep2"}
+EP2_SCRIPTED_WITNESS_KEYS = {
+    "university_ep2": "james",
+    "alex_apartment_ep2": "alex",
+}
+EP2_WITNESS_MODE = "witness_with_nina"
 EP2_LOCATION_ACTIONS = {
     "go_default_ep2": "default_ep2",
     "go_university_ep2": "university_ep2",
-    "go_hospital_ep2": "hospital_ep2",
+    "go_alex_apartment_ep2": "alex_apartment_ep2",
 }
 EP2_USB_SHARE_ACTION = "share_usb_with_james"
 EP2_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
 EP2_USB_SHARE_BUTTON_NOTE = "(you need to let James know what's on the drive)"
-EP2_JAMES_USB_QUESTION = "What's on the drive, and how can I help?"
+EP2_JAMES_USB_QUESTION = "Ok. Before I open the drive, is there anything you would like to tell me about it?"
 EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
 EP1_PART1_LOCATION = "part1_ep1"
 EP1_PART2_LOCATION = "part2_ep1"
@@ -831,33 +836,11 @@ def _is_english_usb_explanation(text: str) -> bool:
 
 
 def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
-    if location == "university_ep2":
-        if cue == "nudge_before_analysis":
-            return (
-                f"The detective asked: '{user_message}'. James has not yet analyzed the drive. "
-                "Give a brief nudge to ask James to check the USB contents now."
-            )
-        if cue == "after_verdict":
-            return (
-                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
-                "He just signaled the formula/files are nonsense. React briefly and point to going to Alex next."
-            )
-        if cue == "after_verdict_alex_first":
-            return (
-                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
-                "The team visited Alex before university. React to the contradiction and suggest checking Alex's story."
-            )
-        if cue == "wrap_university":
-            return (
-                f"The detective asked: '{user_message}'. James replied: '{other_reply}'. "
-                "James already gave his verdict and this conversation is dragging. Briefly suggest moving to Alex."
-            )
-
-    if location == "hospital_ep2":
+    if location == "alex_apartment_ep2":
         if cue == "nudge_expert_before_university":
             return (
                 f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "This hospital visit happened before university analysis. Give a brief nudge to have the USB checked by an expert."
+                "This apartment visit happened before university analysis. Give a brief nudge to have the USB checked by an expert."
             )
         if cue == "hint_confront_formula":
             return (
@@ -870,10 +853,10 @@ def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_re
                 f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
                 "Alex just gave the plane/plain-style explanation. Add a very short line that plants mild doubt."
             )
-        if cue == "wrap_hospital":
+        if cue == "wrap_alex_apartment":
             return (
                 f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "Hospital exchange is complete. Briefly signal that it's time to wrap up and move on."
+                "The apartment exchange is complete. Briefly signal that it's time to wrap up and move on."
             )
 
     return (
@@ -885,20 +868,150 @@ def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_re
 def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state = state.setdefault("ep2_director", {})
     ep2_state.setdefault("visited_locations", [])
-    ep2_state.setdefault("university_turns", 0)
-    ep2_state.setdefault("hospital_turns", 0)
+    ep2_state.setdefault("alex_apartment_turns", 0)
     ep2_state.setdefault("university_analysis_done", False)
-    ep2_state.setdefault("hospital_preuni_nudge_done", False)
-    ep2_state.setdefault("university_nudge_done", False)
-    ep2_state.setdefault("university_post_verdict_nina_done", False)
-    ep2_state.setdefault("university_wrap_done", False)
-    ep2_state.setdefault("hospital_confront_hint_done", False)
-    ep2_state.setdefault("hospital_doubt_seed_done", False)
-    ep2_state.setdefault("hospital_wrap_done", False)
-    ep2_state.setdefault("hospital_post_verdict_turns_without_confront", 0)
+    ep2_state.setdefault("alex_apartment_preuni_nudge_done", False)
+    ep2_state.setdefault("alex_apartment_confront_hint_done", False)
+    ep2_state.setdefault("alex_apartment_doubt_seed_done", False)
+    ep2_state.setdefault("alex_apartment_wrap_done", False)
+    ep2_state.setdefault("alex_apartment_post_verdict_turns_without_confront", 0)
     ep2_state.setdefault("usb_handover_requested", False)
     ep2_state.setdefault("usb_context_explained", False)
+    ep2_state.setdefault("james_player_messages", 0)
+    ep2_state.setdefault("james_formula_played", False)
+    ep2_state.setdefault("witness_openers_played", [])
     return ep2_state
+
+
+def _get_ep2_witness_key_for_location(location: Optional[str]) -> Optional[str]:
+    if not location:
+        return None
+    return EP2_SCRIPTED_WITNESS_KEYS.get(location)
+
+
+def _has_ep2_witness_opener_played(state: Dict, location: str) -> bool:
+    ep2_state = _get_ep2_director_state(state)
+    played = ep2_state.get("witness_openers_played", [])
+    return location in played
+
+
+def _mark_ep2_witness_opener_played(state: Dict, location: str) -> None:
+    ep2_state = _get_ep2_director_state(state)
+    played = ep2_state.setdefault("witness_openers_played", [])
+    if location not in played:
+        played.append(location)
+
+
+async def _build_ep2_witness_opener_messages(
+    participant_code: str,
+    state: Dict,
+    current_stage: int,
+    location: str,
+    witness_key: str,
+) -> List[Dict]:
+    """Return the witness's first line in a Nina-accompanied scene (public scope)."""
+    messages: List[Dict] = []
+    char_data = CHARACTER_DATA.get(witness_key, {})
+    current_language_level = state.get("current_language_level", "B1")
+    system_prompt = combine_character_prompt(
+        witness_key, current_language_level, current_stage, location
+    )
+
+    opener_text = get_private_dialogue_opener(state, current_stage, witness_key)
+    if opener_text:
+        sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
+        opener_body, opener_buttons = _extract_buttons_from_text(opener_without_sender)
+        if opener_body and opener_body.strip():
+            opener_message = _build_character_message_for_sender(
+                participant_code, opener_body, sender_key or witness_key
+            )
+            if opener_buttons:
+                opener_message["buttons"] = opener_buttons
+            opener_message["chat_scope"] = "public"
+            return [opener_message]
+
+    witness_opening_trigger = (
+        "The detective has arrived with Sergeant Nina Reyes to speak with you. "
+        "Say a short first line to open the conversation in one brief sentence. "
+        "Stay fully in character."
+    )
+    opener_reply = ""
+    try:
+        opener_reply = await ask_for_dialogue(
+            participant_code,
+            witness_opening_trigger,
+            system_prompt,
+            witness_key,
+            participant_code,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to generate EP2 witness opener for '%s' (participant %s): %s",
+            witness_key,
+            participant_code,
+            exc,
+        )
+
+    if opener_reply and opener_reply.strip():
+        opener_reply = opener_reply.strip()
+        message_id = generate_message_id()
+        save_message_to_cache(message_id, opener_reply, witness_key)
+        log_message(f"character_{witness_key}", opener_reply, participant_code)
+        messages.append(
+            {
+                "type": "character",
+                "character": witness_key,
+                "character_name": char_data.get("full_name", witness_key.capitalize()),
+                "character_image": char_data.get("image"),
+                "content": opener_reply,
+                "message_id": message_id,
+                "chat_scope": "public",
+                "show_explain": True,
+            }
+        )
+        return messages
+
+    fallback_line = "I'm here. What do you want to ask me?"
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, fallback_line, witness_key)
+    log_message(f"character_{witness_key}", fallback_line, participant_code)
+    messages.append(
+        {
+            "type": "character",
+            "character": witness_key,
+            "character_name": char_data.get("full_name", witness_key.capitalize()),
+            "character_image": char_data.get("image"),
+            "content": fallback_line,
+            "message_id": message_id,
+            "chat_scope": "public",
+            "show_explain": True,
+        }
+    )
+    return messages
+
+
+async def _append_ep2_witness_opener_if_needed(
+    participant_code: str,
+    state: Dict,
+    messages: List[Dict],
+    *,
+    current_stage: int,
+    location: str,
+) -> None:
+    witness_key = _get_ep2_witness_key_for_location(location)
+    if not witness_key or _has_ep2_witness_opener_played(state, location):
+        return
+
+    opener_messages = await _build_ep2_witness_opener_messages(
+        participant_code,
+        state,
+        current_stage,
+        location,
+        witness_key,
+    )
+    if opener_messages:
+        messages.extend(opener_messages)
+        _mark_ep2_witness_opener_played(state, location)
 
 
 async def _handle_ep2_scripted_public_message(
@@ -909,7 +1022,7 @@ async def _handle_ep2_scripted_public_message(
     current_location: str,
     stage_characters: Set[str],
 ) -> List[Dict]:
-    """Episode 2 lightweight scripted director for university/hospital scenes."""
+    """Episode 2 lightweight scripted director for university/Alex's apartment scenes."""
     messages: List[Dict] = []
     ep2_state = _get_ep2_director_state(state)
     debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
@@ -1015,78 +1128,54 @@ async def _handle_ep2_scripted_public_message(
 
     # Decide if Nina should interject in this turn based on EP2 prompt conditions.
     nina_cue: Optional[str] = None
-    hospital_visited = "hospital_ep2" in ep2_state.get("visited_locations", [])
     university_visited = "university_ep2" in ep2_state.get("visited_locations", [])
     analysis_done = ep2_state.get("university_analysis_done", False)
 
     if current_location == "university_ep2":
-        ep2_state["university_turns"] = int(ep2_state.get("university_turns", 0)) + 1
-        analysis_became_done_this_turn = False
-
         if not analysis_done and _is_university_analysis_request(message_text):
             ep2_state["university_analysis_done"] = True
             analysis_done = True
-            analysis_became_done_this_turn = True
 
         if not analysis_done and _is_formula_nonsense_signal(other_reply):
             ep2_state["university_analysis_done"] = True
             analysis_done = True
-            analysis_became_done_this_turn = True
+
+    elif current_location == "alex_apartment_ep2":
+        ep2_state["alex_apartment_turns"] = int(ep2_state.get("alex_apartment_turns", 0)) + 1
 
         if not analysis_done:
-            if ep2_state["university_turns"] >= 2 and not ep2_state.get("university_nudge_done", False):
-                ep2_state["university_nudge_done"] = True
-                nina_cue = "nudge_before_analysis"
-        else:
-            if not ep2_state.get("university_post_verdict_nina_done", False):
-                # Fire the post-verdict cue once analysis happened and James gave a substantive assessment.
-                if analysis_became_done_this_turn or _contains_any(
-                    other_reply,
-                    ["formula", "equation", "model", "files", "drive", "usb", "nonsense", "invalid", "gibberish"],
-                ):
-                    ep2_state["university_post_verdict_nina_done"] = True
-                    nina_cue = "after_verdict_alex_first" if hospital_visited else "after_verdict"
-            else:
-                if not ep2_state.get("university_wrap_done", False) and ep2_state["university_turns"] >= 4:
-                    ep2_state["university_wrap_done"] = True
-                    nina_cue = "wrap_university"
-
-    elif current_location == "hospital_ep2":
-        ep2_state["hospital_turns"] = int(ep2_state.get("hospital_turns", 0)) + 1
-
-        if not analysis_done:
-            if ep2_state["hospital_turns"] >= 3 and not ep2_state.get("hospital_preuni_nudge_done", False):
-                ep2_state["hospital_preuni_nudge_done"] = True
+            if ep2_state["alex_apartment_turns"] >= 3 and not ep2_state.get("alex_apartment_preuni_nudge_done", False):
+                ep2_state["alex_apartment_preuni_nudge_done"] = True
                 nina_cue = "nudge_expert_before_university"
         else:
             if _mentions_formula_confrontation(message_text):
-                ep2_state["hospital_post_verdict_turns_without_confront"] = 0
+                ep2_state["alex_apartment_post_verdict_turns_without_confront"] = 0
             else:
-                ep2_state["hospital_post_verdict_turns_without_confront"] = int(
-                    ep2_state.get("hospital_post_verdict_turns_without_confront", 0)
+                ep2_state["alex_apartment_post_verdict_turns_without_confront"] = int(
+                    ep2_state.get("alex_apartment_post_verdict_turns_without_confront", 0)
                 ) + 1
                 if (
-                    ep2_state["hospital_post_verdict_turns_without_confront"] >= 2
-                    and not ep2_state.get("hospital_confront_hint_done", False)
+                    ep2_state["alex_apartment_post_verdict_turns_without_confront"] >= 2
+                    and not ep2_state.get("alex_apartment_confront_hint_done", False)
                 ):
-                    ep2_state["hospital_confront_hint_done"] = True
+                    ep2_state["alex_apartment_confront_hint_done"] = True
                     nina_cue = "hint_confront_formula"
 
-        if not ep2_state.get("hospital_doubt_seed_done", False) and _mentions_plane_plain_story(other_reply):
-            ep2_state["hospital_doubt_seed_done"] = True
+        if not ep2_state.get("alex_apartment_doubt_seed_done", False) and _mentions_plane_plain_story(other_reply):
+            ep2_state["alex_apartment_doubt_seed_done"] = True
             nina_cue = "seed_doubt"
 
         if (
-            not ep2_state.get("hospital_wrap_done", False)
-            and ep2_state["hospital_turns"] >= 5
+            not ep2_state.get("alex_apartment_wrap_done", False)
+            and ep2_state["alex_apartment_turns"] >= 5
             and (
-                ep2_state.get("hospital_doubt_seed_done", False)
-                or ep2_state.get("hospital_preuni_nudge_done", False)
+                ep2_state.get("alex_apartment_doubt_seed_done", False)
+                or ep2_state.get("alex_apartment_preuni_nudge_done", False)
                 or university_visited
             )
         ):
-            ep2_state["hospital_wrap_done"] = True
-            nina_cue = nina_cue or "wrap_hospital"
+            ep2_state["alex_apartment_wrap_done"] = True
+            nina_cue = nina_cue or "wrap_alex_apartment"
 
     if nina_cue and "nina" in stage_characters and "nina" in CHARACTER_DATA:
         nina_prompt = load_system_prompt(get_prompt_path("nina", current_stage, current_location))
@@ -1131,50 +1220,16 @@ async def _handle_ep2_scripted_public_message(
                 }
             )
 
-            # In EP2 university scene, if Nina asks James a question, let James answer her.
-            if current_location == "university_ep2" and active_character_key == "james" and "?" in nina_reply:
-                james_followup_trigger = (
-                    f"Nina just said: '{nina_reply}'. "
-                    "If she asked you a direct or implied question, answer it briefly and clearly as James."
-                )
-                try:
-                    if debug_mode_enabled:
-                        debug_snapshot = _build_public_input_debug_snapshot(
-                            participant_code=participant_code,
-                            state=state,
-                            char_key="james",
-                            system_prompt=system_prompt,
-                            user_input=james_followup_trigger,
-                        )
-                        _append_debug_message(messages, debug_snapshot)
-                    james_followup = await ask_for_dialogue(
-                        participant_code,
-                        james_followup_trigger,
-                        system_prompt,
-                        "james",
-                        participant_code,
-                    )
-                    if debug_mode_enabled:
-                        _append_contradiction_guard_debug_message(messages, state)
-                except Exception as exc:
-                    logger.error(f"Failed to get James follow-up to Nina question: {exc}")
-                    james_followup = None
-
-                if james_followup:
-                    james_followup_message_id = generate_message_id()
-                    save_message_to_cache(james_followup_message_id, james_followup, "james")
-                    log_message("character_james", james_followup, participant_code)
-                    messages.append(
-                        {
-                            "type": "character",
-                            "character": "james",
-                            "character_name": active_char_data["full_name"],
-                            "character_image": active_char_data.get("image"),
-                            "content": james_followup,
-                            "message_id": james_followup_message_id,
-                            "show_explain": True,
-                        }
-                    )
+    if current_location == "university_ep2":
+        ep2_state["james_player_messages"] = int(ep2_state.get("james_player_messages", 0)) + 1
+        if (
+            ep2_state["james_player_messages"] == 3
+            and not ep2_state.get("james_formula_played", False)
+        ):
+            ep2_state["james_formula_played"] = True
+            _append_scripted_game_text_to_messages(
+                participant_code, messages, "james_formula", current_stage
+            )
 
     _sync_last_public_responder_from_messages(state, messages)
     return messages
@@ -1214,6 +1269,28 @@ def _resolve_character_sender_key(raw_sender: str) -> Optional[str]:
 
 def _extract_sender_from_text(content: str) -> Tuple[Optional[str], str]:
     return _sm_extract_sender_from_text(content)
+
+
+def _append_scripted_game_text_to_messages(
+    participant_code: str,
+    messages: List[Dict],
+    script_action: str,
+    episode: int,
+) -> bool:
+    """Append messages from a game_texts script (e.g. james_formula) to an existing batch."""
+    payload = resolve_action_text_from_game_texts(script_action, episode)
+    if not payload:
+        return False
+
+    message_blocks, buttons, sender_key = payload
+    for index, (block_sender, text) in enumerate(message_blocks):
+        message = _build_character_message_for_sender(
+            participant_code, text, block_sender or sender_key
+        )
+        if buttons and index == len(message_blocks) - 1:
+            message["buttons"] = buttons
+        messages.append(message)
+    return True
 
 
 def resolve_action_text_from_game_texts(
@@ -2472,27 +2549,36 @@ async def handle_location_transition(participant_code: str, action: str) -> List
         return [{"type": "error", "content": "Location is not configured."}]
 
     set_stage_location(state, 2, target_location)
-    state["mode"] = "public"
     state["current_character"] = None
     state["onboarding_step"] = "investigation_started"
+    _clear_public_followup_lock(state)
+    if target_location in EP2_SCRIPTED_LOCATIONS:
+        state["mode"] = EP2_WITNESS_MODE
+    else:
+        state["mode"] = "public"
 
-    await game_state_manager.save_game_state(participant_code, state)
-
-    location_name = locations.get(target_location, {}).get("name", target_location)
-    transition_text = f"You arrived at: {location_name}."
+    location_cfg = locations.get(target_location, {})
+    location_name = location_cfg.get("name", target_location)
+    transition_text = f"You arrived at  {location_name}."
     log_message("system", transition_text, participant_code)
 
-    messages = [{"type": "system", "content": transition_text}]
-    messages.extend(await handle_main_menu(participant_code))
-    if target_location == "university_ep2":
-        messages.append(
-            {
-                "type": "system",
-                "content": "If you are ready, hand James the USB so he can inspect the files.",
-                "buttons": [{"text": EP2_USB_SHARE_BUTTON_TEXT, "action": EP2_USB_SHARE_ACTION}],
-                "button_note": EP2_USB_SHARE_BUTTON_NOTE,
-            }
+    transition_message: Dict = {"type": "system", "content": transition_text}
+    location_image = location_cfg.get("location_image")
+    if location_image:
+        transition_message["image"] = location_image
+        transition_message["ui"] = {"imageFirst": True}
+    messages = [transition_message]
+    if target_location in EP2_SCRIPTED_LOCATIONS:
+        await _append_ep2_witness_opener_if_needed(
+            participant_code,
+            state,
+            messages,
+            current_stage=2,
+            location=target_location,
         )
+    else:
+        messages.extend(await handle_main_menu(participant_code))
+    await game_state_manager.save_game_state(participant_code, state)
     return messages
 
 
@@ -2503,6 +2589,9 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
     
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
+
+    if state.get("mode") == EP2_WITNESS_MODE:
+        return []
     
     menu_text = "What would you like to do?"
     
@@ -3202,15 +3291,25 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
 
 
 async def handle_mode_public(participant_code: str) -> List[Dict]:
-    """Switch to public mode."""
+    """Switch to public mode (or EP2 witness-with-Nina mode in scripted locations)."""
     messages = []
     state = GAME_STATE.get(participant_code)
     
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
-    state["mode"] = "public"
     state["current_character"] = None
+    _clear_public_followup_lock(state)
+    current_stage = state.get("current_stage", 1)
+    current_location = get_stage_location(state, current_stage)
+    is_ep2_witness_scene = (
+        current_stage == 2 and current_location in EP2_SCRIPTED_LOCATIONS
+    )
+
+    if is_ep2_witness_scene:
+        state["mode"] = EP2_WITNESS_MODE
+    else:
+        state["mode"] = "public"
     
     if _ep1_dialogs_closed(state):
         log_message("system", "Public mode (case closed)", participant_code)
@@ -3223,6 +3322,17 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
                 "ui": {"switchToPublicMode": True},
             }
         ]
+
+    if is_ep2_witness_scene:
+        await _append_ep2_witness_opener_if_needed(
+            participant_code,
+            state,
+            messages,
+            current_stage=current_stage,
+            location=current_location,
+        )
+        await game_state_manager.save_game_state(participant_code, state)
+        return messages
     
     mode_text = "You're now speaking with everyone in public. Ask your questions!"
     

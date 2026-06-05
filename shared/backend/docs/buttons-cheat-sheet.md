@@ -76,7 +76,7 @@ Route: `POST /api/game/action` → `request.action`.
 |--------|---------|
 | `go_default_ep2` | Default EP2 location. |
 | `go_university_ep2` | University. |
-| `go_hospital_ep2` | Hospital. |
+| `go_alex_apartment_ep2` | Alex's apartment. |
 
 ### Evidence
 

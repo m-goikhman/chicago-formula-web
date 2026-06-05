@@ -79,13 +79,15 @@ STAGE_CONFIG = {
                 "name": "University",
                 "characters": ["nina", "james"],
                 "action": "go_university_ep2",
-                "texture_image": "ep2/university_texture.png"
+                "texture_image": "ep2/university_texture.png",
+                "location_image": "ep2/university.png",
             },
-            "hospital_ep2": {
-                "name": "Hospital",
+            "alex_apartment_ep2": {
+                "name": "Alex's apartment",
                 "characters": ["nina", "alex"],
-                "action": "go_hospital_ep2",
-                "texture_image": "ep2/hospital_texture.png"
+                "action": "go_alex_apartment_ep2",
+                "texture_image": "ep2/alex_apartment_texture.png",
+                "location_image": "ep2/apartment.png",
             }
         },
         "intro_files": [
@@ -128,7 +130,7 @@ CHARACTER_DATA = {
     "lexicographer": {"prompt_file": "prompts/prompt_lexicographer.md", "full_name": "Lexicographer", "image": None},
     "susan": {"prompt_file": "prompts/ep2/prompt_susan.md", "full_name": "Susan Nakamura", "image": "ep2/susan.png"},
     "james": {"prompt_file": "prompts/ep2/prompt_james.md", "full_name": "James Thornton", "image": "ep2/james.png"},
-    "alex": {"prompt_file": "prompts/ep2/hospital_ep2/prompt_alex.md", "full_name": "Alex Martin", "image": "ep2/alex.png"},
+    "alex": {"prompt_file": "prompts/ep2/alex_apartment_ep2/prompt_alex.md", "full_name": "Alex Martin", "image": "ep2/alex.png"},
 }
 
 # --- Global State Variables ---

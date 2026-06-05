@@ -421,7 +421,7 @@ EP1 has two prompt trees:
 - `prompts/ep1/pauline/` — Pauline present
 - `prompts/ep1/no_pauline/` — before Pauline unlock
 
-EP2+ use location folders (`default_ep2`, `university_ep2`, `hospital_ep2`) — see [`shared/backend/prompts/ep2/README.md`](../shared/backend/prompts/ep2/README.md).
+EP2+ use location folders (`default_ep2`, `university_ep2`, `alex_apartment_ep2`) — see [`shared/backend/prompts/ep2/README.md`](../shared/backend/prompts/ep2/README.md).
 
 Narrator: `prompts/prompt_narrator.md`. Nina (global): `prompts/prompt_nina.md`.
 

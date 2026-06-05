@@ -1,0 +1,9 @@
+[from: james]
+Oh, I've just remembered — Sergeant Reyes mentioned you had a drive you wanted me to take a look at?
+
+---
+[from: nina]
+Yeah. It's in your case materials.
+
+[buttons]
+Show the USB to James|share_usb_with_james

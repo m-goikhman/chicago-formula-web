@@ -1,6 +1,6 @@
-## Scene: Hospital (Episode 2)
+## Scene: Alex's apartment (Episode 2)
 
-You are at the hospital with the detective, visiting Alex Martin. He's awake and recovering.
+You are at Alex's apartment with the detective, visiting Alex Martin. He's awake and recovering at home.
 
 ## What You Know
 - Tim is arrested for the attack.

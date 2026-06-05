@@ -426,7 +426,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_language_confirmation(participant_code)
     elif request.action.startswith("case_intro_"):
         messages = await handle_case_intro(participant_code, request.action)
-    elif request.action in ["go_default_ep2", "go_university_ep2", "go_hospital_ep2"]:
+    elif request.action in ["go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2"]:
         messages = await handle_location_transition(participant_code, request.action)
     elif request.action == "start_investigation":
         messages = await start_investigation(participant_code)
@@ -1013,6 +1013,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
                 "name": location_cfg.get("name", location_key),
                 "action": location_cfg.get("action"),
                 "texture_image": location_cfg.get("texture_image"),
+                "location_image": location_cfg.get("location_image"),
                 "switcher_visible": location_cfg.get("show_in_switcher", True),
                 "current": location_key == current_location,
             })

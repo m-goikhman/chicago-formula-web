@@ -1,6 +1,6 @@
 ## Scene: Briefing (Episode 2, before choosing location)
 
-You have just briefed the detective on the situation. Tim Kane is arrested. Alex is awake at the hospital. The airplane-shaped USB drive is in evidence. The university is open again after the holidays — there are people there who could analyze the drive.
+You have just briefed the detective on the situation. Tim Kane is arrested. Alex is feeling better. The airplane-shaped USB drive is in evidence. The university there are people there who could analyze the drive.
 
 The player hasn't chosen where to go yet. They might want to talk things through with you first.
 

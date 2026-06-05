@@ -172,6 +172,181 @@ function checkAndCloseOverlay() {
     }
 }
 
+const EP2_SCRIPTED_LOCATIONS = {
+    university_ep2: 'james',
+    alex_apartment_ep2: 'alex',
+};
+
+function getCurrentStageLocationKey() {
+    if (window.currentStageLocation) {
+        return window.currentStageLocation;
+    }
+    const locations = window.currentStageLocations || [];
+    const current = locations.find((loc) => loc.current);
+    return current?.key || null;
+}
+
+function getEp2ScriptedWitnessKey() {
+    if (Number(window.currentStageNumber || 1) !== 2) {
+        return null;
+    }
+    const locationKey = getCurrentStageLocationKey();
+    return EP2_SCRIPTED_LOCATIONS[locationKey] || null;
+}
+
+function getEp2SwitchableLocations() {
+    if (Number(window.currentStageNumber || 1) !== 2) {
+        return [];
+    }
+    const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
+    return locations.filter((loc) => loc?.switcher_visible !== false && !!loc?.action);
+}
+
+function getCurrentEp2Location() {
+    const locations = getEp2SwitchableLocations();
+    return locations.find((loc) => loc.current) || null;
+}
+
+function shouldShowEp2LocationHeader() {
+    const navigationBar = document.getElementById('navigationBar');
+    const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
+    if (!hasInvestigationStarted || Number(window.currentStageNumber || 1) !== 2) {
+        return false;
+    }
+    return Boolean(getEp2ScriptedWitnessKey()) && getEp2SwitchableLocations().length > 1;
+}
+
+function closeLocationHeaderDropdown() {
+    const context = document.getElementById('chatModeHeaderContext');
+    if (context) {
+        context.classList.remove('dropdown-open');
+        context.setAttribute('aria-expanded', 'false');
+    }
+    const dropdown = document.getElementById('locationHeaderDropdown');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+}
+
+function toggleLocationHeaderDropdown(event) {
+    if (!shouldShowEp2LocationHeader()) {
+        return;
+    }
+    if (event) {
+        event.stopPropagation();
+    }
+    const context = document.getElementById('chatModeHeaderContext');
+    const dropdown = document.getElementById('locationHeaderDropdown');
+    if (!context || !dropdown) {
+        return;
+    }
+    const isOpen = context.classList.contains('dropdown-open');
+    if (isOpen) {
+        closeLocationHeaderDropdown();
+        return;
+    }
+    context.classList.add('dropdown-open');
+    context.setAttribute('aria-expanded', 'true');
+    dropdown.style.display = 'block';
+}
+
+function renderLocationHeaderDropdown() {
+    const context = document.getElementById('chatModeHeaderContext');
+    const dropdown = document.getElementById('locationHeaderDropdown');
+    if (!context || !dropdown) {
+        return;
+    }
+
+    if (!shouldShowEp2LocationHeader()) {
+        closeLocationHeaderDropdown();
+        dropdown.innerHTML = '';
+        context.classList.remove('has-location-dropdown');
+        return;
+    }
+
+    context.classList.add('has-location-dropdown');
+    const locations = getEp2SwitchableLocations();
+    dropdown.innerHTML = '';
+    locations.forEach((location) => {
+        const item = document.createElement('div');
+        item.className = 'location-header-dropdown-item';
+        item.setAttribute('role', 'menuitem');
+        if (location.current) {
+            item.classList.add('current');
+            item.setAttribute('aria-current', 'true');
+        }
+
+        const imagePath = location.location_image || location.texture_image;
+        const imageUrl = buildImageUrl(imagePath);
+        if (imageUrl) {
+            const thumb = document.createElement('img');
+            thumb.className = 'location-header-dropdown-thumb';
+            thumb.src = imageUrl;
+            thumb.alt = '';
+            thumb.loading = 'lazy';
+            item.appendChild(thumb);
+        }
+
+        const label = document.createElement('span');
+        label.className = 'location-header-dropdown-name';
+        label.textContent = location.name || 'Location';
+        item.appendChild(label);
+
+        if (!location.current && location.action) {
+            item.onclick = (event) => {
+                event.stopPropagation();
+                closeLocationHeaderDropdown();
+                handleAction(location.action);
+            };
+        }
+
+        dropdown.appendChild(item);
+    });
+}
+
+function buildCharactersDrawerList(stageChars) {
+    const witnessKey = getEp2ScriptedWitnessKey();
+    if (witnessKey) {
+        const witness = stageChars.find((character) => character.key === witnessKey);
+        const privateCharacters = stageChars.filter((character) => character.key !== witnessKey);
+        const list = [];
+        if (witness) {
+            list.push({
+                name: witness.full_name,
+                status: 'Together with Nina Reyes',
+                action: 'mode_public',
+                image: witness.image,
+            });
+        }
+        return list.concat(
+            privateCharacters.map((character) => ({
+                name: character.full_name,
+                status: 'Private Chat',
+                action: `talk_${character.key}`,
+                image: character.image,
+            }))
+        );
+    }
+
+    const privateCharacters = stageChars.length > 0
+        ? stageChars.map((character) => ({
+            name: character.full_name,
+            status: 'Private Chat',
+            action: `talk_${character.key}`,
+            image: character.image,
+        }))
+        : [
+            { name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'ep1/tim.png' },
+            { name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ep1/ronnie.png' },
+            { name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'ep1/fiona.png' },
+            { name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'ep1/pauline.png' }
+        ];
+    return (privateCharacters.length > 1
+        ? [{ name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null }]
+        : []
+    ).concat(privateCharacters);
+}
+
 // Populate characters drawer (uses current episode's characters from API when available)
 function populateCharactersDrawer() {
     const charactersList = document.getElementById('charactersList');
@@ -179,18 +354,7 @@ function populateCharactersDrawer() {
     
     // Use current episode's characters from API, or fallback to ep1 list for first paint / restore
     const stageChars = window.currentStageCharacters || [];
-    const privateCharacters = stageChars.length > 0
-        ? stageChars.map(c => ({ name: c.full_name, status: 'Private Chat', action: `talk_${c.key}`, image: c.image }))
-        : [
-            { name: 'Tim Kane', status: 'Private Chat', action: 'talk_tim', image: 'ep1/tim.png' },
-            { name: 'Ronnie Snapper', status: 'Private Chat', action: 'talk_ronnie', image: 'ep1/ronnie.png' },
-            { name: 'Fiona McAllister', status: 'Private Chat', action: 'talk_fiona', image: 'ep1/fiona.png' },
-            { name: 'Pauline Thompson', status: 'Private Chat', action: 'talk_pauline', image: 'ep1/pauline.png' }
-        ];
-    const list = (privateCharacters.length > 1
-        ? [{ name: 'Everyone', status: 'Public Chat', action: 'mode_public', image: null }]
-        : []
-    ).concat(privateCharacters);
+    const list = buildCharactersDrawerList(stageChars);
 
     const ep1CaseClosed = Number(window.currentStageNumber || 1) === 1 && Boolean(window.ep1GameCompleted);
 
@@ -211,7 +375,9 @@ function populateCharactersDrawer() {
         if (characterImageUrl) {
             iconHTML = `<img src="${characterImageUrl}" alt="${char.name}" loading="lazy" />`;
         } else {
-            iconHTML = char.name === 'Everyone' ? '💬' : `<span class="drawer-item-initial">${(char.name || '?')[0]}</span>`;
+            iconHTML = char.action === 'mode_public' && !characterImageUrl
+                ? '💬'
+                : `<span class="drawer-item-initial">${(char.name || '?')[0]}</span>`;
         }
         
         item.innerHTML = `
@@ -226,7 +392,7 @@ function populateCharactersDrawer() {
                 document.querySelectorAll('.drawer-item').forEach(el => el.classList.remove('active'));
                 item.classList.add('active');
                 
-                if (char.name === 'Everyone') {
+                if (char.action === 'mode_public') {
                     currentCharacter = null;
                 } else {
                     const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
@@ -259,7 +425,7 @@ function setActiveCharacterDrawerItem(characterName = null) {
         if (normalizedTarget) {
             return itemName === normalizedTarget;
         }
-        return itemName === 'everyone';
+        return item.classList.contains('chat-target-public');
     });
 
     if (targetItem) {
@@ -274,7 +440,7 @@ function resolveActiveDrawerCharacterKey() {
     }
 
     const drawerName = (activeDrawer.querySelector('.name')?.textContent || '').trim().toLowerCase();
-    if (!drawerName || drawerName === 'everyone') {
+    if (!drawerName) {
         return '';
     }
 
@@ -344,41 +510,64 @@ function updatePrivateModeControls() {
     const backToCommonDialogueBtn = document.getElementById('backToCommonDialogueBtn');
     const isLoginVisible = Boolean(loginScreen && loginScreen.style.display !== 'none');
     const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
+    const activeDrawer = document.querySelector('#charactersList .drawer-item.active');
     const activeDrawerNameRaw = (
-        document.querySelector('#charactersList .drawer-item.active .name')?.textContent || ''
+        activeDrawer?.querySelector('.name')?.textContent || ''
     ).trim();
     const activeDrawerName = activeDrawerNameRaw.toLowerCase();
+    const isPublicDrawerActive = Boolean(activeDrawer?.classList.contains('chat-target-public'));
     const activeCharacterNameRaw = (currentCharacter?.name || '').trim();
     const activeCharacterName = activeCharacterNameRaw.toLowerCase();
     const isPrivateModeActive = Boolean(
         activeCharacterName &&
+        !isPublicDrawerActive &&
         activeDrawerName &&
-        activeDrawerName !== 'everyone' &&
         activeDrawerName === activeCharacterName
     );
     const privateCharacterLabel = activeCharacterNameRaw || activeDrawerNameRaw;
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const ep2WitnessKey = getEp2ScriptedWitnessKey();
+    const ep2Witness = ep2WitnessKey
+        ? stageCharacters.find((character) => character.key === ep2WitnessKey)
+        : null;
     const publicAvatarUrl = buildImageUrl('ep1/suspects.png');
+    const ep2PublicAvatarUrl = buildImageUrl(ep2Witness?.image);
     const privateAvatarUrl = buildImageUrl(currentCharacter?.image);
     const currentStage = Number(window.currentStageNumber || 1);
     const navigationBar = document.getElementById('navigationBar');
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
     const shouldShowEp1PublicAvatar = currentStage === 1 && hasInvestigationStarted;
+    const shouldShowEp2PublicAvatar = Boolean(ep2Witness && hasInvestigationStarted);
+    const isEp2LocationHeader = shouldShowEp2LocationHeader();
+    const currentEp2Location = getCurrentEp2Location();
+    const ep2LocationImageUrl = buildImageUrl(
+        currentEp2Location?.location_image || currentEp2Location?.texture_image
+    );
     const ep1CaseClosed = currentStage === 1 && Boolean(window.ep1GameCompleted);
+    const publicModeLabel = ep2Witness
+        ? 'Together with Nina Reyes'
+        : 'Public chat (Everyone)';
 
     privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
     if (backToCommonDialogueBtn) {
         backToCommonDialogueBtn.classList.toggle('is-private', isPrivateModeActive);
     }
     if (headerContextAvatar) {
-        const avatarSrc = isPrivateModeActive && privateAvatarUrl
-            ? privateAvatarUrl
-            : (shouldShowEp1PublicAvatar ? publicAvatarUrl : null);
+        const avatarSrc = isEp2LocationHeader && ep2LocationImageUrl
+            ? ep2LocationImageUrl
+            : (isPrivateModeActive && privateAvatarUrl
+                ? privateAvatarUrl
+                : (shouldShowEp2PublicAvatar && ep2PublicAvatarUrl
+                    ? ep2PublicAvatarUrl
+                    : (shouldShowEp1PublicAvatar ? publicAvatarUrl : null)));
         if (avatarSrc) {
             headerContextAvatar.src = avatarSrc;
             headerContextAvatar.style.display = 'block';
-            headerContextAvatar.alt = isPrivateModeActive
-                ? `${privateCharacterLabel} avatar`
-                : 'Group chat avatar';
+            headerContextAvatar.alt = isEp2LocationHeader
+                ? (currentEp2Location?.name || 'Current location')
+                : (isPrivateModeActive
+                    ? `${privateCharacterLabel} avatar`
+                    : (ep2Witness ? `${ep2Witness.full_name} avatar` : 'Group chat avatar'));
         } else {
             headerContextAvatar.src = '';
             headerContextAvatar.alt = '';
@@ -387,14 +576,34 @@ function updatePrivateModeControls() {
     }
     if (headerModeContext) {
         const shouldShowHeaderContext = !isLoginVisible && Boolean(
-            (isPrivateModeActive && privateAvatarUrl) || (!isPrivateModeActive && shouldShowEp1PublicAvatar)
+            (isEp2LocationHeader && ep2LocationImageUrl)
+            || (isPrivateModeActive && privateAvatarUrl)
+            || (!isPrivateModeActive && (shouldShowEp1PublicAvatar || shouldShowEp2PublicAvatar))
         );
         headerModeContext.style.display = shouldShowHeaderContext ? 'inline-flex' : 'none';
-        headerModeContext.classList.toggle('is-private', isPrivateModeActive);
-        headerModeContext.title = isPrivateModeActive
-            ? `Private chat with ${privateCharacterLabel}`
-            : 'Public chat (Everyone)';
+        headerModeContext.classList.toggle('is-private', isPrivateModeActive && !isEp2LocationHeader);
+        headerModeContext.classList.toggle('has-location-dropdown', isEp2LocationHeader);
+        headerModeContext.title = isEp2LocationHeader
+            ? `Current location: ${currentEp2Location?.name || 'Location'}`
+            : (isPrivateModeActive
+                ? `Private chat with ${privateCharacterLabel}`
+                : publicModeLabel);
+        if (isEp2LocationHeader) {
+            headerModeContext.style.cursor = 'pointer';
+            headerModeContext.setAttribute('role', 'button');
+            headerModeContext.setAttribute('aria-haspopup', 'menu');
+            headerModeContext.setAttribute('aria-expanded', headerModeContext.classList.contains('dropdown-open') ? 'true' : 'false');
+            headerModeContext.onclick = toggleLocationHeaderDropdown;
+        } else {
+            headerModeContext.style.cursor = '';
+            headerModeContext.removeAttribute('role');
+            headerModeContext.removeAttribute('aria-haspopup');
+            headerModeContext.removeAttribute('aria-expanded');
+            headerModeContext.onclick = null;
+            closeLocationHeaderDropdown();
+        }
     }
+    renderLocationHeaderDropdown();
     if (inputElement) {
         if (ep1CaseClosed && isInputVisible) {
             inputElement.disabled = true;
@@ -404,7 +613,9 @@ function updatePrivateModeControls() {
             if (isInputVisible) {
                 inputElement.placeholder = isPrivateModeActive
                     ? `Message ${privateCharacterLabel}...`
-                    : 'Type a message to everyone...';
+                    : (ep2Witness
+                        ? `Message ${ep2Witness.full_name}...`
+                        : 'Type a message to everyone...');
             }
         }
     }
@@ -477,67 +688,14 @@ function populateCaseMaterialsDrawer() {
     });
 }
 
-function renderLocationSwitcher(stageInfo) {
+function renderLocationSwitcher() {
     const switcher = document.getElementById('locationSwitcher');
     if (!switcher) return;
-
-    const stageNumber = stageInfo?.stage || window.currentStageNumber || 1;
-    const locations = Array.isArray(stageInfo?.locations) ? stageInfo.locations : [];
-    const visibleLocations = locations.filter(loc => loc?.switcher_visible !== false && !!loc?.action);
-
-    if (stageNumber <= 1 || visibleLocations.length <= 1) {
-        switcher.style.display = 'none';
-        switcher.innerHTML = '';
-        return;
-    }
-
+    switcher.style.display = 'none';
     switcher.innerHTML = '';
-    visibleLocations.forEach((location, index) => {
-        const tab = document.createElement('div');
-        tab.className = `location-switcher-tab${location.current ? ' active' : ''}`;
-        tab.setAttribute('role', 'button');
-        tab.setAttribute('tabindex', location.current ? '-1' : '0');
-        tab.setAttribute('aria-pressed', location.current ? 'true' : 'false');
-        tab.setAttribute('aria-label', `Switch to ${location.name}`);
-
-        const bg = document.createElement('div');
-        bg.className = 'location-switcher-bg';
-        const textureUrl = buildImageUrl(location.texture_image);
-        if (textureUrl) {
-            bg.style.backgroundImage = `url('${textureUrl}')`;
-        } else {
-            bg.classList.add('fallback');
-        }
-
-        const label = document.createElement('div');
-        label.className = 'location-switcher-label';
-        label.textContent = location.name || 'Location';
-
-        tab.appendChild(bg);
-        tab.appendChild(label);
-
-        const activateLocation = () => {
-            if (location.current || !location.action) return;
-            handleAction(location.action);
-        };
-        tab.onclick = activateLocation;
-        tab.onkeydown = (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                activateLocation();
-            }
-        };
-
-        switcher.appendChild(tab);
-
-        if (index < visibleLocations.length - 1) {
-            const divider = document.createElement('div');
-            divider.className = 'location-switcher-divider';
-            switcher.appendChild(divider);
-        }
-    });
-
-    switcher.style.display = 'flex';
+    if (typeof updatePrivateModeControls === 'function') {
+        updatePrivateModeControls();
+    }
 }
 
 // Horizontal Menu functions
@@ -578,6 +736,22 @@ function closeImageModal() {
     document.body.style.overflow = '';
 }
 
+function isEp2ScriptedWitnessCharacter(characterKey, characterName = '') {
+    const witnessKey = getEp2ScriptedWitnessKey();
+    if (!witnessKey) {
+        return false;
+    }
+    const normalizedKey = (characterKey || '').trim().toLowerCase();
+    if (normalizedKey && normalizedKey === witnessKey) {
+        return true;
+    }
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const witness = stageCharacters.find((stageCharacter) => stageCharacter.key === witnessKey);
+    const witnessName = (witness?.full_name || '').trim().toLowerCase();
+    const normalizedName = (characterName || '').trim().toLowerCase();
+    return Boolean(witnessName && normalizedName && witnessName === normalizedName);
+}
+
 function resolveCharacterProfileData(character) {
     const characterStatuses = {
         tim: 'PhD candidate. Finance. Options pricing.',
@@ -590,16 +764,25 @@ function resolveCharacterProfileData(character) {
     };
     const fallbackName = (character?.name || '').trim() || 'Character';
     const fallbackImage = character?.image || null;
+    const explicitKey = (character?.key || '').trim().toLowerCase();
     const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
     const matchedStageCharacter = stageCharacters.find((stageCharacter) => {
+        const stageKey = (stageCharacter?.key || '').trim().toLowerCase();
+        if (explicitKey && stageKey === explicitKey) {
+            return true;
+        }
         const fullName = (stageCharacter?.full_name || '').trim().toLowerCase();
         return fullName && fullName === fallbackName.toLowerCase();
     });
-    const characterKey = matchedStageCharacter?.key || null;
+    const characterKey = matchedStageCharacter?.key || explicitKey || null;
+    const hidePrivateChat = isEp2ScriptedWitnessCharacter(characterKey, fallbackName);
+    const privateAction = hidePrivateChat
+        ? null
+        : (characterKey ? `talk_${characterKey}` : null);
     return {
         name: matchedStageCharacter?.full_name || fallbackName,
         image: matchedStageCharacter?.image || fallbackImage,
-        privateAction: characterKey ? `talk_${characterKey}` : null,
+        privateAction,
         status: characterStatuses[characterKey] || 'Chat participant'
     };
 }
@@ -631,7 +814,9 @@ function openCharacterProfile(character = {}) {
     actions.style.display = isAlreadyInPrivateWithCharacter ? 'none' : 'flex';
 
     const isMobile = window.innerWidth <= 767;
-    privateButton.disabled = !profileData.privateAction;
+    const showPrivateButton = Boolean(profileData.privateAction);
+    privateButton.style.display = showPrivateButton ? '' : 'none';
+    privateButton.disabled = !showPrivateButton;
     privateButton.onclick = async () => {
         if (!profileData.privateAction) return;
         closeCharacterProfile();
@@ -675,6 +860,8 @@ window.checkAndCloseOverlay = checkAndCloseOverlay;
 window.populateCharactersDrawer = populateCharactersDrawer;
 window.populateCaseMaterialsDrawer = populateCaseMaterialsDrawer;
 window.renderLocationSwitcher = renderLocationSwitcher;
+window.renderLocationHeaderDropdown = renderLocationHeaderDropdown;
+window.closeLocationHeaderDropdown = closeLocationHeaderDropdown;
 window.toggleHorizontalMenu = toggleHorizontalMenu;
 window.handleMenuAction = handleMenuAction;
 window.openImageModal = openImageModal;

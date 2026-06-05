@@ -53,6 +53,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
     
+    document.addEventListener('click', function(e) {
+        const headerContext = document.getElementById('chatModeHeaderContext');
+        if (headerContext && !headerContext.contains(e.target) && typeof window.closeLocationHeaderDropdown === 'function') {
+            window.closeLocationHeaderDropdown();
+        }
+    });
+
     // Close menu on Escape key
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -61,6 +68,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (menu && menu.classList.contains('active')) {
                 menu.classList.remove('active');
                 button.classList.remove('active');
+            }
+            if (typeof window.closeLocationHeaderDropdown === 'function') {
+                window.closeLocationHeaderDropdown();
             }
             closeImageModal();
         }

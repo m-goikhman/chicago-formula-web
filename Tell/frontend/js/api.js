@@ -497,7 +497,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         addMessage('user', 'You', normalizedSelectedOptionText, null, null, false, { chatScope: currentChatScope });
     }
 
-    if (normalizedAction === 'mode_public') {
+    if (normalizedAction === 'mode_public' || normalizedAction.startsWith('go_')) {
         currentCharacter = null;
         syncDialogueModeUI();
     } else if (normalizedAction.startsWith('talk_')) {
@@ -797,9 +797,9 @@ async function sendMessage() {
     
     if (!characterForTyping) {
         const activeDrawerItem = document.querySelector('.drawer-item.active');
-        if (activeDrawerItem) {
+        if (activeDrawerItem && !activeDrawerItem.classList.contains('chat-target-public')) {
             const charName = activeDrawerItem.querySelector('.name')?.textContent;
-            if (charName && charName !== 'Everyone') {
+            if (charName) {
                 const charData = charactersForTyping.find(c => c.name === charName);
                 if (charData) characterForTyping = charData;
             }
@@ -1354,6 +1354,7 @@ async function loadEpisodeSelector() {
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
         window.currentStageCharacters = currentStageInfo?.characters || [];
+        window.currentStageLocation = currentStageInfo?.location || null;
         window.currentStageLocations = currentStageInfo?.locations || [];
         window.allCharacters = (currentStageInfo?.characters || []).map(c => ({ name: c.full_name, image: c.image }));
         if (window.populateCharactersDrawer) window.populateCharactersDrawer();
