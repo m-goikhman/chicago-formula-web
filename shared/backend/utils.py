@@ -2,7 +2,7 @@ import os
 import datetime
 import json
 import re
-from typing import Optional
+from typing import Dict, Optional
 from google.cloud import storage
 from .game_config import GCS_BUCKET_NAME
 import pytz
@@ -164,7 +164,49 @@ def get_game_text_path(basename: str, episode: int) -> str:
     return f"game_texts/ep{episode}/{basename}"
 
 
-def combine_character_prompt(character_name: str, language_level: str = "B1", episode: int = 1, location: Optional[str] = None) -> str:
+EP2_JAMES_USB_HANDOVER_INJECT_PATH = "prompts/ep2/university_ep2/james_usb_handover_inject.md"
+EP2_JAMES_USB_FORMULA_PROMPT_PATH = "prompts/ep2/university_ep2/prompt_james_formula_ep2.md"
+
+
+def _append_ep2_james_usb_handover_inject(character_prompt: str, state: Optional[Dict]) -> str:
+    if not state:
+        return character_prompt
+    ep2_state = state.get("ep2_director") or {}
+    if not ep2_state.get("usb_handover_requested", False):
+        return character_prompt
+    if ep2_state.get("usb_handover_reacted", False):
+        return character_prompt
+    handover_path = EP2_JAMES_USB_HANDOVER_INJECT_PATH
+    if not os.path.exists(os.path.join(_BASE_DIR, handover_path)):
+        return character_prompt
+    handover_prompt = load_system_prompt(handover_path)
+    if not handover_prompt:
+        return character_prompt
+    return f"{character_prompt}\n\n{handover_prompt}"
+
+
+def _append_ep2_james_usb_formula_prompt(character_prompt: str, state: Optional[Dict]) -> str:
+    if not state:
+        return character_prompt
+    ep2_state = state.get("ep2_director") or {}
+    if not ep2_state.get("usb_context_explained", False):
+        return character_prompt
+    formula_path = EP2_JAMES_USB_FORMULA_PROMPT_PATH
+    if not os.path.exists(os.path.join(_BASE_DIR, formula_path)):
+        return character_prompt
+    formula_prompt = load_system_prompt(formula_path)
+    if not formula_prompt:
+        return character_prompt
+    return f"{character_prompt}\n\n{formula_prompt}"
+
+
+def combine_character_prompt(
+    character_name: str,
+    language_level: str = "B1",
+    episode: int = 1,
+    location: Optional[str] = None,
+    state: Optional[Dict] = None,
+) -> str:
     """
     Combines a character's specific prompt with language learning requirements for the specified level.
     Only applies to game characters and narrator, not to tutor.
@@ -187,6 +229,9 @@ def combine_character_prompt(character_name: str, language_level: str = "B1", ep
         # Load character-specific prompt (episode-aware path)
         character_prompt_path = get_prompt_path(character_name, episode, location)
         character_prompt = load_system_prompt(character_prompt_path)
+        if character_name == "james" and episode == 2 and location == "university_ep2":
+            character_prompt = _append_ep2_james_usb_handover_inject(character_prompt, state)
+            character_prompt = _append_ep2_james_usb_formula_prompt(character_prompt, state)
 
         # Only combine with language requirements for game characters and narrator
         if character_name in game_characters:

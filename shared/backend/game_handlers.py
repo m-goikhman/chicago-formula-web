@@ -46,8 +46,12 @@ EP2_LOCATION_ACTIONS = {
 }
 EP2_USB_SHARE_ACTION = "share_usb_with_james"
 EP2_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
-EP2_USB_SHARE_BUTTON_NOTE = "(you need to let James know what's on the drive)"
-EP2_JAMES_USB_QUESTION = "Ok. Before I open the drive, is there anything you would like to tell me about it?"
+EP2_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
+EP2_JAMES_USB_HANDOVER_TRIGGER = "The detective silently handed you the USB drive."
+EP2_JAMES_USB_FORMULA_TRIGGER = (
+    "You accepted the USB drive. Connect it to your computer, open the formula file, "
+    "and give your brief expert verdict."
+)
 EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
 EP1_PART1_LOCATION = "part1_ep1"
 EP1_PART2_LOCATION = "part2_ep1"
@@ -721,61 +725,6 @@ def _contains_any(text: str, keywords: List[str]) -> bool:
     return any(keyword in lowered for keyword in keywords)
 
 
-def _is_university_analysis_request(text: str) -> bool:
-    return _contains_any(
-        text,
-        [
-            "analy",
-            "look at the drive",
-            "look at this drive",
-            "look at what's on",
-            "check the drive",
-            "usb",
-            "formula",
-            "files",
-            "inspect",
-            "decode",
-        ],
-    )
-
-
-def _is_formula_nonsense_signal(text: str) -> bool:
-    lowered = (text or "").lower()
-    negative_markers = [
-        "nonsense",
-        "not a formula",
-        "fake",
-        "meaningless",
-        "garbage",
-        "random",
-        "doesn't make sense",
-        "does not make sense",
-        "not real",
-        "gibberish",
-        "invalid",
-        "can't be",
-        "cannot be",
-        "wrong",
-        "not consistent",
-        "doesn't check out",
-        "does not check out",
-        "made up",
-        "nonsensical",
-    ]
-    formula_markers = [
-        "formula",
-        "equation",
-        "model",
-        "files",
-        "drive",
-        "usb",
-        "data",
-    ]
-    has_negative = any(marker in lowered for marker in negative_markers)
-    has_formula_context = any(marker in lowered for marker in formula_markers)
-    return has_negative or (has_negative and has_formula_context)
-
-
 def _mentions_formula_confrontation(text: str) -> bool:
     return _contains_any(
         text,
@@ -807,6 +756,7 @@ def _mentions_plane_plain_story(text: str) -> bool:
 
 
 def _is_english_usb_explanation(text: str) -> bool:
+    """Require a short English reply before James opens the drive (no topic keywords)."""
     lowered = (text or "").strip().lower()
     if not lowered:
         return False
@@ -819,20 +769,109 @@ def _is_english_usb_explanation(text: str) -> bool:
     if len(cyrillic_chars) >= 3:
         return False
 
-    explanation_markers = [
-        "drive",
-        "usb",
-        "flash",
-        "file",
-        "files",
-        "formula",
-        "equation",
-        "model",
-        "data",
-        "greek",
-        "symbols",
-    ]
-    return any(marker in lowered for marker in explanation_markers)
+    return True
+
+
+def _james_handover_needs_explanation(reply: str) -> bool:
+    """Heuristic: James asked for context → wait for the player's explanation."""
+    text = (reply or "").strip()
+    if not text or text == "[Character is thinking...]":
+        return True
+    if "?" in text:
+        return True
+    lowered = text.lower()
+    asking_phrases = (
+        "what is",
+        "what's",
+        "what are",
+        "what do you",
+        "what does",
+        "could you explain",
+        "tell me about",
+        "can you explain",
+    )
+    return any(phrase in lowered for phrase in asking_phrases)
+
+
+def _build_james_character_message(participant_code: str, reply_text: str) -> Dict:
+    james_data = CHARACTER_DATA.get("james", {"full_name": "James"})
+    message_id = generate_message_id()
+    save_message_to_cache(message_id, reply_text, "james")
+    log_message("character_james", reply_text, participant_code)
+    return {
+        "type": "character",
+        "character": "james",
+        "character_name": james_data["full_name"],
+        "character_image": james_data.get("image"),
+        "content": reply_text,
+        "message_id": message_id,
+        "show_explain": bool(reply_text and reply_text != "[Character is thinking...]"),
+    }
+
+
+async def _ask_james_at_university(
+    participant_code: str,
+    state: Dict,
+    trigger: str,
+    *,
+    debug_mode_enabled: bool = False,
+    messages_for_debug: Optional[List[Dict]] = None,
+) -> str:
+    current_language_level = state.get("current_language_level", "B1")
+    current_location = get_stage_location(state, 2)
+    system_prompt = combine_character_prompt(
+        "james", current_language_level, 2, current_location, state=state
+    )
+    try:
+        if debug_mode_enabled and messages_for_debug is not None:
+            debug_snapshot = _build_public_input_debug_snapshot(
+                participant_code=participant_code,
+                state=state,
+                char_key="james",
+                system_prompt=system_prompt,
+                user_input=trigger,
+            )
+            _append_debug_message(messages_for_debug, debug_snapshot)
+        reply = await ask_for_dialogue(
+            participant_code,
+            trigger,
+            system_prompt,
+            "james",
+            participant_code,
+        )
+        if debug_mode_enabled and messages_for_debug is not None:
+            _append_contradiction_guard_debug_message(messages_for_debug, state)
+    except Exception as exc:
+        logger.error(
+            "Failed to get EP2 James reply for participant %s: %s",
+            participant_code,
+            exc,
+        )
+        reply = None
+    if reply and reply.strip():
+        return reply.strip()
+    return "[Character is thinking...]"
+
+
+async def _append_james_usb_formula_verdict(
+    participant_code: str,
+    state: Dict,
+    messages: List[Dict],
+    trigger: str,
+    *,
+    debug_mode_enabled: bool = False,
+) -> None:
+    ep2_state = _get_ep2_director_state(state)
+    ep2_state["usb_context_explained"] = True
+    formula_reply = await _ask_james_at_university(
+        participant_code,
+        state,
+        trigger,
+        debug_mode_enabled=debug_mode_enabled,
+        messages_for_debug=messages,
+    )
+    messages.append(_build_james_character_message(participant_code, formula_reply))
+    ep2_state["university_analysis_done"] = True
 
 
 def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
@@ -876,6 +915,7 @@ def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state.setdefault("alex_apartment_wrap_done", False)
     ep2_state.setdefault("alex_apartment_post_verdict_turns_without_confront", 0)
     ep2_state.setdefault("usb_handover_requested", False)
+    ep2_state.setdefault("usb_handover_reacted", False)
     ep2_state.setdefault("usb_context_explained", False)
     ep2_state.setdefault("james_player_messages", 0)
     ep2_state.setdefault("james_formula_played", False)
@@ -914,7 +954,7 @@ async def _build_ep2_witness_opener_messages(
     char_data = CHARACTER_DATA.get(witness_key, {})
     current_language_level = state.get("current_language_level", "B1")
     system_prompt = combine_character_prompt(
-        witness_key, current_language_level, current_stage, location
+        witness_key, current_language_level, current_stage, location, state=state
     )
 
     opener_text = get_private_dialogue_opener(state, current_stage, witness_key)
@@ -1037,7 +1077,6 @@ async def _handle_ep2_scripted_public_message(
         current_location == "university_ep2"
         and ep2_state.get("usb_handover_requested", False)
         and not ep2_state.get("usb_context_explained", False)
-        and not ep2_state.get("university_analysis_done", False)
     ):
         if not _is_english_usb_explanation(message_text):
             log_message("user", message_text, participant_code)
@@ -1073,11 +1112,13 @@ async def _handle_ep2_scripted_public_message(
 
     log_message("user", message_text, participant_code)
 
-    system_prompt = combine_character_prompt(active_character_key, current_language_level, current_stage, current_location)
+    system_prompt = combine_character_prompt(
+        active_character_key, current_language_level, current_stage, current_location, state=state
+    )
     if force_usb_analysis_prompt and active_character_key == "james":
         trigger = (
             f"The detective just explained the USB contents: '{message_text}'. "
-            "Respond as James with a brief expert assessment of whether the formula/files look valid or nonsense."
+            "Connect the drive, open the formula file, and give your brief expert verdict."
         )
     else:
         trigger = (
@@ -1132,11 +1173,7 @@ async def _handle_ep2_scripted_public_message(
     analysis_done = ep2_state.get("university_analysis_done", False)
 
     if current_location == "university_ep2":
-        if not analysis_done and _is_university_analysis_request(message_text):
-            ep2_state["university_analysis_done"] = True
-            analysis_done = True
-
-        if not analysis_done and _is_formula_nonsense_signal(other_reply):
+        if force_usb_analysis_prompt:
             ep2_state["university_analysis_done"] = True
             analysis_done = True
 
@@ -1225,6 +1262,7 @@ async def _handle_ep2_scripted_public_message(
         if (
             ep2_state["james_player_messages"] == 3
             and not ep2_state.get("james_formula_played", False)
+            and not ep2_state.get("usb_handover_requested", False)
         ):
             ep2_state["james_formula_played"] = True
             _append_scripted_game_text_to_messages(
@@ -2562,7 +2600,11 @@ async def handle_location_transition(participant_code: str, action: str) -> List
     transition_text = f"You arrived at  {location_name}."
     log_message("system", transition_text, participant_code)
 
-    transition_message: Dict = {"type": "system", "content": transition_text}
+    transition_message: Dict = {
+        "type": "system",
+        "content": transition_text,
+        "message_style": "narrator",
+    }
     location_image = location_cfg.get("location_image")
     if location_image:
         transition_message["image"] = location_image
@@ -2693,7 +2735,9 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
 
     current_language_level = state.get("current_language_level", "B1")
     current_location = get_stage_location(state, current_stage)
-    system_prompt = combine_character_prompt(character_key, current_language_level, current_stage, current_location)
+    system_prompt = combine_character_prompt(
+        character_key, current_language_level, current_stage, current_location, state=state
+    )
     char_data = CHARACTER_DATA[character_key]
 
     # Director cue for the first private line from the selected character.
@@ -2710,6 +2754,7 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
             system_prompt,
             character_key,
             participant_code,
+            chat_scope="private",
         )
     except Exception as exc:
         logger.error(
@@ -2797,13 +2842,12 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
 
     _update_ep1_private_progress(state, char_key)
 
-    system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
+    system_prompt = combine_character_prompt(
+        char_key, current_language_level, current_stage, current_location, state=state
+    )
     
-    # Create context trigger
-    topic_memory = state.get("topic_memory", {"topic": "None", "spoken": [], "predefined_used": []})
-    context_trigger = f"The detective is asking you a question: '{message_text}'. Current topic: {topic_memory.get('topic', 'None')}."
-    context_trigger += " Respond as your character."
-    
+    context_trigger = message_text
+
     logger.info(f"Participant {participant_code}: Direct character conversation with '{char_key}'")
     debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
     
@@ -2826,7 +2870,8 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             context_trigger,
             system_prompt,
             char_key,
-            participant_code
+            participant_code,
+            chat_scope="private",
         )
         if debug_mode_enabled:
             _append_contradiction_guard_debug_message(messages, state)
@@ -2884,7 +2929,12 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
     return messages
 
 
-async def handle_nina_message(participant_code: str, message_text: str) -> List[Dict]:
+async def handle_nina_message(
+    participant_code: str,
+    message_text: str,
+    *,
+    chat_scope: str = "private",
+) -> List[Dict]:
     """Handle message to Nina (mentor/guide character)."""
     messages = []
     state = GAME_STATE.get(participant_code)
@@ -2920,7 +2970,8 @@ async def handle_nina_message(participant_code: str, message_text: str) -> List[
             context_trigger,
             system_prompt,
             char_key,
-            participant_code
+            participant_code,
+            chat_scope=chat_scope,
         )
         
         if reply_text:
@@ -2983,7 +3034,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
     debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
 
     if current_stage == 2 and current_location == EP2_DEFAULT_LOCATION:
-        return await handle_nina_message(participant_code, message_text)
+        return await handle_nina_message(participant_code, message_text, chat_scope="public")
 
     if current_stage == 2 and current_location in EP2_SCRIPTED_LOCATIONS:
         return await _handle_ep2_scripted_public_message(
@@ -3086,7 +3137,9 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         
         # Get current language level and episode for prompt resolution
         current_language_level = state.get("current_language_level", "B1")
-        system_prompt = combine_character_prompt(character_key, current_language_level, current_stage, current_location)
+        system_prompt = combine_character_prompt(
+            character_key, current_language_level, current_stage, current_location, state=state
+        )
         
         logger.info(f"Participant {participant_code}: Direct addressing detected for character '{character_key}'")
         
@@ -3222,7 +3275,9 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         current_language_level = state.get("current_language_level", "B1")
         current_stage = state.get("current_stage", 1)
         current_location = get_stage_location(state, current_stage)
-        system_prompt = combine_character_prompt(char_key, current_language_level, current_stage, current_location)
+        system_prompt = combine_character_prompt(
+            char_key, current_language_level, current_stage, current_location, state=state
+        )
 
         if debug_mode_enabled:
             debug_snapshot = _build_public_input_debug_snapshot(
@@ -3451,7 +3506,6 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     current_location = get_stage_location(state, episode)
     if episode == 2 and clue_id == "1" and current_location == "university_ep2":
         clue_message["buttons"] = [{"text": EP2_USB_SHARE_BUTTON_TEXT, "action": EP2_USB_SHARE_ACTION}]
-        clue_message["button_note"] = EP2_USB_SHARE_BUTTON_NOTE
 
     messages.append(clue_message)
     
@@ -4055,7 +4109,7 @@ async def handle_language_menu_back(participant_code: str) -> List[Dict]:
 
 
 async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
-    """Start USB handover flow in EP2 university and require player explanation."""
+    """Start USB handover flow in EP2 university and require player explanation when needed."""
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
@@ -4069,28 +4123,34 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
 
     ep2_state = _get_ep2_director_state(state)
     ep2_state["usb_handover_requested"] = True
+    ep2_state["usb_handover_reacted"] = False
     ep2_state["usb_context_explained"] = False
+    ep2_state["university_analysis_done"] = False
 
     # Force public exchange for this mini-flow so the scripted EP2 gate handles the next player message.
     state["mode"] = "public"
     state["current_character"] = None
 
-    james_data = CHARACTER_DATA.get("james", {"full_name": "James"})
-    message_id = generate_message_id()
-    save_message_to_cache(message_id, EP2_JAMES_USB_QUESTION, "james")
-    log_message("character_james", EP2_JAMES_USB_QUESTION, participant_code)
-
     messages = [
-        {
-            "type": "character",
-            "character": "james",
-            "character_name": james_data["full_name"],
-            "character_image": james_data.get("image"),
-            "content": EP2_JAMES_USB_QUESTION,
-            "message_id": message_id,
-            "show_explain": True,
-        }
+        _build_character_message_for_sender(
+            participant_code, EP2_USB_HANDOVER_NARRATOR, "narrator"
+        )
     ]
+
+    handover_reply = await _ask_james_at_university(
+        participant_code, state, EP2_JAMES_USB_HANDOVER_TRIGGER
+    )
+    ep2_state["usb_handover_reacted"] = True
+    messages.append(_build_james_character_message(participant_code, handover_reply))
+
+    if not _james_handover_needs_explanation(handover_reply):
+        await _append_james_usb_formula_verdict(
+            participant_code,
+            state,
+            messages,
+            EP2_JAMES_USB_FORMULA_TRIGGER,
+        )
+
     _sync_last_public_responder_for_public_mode(state, messages)
     await game_state_manager.save_game_state(participant_code, state)
     return messages

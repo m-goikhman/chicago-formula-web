@@ -506,31 +506,64 @@ def clear_user_conversation_history(participant_code: str):
 
 
 
+_DETECTIVE_TAG_PATTERN = re.compile(r"^\[Detective to ([^\]]+)\]:\s*(.*)$", re.DOTALL)
+_SPEAKER_TAG_PATTERN = re.compile(r"^\[([^\]]+)\]:\s*(.*)$", re.DOTALL)
+
+
+def _character_matches_aliases(name: str, aliases: set[str]) -> bool:
+    return name.strip().lower() in aliases
+
+
+def _extract_tagged_character(content: str, role: str) -> Optional[str]:
+    if not isinstance(content, str):
+        return None
+    if role == "user":
+        match = _DETECTIVE_TAG_PATTERN.match(content)
+        return match.group(1) if match else None
+    if role == "assistant":
+        match = _SPEAKER_TAG_PATTERN.match(content)
+        return match.group(1) if match else None
+    return None
+
+
+def _is_message_visible_to_character(msg: dict, character_key: str) -> bool:
+    """Return True when a character could have heard or participated in this exchange."""
+    if not character_key:
+        return True
+
+    aliases = _build_character_aliases(character_key)
+    scope = msg.get("chat_scope")
+
+    if scope == "public":
+        return True
+
+    tagged_character = msg.get("character_key")
+    if not tagged_character:
+        tagged_character = _extract_tagged_character(msg.get("content", ""), msg.get("role", ""))
+
+    if scope == "private":
+        if not tagged_character:
+            return False
+        return _character_matches_aliases(tagged_character, aliases)
+
+    # Legacy entries without explicit scope.
+    role = msg.get("role", "")
+    content = msg.get("content", "")
+    if role == "assistant":
+        return True
+    if role == "user":
+        target = _extract_tagged_character(content, role)
+        if target:
+            return _character_matches_aliases(target, aliases)
+    return True
+
+
 def _filter_history_for_character(history: list, character_key: str) -> list:
-    """Filter conversation history to include only messages related to a specific character."""
+    """Keep public dialogue and this character's private exchanges only."""
     if not character_key:
         return history
-    
-    filtered = []
-    for msg in history:
-        content = msg.get("content", "")
-        role = msg.get("role", "")
-        
-        # Include user messages addressed to this character
-        user_tag = f"[Detective to {character_key}]: "
-        if role == "user" and content.startswith(user_tag):
-            # Remove the tag for cleaner context
-            clean_content = content[len(user_tag):].strip()
-            filtered.append({"role": "user", "content": clean_content})
-        
-        # Include assistant messages from this character
-        assistant_tag = f"[{character_key}]: "
-        if role == "assistant" and content.startswith(assistant_tag):
-            # Remove the tag for cleaner context
-            clean_content = content[len(assistant_tag):].strip()
-            filtered.append({"role": "assistant", "content": clean_content})
-    
-    return filtered
+
+    return [msg for msg in history if _is_message_visible_to_character(msg, character_key)]
 
 
 def _build_character_aliases(character_key: str) -> set[str]:
@@ -636,6 +669,7 @@ async def ask_for_dialogue(
     system_prompt: str,
     character_key: str = None,
     requester_code: str = None,
+    chat_scope: str = "public",
 ) -> str:
     """The main function for all dialogue-based AI calls. Always expects and returns a simple string."""
     history_key = _resolve_history_key(participant_code)
@@ -706,14 +740,12 @@ async def ask_for_dialogue(
     else:
         enhanced_system_prompt = f"{system_prompt}{knowledge_context}{contradiction_instruction or ''}"
     
-    # For Nina, use filtered history (only her conversations with the user)
-    # For other characters, use shared history so they can see what others have said
-    if character_key == "nina":
-        base_history = _filter_history_for_character(user_histories[history_key], character_key)
-    else:
-        # Use shared conversation history so characters can see what others have said
-        base_history = user_histories[history_key][-10:]
-
+    # Each character sees public dialogue plus their own private exchanges.
+    base_history = (
+        _filter_history_for_character(user_histories[history_key], character_key)
+        if character_key
+        else user_histories[history_key]
+    )
     character_history = _rewrite_history_for_active_character(base_history[-10:], character_key)
     messages = [{"role": "system", "content": enhanced_system_prompt}]
     messages.extend(character_history)
@@ -804,10 +836,18 @@ async def ask_for_dialogue(
             tagged_user_message = user_message
             tagged_assistant_reply = assistant_reply
             
-        user_histories[history_key].extend([
-            {"role": "user", "content": tagged_user_message}, 
-            {"role": "assistant", "content": tagged_assistant_reply}
-        ])
+        resolved_scope = chat_scope if chat_scope in {"public", "private"} else "public"
+        history_user = {"role": "user", "content": tagged_user_message, "chat_scope": resolved_scope}
+        history_assistant = {
+            "role": "assistant",
+            "content": tagged_assistant_reply,
+            "chat_scope": resolved_scope,
+        }
+        if character_key and resolved_scope == "private":
+            history_user["character_key"] = character_key
+            history_assistant["character_key"] = character_key
+
+        user_histories[history_key].extend([history_user, history_assistant])
         if len(user_histories[history_key]) > 20: 
             user_histories[history_key] = user_histories[history_key][-20:]
         return assistant_reply

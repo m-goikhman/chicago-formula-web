@@ -777,6 +777,15 @@
             text-align: center;
         }
 
+        .message.narrator-message .message-content-wrapper {
+            align-items: center;
+        }
+
+        .message.narrator-message .message-image {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
         .message.tutor-message {
             flex-direction: column;
             align-items: stretch;
