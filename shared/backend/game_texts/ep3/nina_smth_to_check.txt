@@ -1,0 +1,8 @@
+[from: nina]
+That's... an interesting turn.Thank you, Alex.
+---
+[from: nina]
+Detective, let's go to the university as soon as you are ready. I'd like to check a couple of things.
+[buttons]
+Ok, let's go|go_university_ep3
+I have more questions for Alex|inline::tim>>Oh sure, I'll try to answer.

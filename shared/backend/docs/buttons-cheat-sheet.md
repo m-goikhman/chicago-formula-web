@@ -11,6 +11,7 @@ Second button|another_action
 ```
 
 - One button = one line: `text|action`.
+- **No server action:** `text|` or just `text` on its own line → shows the label as the player's line and keeps the scene going (`say_as_user`, frontend-only).
 - Empty lines in the button list are ignored.
 - `[buttons]` is stripped from the message text; buttons are usually attached to the **last** message in the chain (if the file has multiple blocks separated by `---`).
 

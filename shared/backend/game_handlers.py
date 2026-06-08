@@ -772,6 +772,60 @@ def _build_ep1_intercom_ending_message(participant_code: str) -> Optional[Dict]:
     return message
 
 
+def _build_ep1_party_outro_narrator_messages(participant_code: str) -> List[Dict]:
+    """Episode 1 party finale: book-style narrator block, then tutor wrap-up with Nina CTA."""
+    raw = load_system_prompt(get_game_text_path("outro_narrator.txt", EP1_PARTY_STAGE))
+    if not raw.strip():
+        return []
+
+    body, buttons = _extract_buttons_from_text(raw)
+    parts = [part.strip() for part in re.split(r"\n---+\n", body) if part.strip()]
+    if not parts:
+        return []
+
+    messages: List[Dict] = []
+    narrator_text = parts[0]
+    log_message("system", narrator_text, participant_code)
+    narrator_id = generate_message_id()
+    save_message_to_cache(narrator_id, narrator_text)
+    messages.append({
+        "type": "system",
+        "content": narrator_text,
+        "message_id": narrator_id,
+        "show_explain": True,
+        "typewriter_style": True,
+        "image": "ep1/jason-steele-vj6ywmAj0pI-unsplash.jpg",
+        "ui": {"caseMaterialsAccusationAvailable": False},
+    })
+
+    if len(parts) > 1:
+        _sender_key, tutor_content = _extract_sender_from_text(parts[1])
+        tutor_text = tutor_content.strip()
+        if tutor_text:
+            log_message("system", tutor_text, participant_code)
+            tutor_id = generate_message_id()
+            save_message_to_cache(tutor_id, tutor_text)
+            messages.append({
+                "type": "system",
+                "content": tutor_text,
+                "message_id": tutor_id,
+                "show_explain": True,
+                "message_style": "tutor",
+                "buttons": buttons,
+                "ui": {
+                    "caseMaterialsAccusationAvailable": False,
+                    "episodeComplete": True,
+                    "completedStage": EP1_PARTY_STAGE,
+                },
+            })
+    elif buttons:
+        messages[-1]["buttons"] = buttons
+        messages[-1].setdefault("ui", {})["episodeComplete"] = True
+        messages[-1]["ui"]["completedStage"] = EP1_PARTY_STAGE
+
+    return messages
+
+
 def _build_ep2_pauline_entrance_message(participant_code: str) -> Optional[Dict]:
     """Episode 2 opening: intercom buzzes with Answer / Ignore choices."""
     entrance_text = _load_game_text_optional("pauline_entrance.txt", EP2_PAULINE_STAGE)
@@ -1017,11 +1071,6 @@ def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_re
                 f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
                 "University already said the formula is nonsense, but detective is not confronting Alex yet. "
                 "Give a short hint on how to bring up James's analysis."
-            )
-        if cue == "seed_doubt":
-            return (
-                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "Alex just gave the plane/plain-style explanation. Add a very short line that plants mild doubt."
             )
         if cue == "wrap_alex_apartment":
             return (
@@ -1333,14 +1382,15 @@ async def _handle_ep2_scripted_public_message(
 
         if not ep2_state.get("alex_apartment_doubt_seed_done", False) and _mentions_plane_plain_story(other_reply):
             ep2_state["alex_apartment_doubt_seed_done"] = True
-            nina_cue = "seed_doubt"
+            _append_scripted_game_text_to_messages(
+                participant_code, messages, "nina_smth_to_check", current_stage
+            )
 
         if (
             not ep2_state.get("alex_apartment_wrap_done", False)
             and ep2_state["alex_apartment_turns"] >= 5
             and (
-                ep2_state.get("alex_apartment_doubt_seed_done", False)
-                or ep2_state.get("alex_apartment_preuni_nudge_done", False)
+                ep2_state.get("alex_apartment_preuni_nudge_done", False)
                 or university_visited
             )
         ):
@@ -1838,13 +1888,25 @@ async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
 
 
 async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
-    """Show post-game questionnaire after the narrator outro button (same payload as former USB tail)."""
+    """Show weekly questionnaire after Nina's outro (episode 1 party or episode 2 win)."""
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if int(state.get("current_stage", 1)) != EP2_PAULINE_STAGE:
-        return [{"type": "system", "content": "This action is available in Episode 2."}]
+    current_stage = int(state.get("current_stage", 1))
+
+    if current_stage == EP1_PARTY_STAGE:
+        if not _ep1_stage_completed(state):
+            return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+        if state.get("ep1_party_outro_questionnaire_shown"):
+            return []
+        state["ep1_party_outro_questionnaire_shown"] = True
+        outro = _ep1_party_outro_questionnaire_message(participant_code, state)
+        await game_state_manager.save_game_state(participant_code, state)
+        return [outro]
+
+    if current_stage != EP2_PAULINE_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
     if not state.get("ep1_outro_narrator_shown"):
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
@@ -1941,13 +2003,15 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
         return [{"type": "system", "content": "Switch to Episode 1 first, then run /pauline."}]
 
     messages: List[Dict] = []
-    ending_message = _build_ep1_intercom_ending_message(participant_code)
-    if ending_message:
-        messages.append(ending_message)
+    outro_messages = _build_ep1_party_outro_narrator_messages(participant_code)
+    if outro_messages:
+        messages.extend(outro_messages)
     else:
         messages.append(
-            {"type": "system", "content": "The intercom buzzes. Episode 1 ends here."}
+            {"type": "system", "content": "Episode 1 ends here."}
         )
+    state["accuse_unlocked"] = False
+    state["accuse_in_case_materials"] = False
     await complete_stage(participant_code, EP1_PARTY_STAGE)
 
     await game_state_manager.save_game_state(participant_code, state)
@@ -2017,6 +2081,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "ep1_usb_drive_unlocked": False,
         "ep1_outro_narrator_shown": False,
         "ep1_outro_questionnaire_shown": False,
+        "ep1_party_outro_questionnaire_shown": False,
         "participant_code": participant_code,
         # TEST participant gets debug output by default.
         "debug_mode": is_test_mode,
@@ -2152,6 +2217,7 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     state.setdefault("ep1_usb_drive_unlocked", False)
     state.setdefault("ep1_outro_narrator_shown", False)
     state.setdefault("ep1_outro_questionnaire_shown", False)
+    state.setdefault("ep1_party_outro_questionnaire_shown", False)
     _ensure_absolute_stage_unlock_schedule(state)
     
     return state
@@ -3761,6 +3827,22 @@ def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional
     return text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
 
 
+def _ep1_party_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+    text = build_weekly_outro_questionnaire_text(participant_code, state)
+    return {
+        "type": "system",
+        "content": text,
+        "image": "ep1/Ep1-final.png",
+        "message_style": "tutor",
+        "show_explain": False,
+        "ui": {
+            "caseMaterialsAccusationAvailable": False,
+            "imageFirst": True,
+            "preDisplayDelayMs": 2200,
+        },
+    }
+
+
 def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
     text = build_weekly_outro_questionnaire_text(participant_code, state)
     return {
@@ -3837,10 +3919,14 @@ async def _append_ep1_intercom_finale(
     state: Dict,
     messages: List[Dict],
 ) -> List[Dict]:
-    """End episode 1 with the intercom ring (no action buttons)."""
-    ending_message = _build_ep1_intercom_ending_message(participant_code)
-    if ending_message:
-        messages.append(ending_message)
+    """End episode 1 with outro_narrator (book-style) -> Nina -> questionnaire chain."""
+    outro_messages = _build_ep1_party_outro_narrator_messages(participant_code)
+    if outro_messages:
+        messages.extend(outro_messages)
+    else:
+        ending_message = _build_ep1_intercom_ending_message(participant_code)
+        if ending_message:
+            messages.append(ending_message)
     state["accuse_unlocked"] = False
     state["accuse_in_case_materials"] = False
     await complete_stage(participant_code, EP1_PARTY_STAGE)

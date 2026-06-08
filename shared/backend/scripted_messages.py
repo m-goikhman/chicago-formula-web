@@ -76,6 +76,7 @@ def extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
     """
     Parse optional [buttons] section.
     Button format: "Button text|action_key" (one button per line).
+    Omit action (or leave it empty after |) to keep chatting — maps to frontend `say_as_user`.
     """
     lines = content.splitlines()
     marker_index = -1
@@ -99,11 +100,14 @@ def extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
             continue
         text, sep, action = line.partition("|")
         if not sep:
+            label = line.strip()
+            if label:
+                buttons.append({"text": label, "action": "say_as_user"})
             continue
         text = text.strip()
         action = action.strip()
-        if text and action:
-            buttons.append({"text": text, "action": action})
+        if text:
+            buttons.append({"text": text, "action": action or "say_as_user"})
 
     cleaned_content = "\n".join(body_lines).strip()
     return cleaned_content, buttons

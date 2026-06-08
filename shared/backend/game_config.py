@@ -45,7 +45,7 @@ STAGE_CONFIG = {
         ]
     },
     2: {
-        "name": "Pauline Arrives",
+        "name": "Someone Unexpected",
         "clues_count": 4,
         "clue_names": [
             "Med Report & Personal Items",
