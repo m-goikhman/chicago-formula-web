@@ -1,0 +1,15 @@
+[from: nina]
+Good choice. The person to see is Dr. James Thornton — he can actually read that formula and tell us what it does.
+---
+[from: nina]
+While you're there, feel free to ask him about Alex and Tim — he knows them both.
+---
+[from: nina]
+And when it's time for him to examine the drive, open your case materials, bring up the formula, and pass it across to him.
+---
+[from: nina]
+Don't worry, it stays with your materials, so you can take it out again whenever you need.
+
+[buttons]
+Let's go to the university|go_university_ep3
+Actually, let's see Alex first|nina_alex_brief

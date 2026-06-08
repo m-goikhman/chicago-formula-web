@@ -337,9 +337,9 @@ async def start_game(current_user=Depends(get_current_user)):
     # Import and use game handlers
     from .game_handlers import start_game_handler
     
-    messages = await start_game_handler(participant_code)
+    messages, start_meta = await start_game_handler(participant_code)
     
-    return {"messages": messages, "participant_code": participant_code}
+    return {"messages": messages, "participant_code": participant_code, **start_meta}
 
 
 @app.post("/api/game/reset", response_model=ResetGameResponse)
@@ -415,6 +415,18 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep1_outro_narrator,
         handle_ep1_outro_questionnaire,
         handle_get_final_summary,
+        append_episode_messages,
+        get_messages_for_current_location,
+        get_stage_location,
+        episode_has_locations,
+    )
+
+    state_before_action = GAME_STATE.get(participant_code)
+    episode_before_action = state_before_action.get("current_stage", 1) if state_before_action else 1
+    location_before_action = (
+        get_stage_location(state_before_action, episode_before_action)
+        if state_before_action and episode_has_locations(episode_before_action)
+        else None
     )
     
     # Route actions to appropriate handlers
@@ -426,7 +438,10 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_language_confirmation(participant_code)
     elif request.action.startswith("case_intro_"):
         messages = await handle_case_intro(participant_code, request.action)
-    elif request.action in ["go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2"]:
+    elif request.action in [
+        "go_default_ep3", "go_university_ep3", "go_alex_apartment_ep3",
+        "go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2",
+    ]:
         messages = await handle_location_transition(participant_code, request.action)
     elif request.action == "start_investigation":
         messages = await start_investigation(participant_code)
@@ -450,9 +465,9 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep1_outro_questionnaire(participant_code)
     elif request.action == "get_final_summary":
         messages = await handle_get_final_summary(participant_code)
-    elif request.action.startswith("examine_ep2_clue_"):
+    elif request.action.startswith("examine_ep3_clue_") or request.action.startswith("examine_ep2_clue_"):
         clue_id = request.action.split("_", 3)[3]
-        messages = await handle_clue_examination(participant_code, clue_id, forced_stage=2)
+        messages = await handle_clue_examination(participant_code, clue_id, forced_stage=3)
     elif request.action.startswith("examine_clue_"):
         clue_id = request.action.split("_", 2)[2]
         messages = await handle_clue_examination(participant_code, clue_id)
@@ -496,17 +511,31 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
             if not messages:
                 messages = [{"type": "error", "content": "Unknown action"}]
     
-    # Append messages to current episode's chat history so they are restored when returning to this episode
+    # Append messages to current episode's chat history so they are restored when returning.
+    replace_chat = False
     if messages:
         state = GAME_STATE.get(participant_code)
         if state is not None:
             episode = state.get("current_stage", 1)
-            episode_messages = state.get("episode_messages", {})
-            episode_messages.setdefault(str(episode), []).extend(messages)
-            state["episode_messages"] = episode_messages
+            append_episode_messages(state, episode, messages)
+            location_after_action = (
+                get_stage_location(state, episode)
+                if episode_has_locations(episode)
+                else None
+            )
+            replace_chat = bool(
+                location_before_action
+                and location_after_action
+                and location_before_action != location_after_action
+            )
+            if replace_chat:
+                messages = get_messages_for_current_location(state, episode)
             await game_state_manager.save_game_state(participant_code, state)
     
-    return {"messages": messages}
+    response = {"messages": messages}
+    if replace_chat:
+        response["replace_chat"] = True
+    return response
 
 
 @app.post("/api/game/message")
@@ -524,23 +553,47 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             handle_accuse_reason_message,
             analyze_and_log_user_text,
             handle_test_chat_command,
+            append_episode_messages,
+            get_messages_for_current_location,
+            get_stage_location,
+            episode_has_locations,
         )
 
         state = GAME_STATE.get(participant_code, {})
         mode = state.get("mode", "public")
+        episode = state.get("current_stage", 1)
+        location_before_message = (
+            get_stage_location(state, episode)
+            if episode_has_locations(episode)
+            else None
+        )
 
         # Hidden test-only chat command(s), e.g. /pauline to jump to Pauline appearance in EP1.
         command_messages = await handle_test_chat_command(participant_code, request.text)
         if command_messages is not None:
+            replace_chat = False
             if command_messages:
                 state = GAME_STATE.get(participant_code)
                 if state is not None:
                     episode = state.get("current_stage", 1)
-                    episode_messages = state.get("episode_messages", {})
-                    episode_messages.setdefault(str(episode), []).extend(command_messages)
-                    state["episode_messages"] = episode_messages
+                    append_episode_messages(state, episode, command_messages)
+                    location_after_message = (
+                        get_stage_location(state, episode)
+                        if episode_has_locations(episode)
+                        else None
+                    )
+                    replace_chat = bool(
+                        location_before_message
+                        and location_after_message
+                        and location_before_message != location_after_message
+                    )
+                    if replace_chat:
+                        command_messages = get_messages_for_current_location(state, episode)
                     await game_state_manager.save_game_state(participant_code, state)
-            return {"messages": command_messages}
+            response = {"messages": command_messages}
+            if replace_chat:
+                response["replace_chat"] = True
+            return response
 
         # Automatically analyze user's text for grammar errors (background task)
         # Don't await to avoid blocking the response
@@ -555,30 +608,48 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
         # Handle private conversation mode
         if mode == "private":
             messages = await handle_private_message(participant_code, request.text)
+            replace_chat = False
             state = GAME_STATE.get(participant_code)
             if state is not None:
                 episode = state.get("current_stage", 1)
                 char_key = str(state.get("current_character") or "").strip()
                 request_text = str(request.text or "").strip()
-                episode_messages = state.get("episode_messages", {})
-                ep_list = episode_messages.setdefault(str(episode), [])
+                stored_messages = []
                 if request_text and char_key:
-                    ep_list.append({
+                    user_message = {
                         "type": "user",
                         "content": request_text,
                         "chat_scope": f"private:{char_key}",
-                    })
+                    }
+                    if location_before_message:
+                        user_message["location"] = location_before_message
+                    stored_messages.append(user_message)
                 if messages:
-                    ep_list.extend(messages)
-                state["episode_messages"] = episode_messages
+                    stored_messages.extend(messages)
+                append_episode_messages(state, episode, stored_messages)
+                location_after_message = (
+                    get_stage_location(state, episode)
+                    if episode_has_locations(episode)
+                    else None
+                )
+                replace_chat = bool(
+                    location_before_message
+                    and location_after_message
+                    and location_before_message != location_after_message
+                )
+                if replace_chat:
+                    messages = get_messages_for_current_location(state, episode)
                 await game_state_manager.save_game_state(participant_code, state)
-            return {"messages": messages}
+            response = {"messages": messages}
+            if replace_chat:
+                response["replace_chat"] = True
+            return response
 
-        # During EP1 accusation rationale step, keep all free-text inside the
+        # During episode 1/2 accusation rationale step, keep all free-text inside the
         # accusation pipeline. This includes the explicit "let me explain why"
         # path and the case where player types rationale immediately.
         if (
-            state.get("current_stage", 1) == 1
+            state.get("current_stage", 1) in {1, 2}
             and (
                 state.get("accuse_waiting_for_reason", False)
                 or bool(str(state.get("accuse_pending_target") or "").strip())
@@ -589,21 +660,27 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
                 state = GAME_STATE.get(participant_code)
                 if state is not None:
                     episode = state.get("current_stage", 1)
-                    episode_messages = state.get("episode_messages", {})
-                    episode_messages.setdefault(str(episode), []).extend(messages)
-                    state["episode_messages"] = episode_messages
+                    append_episode_messages(state, episode, messages)
                     await game_state_manager.save_game_state(participant_code, state)
             return {"messages": messages}
 
         # Handle public mode with director logic
         messages = await handle_public_message(participant_code, request.text)
-        if messages:
-            state = GAME_STATE.get(participant_code)
-            if state is not None:
-                episode = state.get("current_stage", 1)
-                episode_messages = state.get("episode_messages", {})
-                episode_messages.setdefault(str(episode), []).extend(messages)
-                state["episode_messages"] = episode_messages
+        state = GAME_STATE.get(participant_code)
+        if state is not None:
+            episode = state.get("current_stage", 1)
+            request_text = str(request.text or "").strip()
+            stored_messages = []
+            if request_text:
+                stored_messages.append({
+                    "type": "user",
+                    "content": request_text,
+                    "chat_scope": "public",
+                })
+            if messages:
+                stored_messages.extend(messages)
+            if stored_messages:
+                append_episode_messages(state, episode, stored_messages)
                 await game_state_manager.save_game_state(participant_code, state)
         return {"messages": messages}
     except Exception as e:
@@ -620,7 +697,7 @@ async def send_message_to_nina(request: MessageRequest, current_user=Depends(get
     participant_code = current_user["participant_code"]
     logger.info(f"Message to Nina from {participant_code}: {request.text}")
     
-    from .game_handlers import handle_nina_message
+    from .game_handlers import handle_nina_message, append_episode_messages
     
     messages = await handle_nina_message(participant_code, request.text)
 
@@ -649,9 +726,7 @@ async def send_message_to_nina(request: MessageRequest, current_user=Depends(get
         state = GAME_STATE.get(participant_code)
         if state is not None:
             episode = state.get("current_stage", 1)
-            episode_messages = state.get("episode_messages", {})
-            episode_messages.setdefault(str(episode), []).extend(modal_history_messages)
-            state["episode_messages"] = episode_messages
+            append_episode_messages(state, episode, modal_history_messages)
             await game_state_manager.save_game_state(participant_code, state)
     return {"messages": messages}
 

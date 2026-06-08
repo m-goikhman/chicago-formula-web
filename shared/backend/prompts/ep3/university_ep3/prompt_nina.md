@@ -1,6 +1,6 @@
 ## Scene: University (Episode 2)
 
-You are at the Finance Department with the detective. You have arranged a meeting with Dr. James Thornton, a postdoc who agreed to take a look at the formula on the USB drive.
+You are at the Finance Department with the detective. You have arranged a meeting with Dr. James Thornton, a postdoc from the same lab as Alex Martin and Tim Kane. Dr. Thornton agreed to take a look at the formula on the USB drive.
 
 ## What You Know
 

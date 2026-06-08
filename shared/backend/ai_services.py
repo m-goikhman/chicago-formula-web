@@ -250,7 +250,7 @@ def _resolve_ep1_contradiction_context(
     from .game_config import GAME_STATE
 
     state = GAME_STATE.get(participant_code, {})
-    if state.get("current_stage", 1) != 1:
+    if state.get("current_stage", 1) not in {1, 2}:
         return None
 
     behavior = EP1_CONTRADICTION_BEHAVIOR.get(character_key)
@@ -488,11 +488,21 @@ def _parse_json_array_payload(response_text: str) -> list:
     raise json.JSONDecodeError("Response does not contain a valid JSON array", candidate, 0)
 
 def _resolve_history_key(participant_code: str) -> str:
-    """Resolve in-memory history key for a participant and current episode."""
-    from .game_config import GAME_STATE
+    """Resolve in-memory history key for a participant, episode, and location."""
+    from .game_config import GAME_STATE, STAGE_CONFIG
 
     state = GAME_STATE.get(participant_code, {})
     episode = state.get("current_stage", 1)
+    stage_config = STAGE_CONFIG.get(episode, {})
+    if stage_config.get("locations"):
+        stage_locations = state.get("stage_locations", {})
+        location = (
+            stage_locations.get(str(episode))
+            or stage_locations.get(episode)
+            or stage_config.get("default_location")
+        )
+        if location:
+            return f"{participant_code}:{episode}:{location}"
     return f"{participant_code}:{episode}"
 
 
@@ -741,10 +751,17 @@ async def ask_for_dialogue(
         enhanced_system_prompt = f"{system_prompt}{knowledge_context}{contradiction_instruction or ''}"
     
     # Each character sees public dialogue plus their own private exchanges.
+    episode = state.get("current_stage", 1)
+    raw_history = list(user_histories.get(history_key, []))
+    if episode == 2:
+        prior_key = f"{participant_code}:1"
+        prior_history = user_histories.get(prior_key, [])
+        if prior_history:
+            raw_history = (prior_history + raw_history)[-20:]
     base_history = (
-        _filter_history_for_character(user_histories[history_key], character_key)
+        _filter_history_for_character(raw_history, character_key)
         if character_key
-        else user_histories[history_key]
+        else raw_history
     )
     character_history = _rewrite_history_for_active_character(base_history[-10:], character_key)
     messages = [{"role": "system", "content": enhanced_system_prompt}]

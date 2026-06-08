@@ -1,0 +1,10 @@
+They arrested Tim Kane last night. But he told us something important.
+---
+So, Tim said the money for Alex's business came from Ronnie Snapper — and the Snappers aren't just rich, they're a criminal family.
+---
+If Alex was making their dirty money look clean through his trading, that's a serious crime. That's why we have official permission to open the drive.
+---
+So, would you like to see the formula? You probably would!
+
+[buttons]
+Yes!|case_intro_next

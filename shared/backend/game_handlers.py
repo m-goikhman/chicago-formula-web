@@ -32,43 +32,54 @@ import pytz
 
 logger = logging.getLogger(__name__)
 
-EP2_DEFAULT_LOCATION = "default_ep2"
-EP2_SCRIPTED_LOCATIONS = {"university_ep2", "alex_apartment_ep2"}
-EP2_SCRIPTED_WITNESS_KEYS = {
-    "university_ep2": "james",
-    "alex_apartment_ep2": "alex",
+EP1_PARTY_STAGE = 1
+EP2_PAULINE_STAGE = 2
+EP3_FORMULA_STAGE = 3
+
+EP3_DEFAULT_LOCATION = "default_ep3"
+EP3_SCRIPTED_LOCATIONS = {"university_ep3", "alex_apartment_ep3"}
+EP3_SCRIPTED_WITNESS_KEYS = {
+    "university_ep3": "james",
+    "alex_apartment_ep3": "alex",
 }
-EP2_WITNESS_MODE = "witness_with_nina"
-EP2_LOCATION_ACTIONS = {
-    "go_default_ep2": "default_ep2",
-    "go_university_ep2": "university_ep2",
-    "go_alex_apartment_ep2": "alex_apartment_ep2",
+EP3_WITNESS_MODE = "witness_with_nina"
+EP3_LOCATION_ACTIONS = {
+    "go_default_ep3": "default_ep3",
+    "go_university_ep3": "university_ep3",
+    "go_alex_apartment_ep3": "alex_apartment_ep3",
+    # Legacy action names from the former episode 2 (formula).
+    "go_default_ep2": "default_ep3",
+    "go_university_ep2": "university_ep3",
+    "go_alex_apartment_ep2": "alex_apartment_ep3",
 }
-EP2_USB_SHARE_ACTION = "share_usb_with_james"
-EP2_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
-EP2_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
-EP2_JAMES_USB_HANDOVER_TRIGGER = "The detective silently handed you the USB drive."
-EP2_JAMES_USB_FORMULA_TRIGGER = (
+EP3_USB_SHARE_ACTION = "share_usb_with_james"
+EP3_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
+EP3_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
+EP3_JAMES_USB_HANDOVER_TRIGGER = "The detective silently handed you the USB drive."
+EP3_JAMES_USB_FORMULA_TRIGGER = (
     "You accepted the USB drive. Connect it to your computer, open the formula file, "
     "and give your brief expert verdict."
 )
-EP2_USB_EXPLANATION_FALLBACK = "Give James a short explanation in English about the files on the drive."
-EP1_PART1_LOCATION = "part1_ep1"
-EP1_PART2_LOCATION = "part2_ep1"
+EP3_USB_EXPLANATION_FALLBACK = "I think Dr. Thornton needs more information."
+
 EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 10
 EP1_PRIVATE_MIN_TURNS_ANY = 12
-TEST_EP1_PAULINE_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
-EP1_PART2_TRIGGER_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
+TEST_EP1_INTERCOM_COMMANDS = {"/pauline", "/skip_to_pauline", "/test_pauline"}
+EP2_PAULINE_DOORWAY_ACTIONS = {"pauline_entrance_doorway", "pauline_entrance_doorway.txt"}
 PUBLIC_FOLLOWUP_LOCK_TURNS = 1
 
-# EP1 final accusation mechanic
-EP1_ACCUSATION_SUSPECT_KEYS = ["tim", "ronnie", "fiona", "pauline"]
+# Episode 1 accusation: one attempt, then intercom cliffhanger
+EP1_ACCUSATION_SUSPECT_KEYS = ["tim", "ronnie", "fiona"]
 EP1_ACCUSATION_CORRECT_KEY = "tim"
-EP1_ACCUSATION_MAX_ATTEMPTS_AFTER_PAULINE = 2
-EP1_ACCUSATION_MAX_ATTEMPTS_BEFORE_PAULINE = 1
-EP1_ACCUSATION_REASON_MIN_WORDS = 4
+EP1_ACCUSATION_MAX_ATTEMPTS = 1
+
+# Episode 2 (Pauline arc) accusation mechanic
+EP2_ACCUSATION_SUSPECT_KEYS = ["tim", "ronnie", "fiona", "pauline"]
+EP2_ACCUSATION_CORRECT_KEY = "tim"
+EP2_ACCUSATION_MAX_ATTEMPTS = 2
+EP2_ACCUSATION_REASON_MIN_WORDS = 4
 # Extra beat after Nina's lose-hint, before Tim's finale (only that branch; see `preDisplayDelayMs` in Tell/frontend/js/game.js).
-EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS = 4000
+EP2_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS = 4000
 WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK = "{{QUESTIONNAIRE_LINK}}"
 NEXT_EPISODE_CALENDAR_TEMPLATE_LINK = "{{NEXT_EPISODE_CALENDAR_LINK}}"
 WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK = "https://forms.gle/hWc2Uedw8KkdCLhv6"
@@ -352,7 +363,7 @@ def _build_dialogue_input_debug_snapshot(
 ) -> str:
     """Build a concise preview of what goes into dialogue call."""
     episode = state.get("current_stage", 1)
-    history_key = f"{participant_code}:{episode}"
+    history_key = resolve_conversation_history_key(participant_code, state)
     history = user_histories.get(history_key, [])
     history_tail = history[-10:]
 
@@ -514,6 +525,98 @@ def set_stage_location(state: Dict, stage_number: int, location_key: str) -> Non
     state["stage_locations"] = stage_locations
 
 
+def episode_has_locations(stage_number: int) -> bool:
+    """Return True when a stage defines location-specific content."""
+    return bool(STAGE_CONFIG.get(stage_number, {}).get("locations"))
+
+
+def _tag_message_with_location(message: Dict, location_key: Optional[str]) -> Dict:
+    """Attach location key to a stored chat message when locations are in use."""
+    if not location_key or not isinstance(message, dict):
+        return message
+    if message.get("location"):
+        return message
+    tagged = dict(message)
+    tagged["location"] = location_key
+    return tagged
+
+
+def _get_stored_episode_messages(state: Dict, episode) -> List[Dict]:
+    """Return raw stored messages list for an episode."""
+    episode_messages = state.get("episode_messages", {})
+    stored = episode_messages.get(episode, episode_messages.get(str(episode), []))
+    return stored if isinstance(stored, list) else []
+
+
+def _message_belongs_to_location(
+    message: Dict,
+    location_key: Optional[str],
+    default_location: Optional[str] = None,
+) -> bool:
+    """Return True when a stored message belongs to the requested location."""
+    if not location_key:
+        return True
+    if not isinstance(message, dict):
+        return False
+    legacy_location = default_location or location_key
+    msg_location = message.get("location")
+    if msg_location is None:
+        return legacy_location == location_key
+    return msg_location == location_key
+
+
+def _filter_messages_for_location(
+    messages: List[Dict],
+    location_key: Optional[str],
+    default_location: Optional[str] = None,
+) -> List[Dict]:
+    """Keep only messages belonging to the requested location."""
+    if not location_key:
+        return list(messages)
+    return [
+        msg for msg in messages
+        if isinstance(msg, dict) and _message_belongs_to_location(msg, location_key, default_location)
+    ]
+
+
+def get_messages_for_current_location(state: Dict, episode) -> List[Dict]:
+    """Return stored chat messages visible in the player's current location."""
+    stored = _get_stored_episode_messages(state, episode)
+    if not episode_has_locations(episode):
+        return stored
+    location_key = get_stage_location(state, episode)
+    default_location = STAGE_CONFIG.get(episode, {}).get("default_location")
+    return _filter_messages_for_location(stored, location_key, default_location)
+
+
+def append_episode_messages(state: Dict, episode, messages: List[Dict]) -> None:
+    """Persist chat messages for an episode, tagged with the current location."""
+    if not messages:
+        return
+    ep_key = str(episode)
+    location_key = get_stage_location(state, episode) if episode_has_locations(episode) else None
+    episode_messages = state.get("episode_messages", {})
+    bucket = episode_messages.setdefault(ep_key, [])
+    for message in messages:
+        if isinstance(message, dict):
+            bucket.append(_tag_message_with_location(message, location_key))
+        else:
+            bucket.append(message)
+    state["episode_messages"] = episode_messages
+
+
+def resolve_conversation_history_key(participant_code: str, state: Optional[Dict] = None) -> str:
+    """Resolve in-memory AI history key scoped by episode and location."""
+    if state is None:
+        state = GAME_STATE.get(participant_code, {})
+    episode = state.get("current_stage", 1)
+    if episode_has_locations(episode):
+        location = get_stage_location(state, episode)
+        if location:
+            return f"{participant_code}:{episode}:{location}"
+    return f"{participant_code}:{episode}"
+
+
 def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
     """Resolve active character set for a stage and location."""
     stage_config = STAGE_CONFIG.get(stage_number, {})
@@ -580,21 +683,27 @@ def get_private_dialogue_opener(state: Dict, stage_number: int, character_key: s
     return _load_game_text_optional(f"dialogue_openers/{character_key}.txt", stage_number)
 
 
-def _load_game_text_optional(filename: str, episode: int) -> Optional[str]:
+def _load_game_text_optional(
+    filename: str,
+    episode: int,
+    fallback_episode: Optional[int] = None,
+) -> Optional[str]:
     """Load optional game text file from game_texts/ep{episode}; return None if missing."""
-    path = get_game_text_path(filename, episode)
-    absolute_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
-
-    if not os.path.exists(absolute_path):
-        return None
-
-    try:
-        with open(absolute_path, "r", encoding="utf-8-sig") as file:
-            content = file.read().strip()
-            return content or None
-    except (FileNotFoundError, OSError, IOError) as exc:
-        logger.warning(f"Failed to read optional game text file '{path}': {exc}")
-        return None
+    for ep in (episode, fallback_episode):
+        if ep is None:
+            continue
+        path = get_game_text_path(filename, ep)
+        absolute_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
+        if not os.path.exists(absolute_path):
+            continue
+        try:
+            with open(absolute_path, "r", encoding="utf-8-sig") as file:
+                content = file.read().strip()
+                if content:
+                    return content
+        except (FileNotFoundError, OSError, IOError) as exc:
+            logger.warning(f"Failed to read optional game text file '{path}': {exc}")
+    return None
 
 
 def _normalize_character_set(value) -> Set[str]:
@@ -622,9 +731,8 @@ def _update_ep1_private_progress(state: Dict, character_key: str) -> None:
 def _has_private_history_for_character(state: Dict, character_key: str) -> bool:
     """Return True when current episode already contains private chat with character."""
     episode = state.get("current_stage", 1)
-    episode_messages = state.get("episode_messages", {})
-    stored_messages = episode_messages.get(episode, episode_messages.get(str(episode), []))
-    if not isinstance(stored_messages, list):
+    stored_messages = get_messages_for_current_location(state, episode)
+    if not stored_messages:
         return False
 
     expected_scope = f"private:{character_key}".strip().lower()
@@ -637,28 +745,36 @@ def _has_private_history_for_character(state: Dict, character_key: str) -> bool:
     return False
 
 
-def _should_unlock_ep1_part2(state: Dict) -> bool:
-    """Check if EP1 part 2 (Pauline appears) should be unlocked."""
-    if state.get("current_stage", 1) != 1:
-        return False
-    if state.get("ep1_phase2_unlocked", False):
-        return False
-    if get_stage_location(state, 1) == EP1_PART2_LOCATION:
-        return False
-
-    private_turns = int(state.get("ep1_private_turns", 0))
-    talked_characters = _normalize_character_set(state.get("ep1_private_characters", set()))
-    talked_count = len(talked_characters)
-
-    return (
-        private_turns >= EP1_PRIVATE_MIN_TURNS_ANY
-        or (private_turns >= EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS and talked_count >= 2)
-    )
+def _ep1_stage_completed(state: Dict) -> bool:
+    """Return True when episode 1 (pre-Pauline party) is marked completed."""
+    stage_progress = state.get("stage_progress", {}) or {}
+    ep1_progress = stage_progress.get(1, stage_progress.get("1", {})) or {}
+    return ep1_progress.get("completion_status") in {"completed", "skipped"}
 
 
-def _build_ep1_pauline_entrance_message(participant_code: str) -> Optional[Dict]:
-    """Create narrator entrance message when Pauline joins EP1."""
-    entrance_text = _load_game_text_optional("pauline_entrance.txt", 1)
+def _is_accusation_episode(episode: int) -> bool:
+    return episode in {EP1_PARTY_STAGE, EP2_PAULINE_STAGE}
+
+
+def _build_ep1_intercom_ending_message(participant_code: str) -> Optional[Dict]:
+    """Episode 1 finale: intercom buzzes (no action buttons — episode ends here)."""
+    entrance_text = _load_game_text_optional("pauline_entrance.txt", EP2_PAULINE_STAGE)
+    if not entrance_text:
+        return None
+
+    sender_key, content_without_sender = _extract_sender_from_text(entrance_text)
+    text, _buttons = _extract_buttons_from_text(content_without_sender)
+    if not text:
+        return None
+
+    message = _build_character_message_for_sender(participant_code, text, sender_key or "narrator")
+    message["ui"] = {"episodeComplete": True, "completedStage": EP1_PARTY_STAGE}
+    return message
+
+
+def _build_ep2_pauline_entrance_message(participant_code: str) -> Optional[Dict]:
+    """Episode 2 opening: intercom buzzes with Answer / Ignore choices."""
+    entrance_text = _load_game_text_optional("pauline_entrance.txt", EP2_PAULINE_STAGE)
     if not entrance_text:
         return None
 
@@ -671,6 +787,21 @@ def _build_ep1_pauline_entrance_message(participant_code: str) -> Optional[Dict]
     if buttons:
         message["buttons"] = buttons
     return message
+
+
+def _carry_episode_dialog_history(participant_code: str, from_episode: int, to_episode: int) -> None:
+    """Seed in-memory AI history for a new episode from the prior episode."""
+    source_key = f"{participant_code}:{from_episode}"
+    target_key = f"{participant_code}:{to_episode}"
+    prior_history = list(user_histories.get(source_key, []))
+    if not prior_history:
+        return
+    existing = list(user_histories.get(target_key, []))
+    if existing:
+        merged = prior_history + existing
+    else:
+        merged = prior_history
+    user_histories[target_key] = merged[-20:]
 
 
 def get_clues_count_for_stage(stage_number: int, state: Optional[Dict] = None) -> int:
@@ -686,7 +817,7 @@ def get_clues_count_for_stage(stage_number: int, state: Optional[Dict] = None) -
     # We treat a clue id as "available" iff Clue{N}.txt or clue{N}.txt exists for this episode.
     existing = 0
     for i in range(1, int(candidate_max) + 1):
-        if stage_number == 1 and i == 4:
+        if stage_number == EP2_PAULINE_STAGE and i == 4:
             if not (state and bool(state.get("ep1_usb_drive_unlocked"))):
                 continue
         for basename in (f"Clue{i}.txt", f"clue{i}.txt"):
@@ -875,7 +1006,7 @@ async def _append_james_usb_formula_verdict(
 
 
 def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
-    if location == "alex_apartment_ep2":
+    if location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
         if cue == "nudge_expert_before_university":
             return (
                 f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
@@ -926,7 +1057,7 @@ def _get_ep2_director_state(state: Dict) -> Dict:
 def _get_ep2_witness_key_for_location(location: Optional[str]) -> Optional[str]:
     if not location:
         return None
-    return EP2_SCRIPTED_WITNESS_KEYS.get(location)
+    return EP3_SCRIPTED_WITNESS_KEYS.get(location)
 
 
 def _has_ep2_witness_opener_played(state: Dict, location: str) -> bool:
@@ -1074,7 +1205,7 @@ async def _handle_ep2_scripted_public_message(
 
     force_usb_analysis_prompt = False
     if (
-        current_location == "university_ep2"
+        current_location in {"university_ep3", "university_ep2"}
         and ep2_state.get("usb_handover_requested", False)
         and not ep2_state.get("usb_context_explained", False)
     ):
@@ -1083,21 +1214,21 @@ async def _handle_ep2_scripted_public_message(
             if "nina" in stage_characters and "nina" in CHARACTER_DATA:
                 nina_data = CHARACTER_DATA["nina"]
                 message_id = generate_message_id()
-                save_message_to_cache(message_id, EP2_USB_EXPLANATION_FALLBACK, "nina")
-                log_message("character_nina", EP2_USB_EXPLANATION_FALLBACK, participant_code)
+                save_message_to_cache(message_id, EP3_USB_EXPLANATION_FALLBACK, "nina")
+                log_message("character_nina", EP3_USB_EXPLANATION_FALLBACK, participant_code)
                 messages.append(
                     {
                         "type": "character",
                         "character": "nina",
                         "character_name": nina_data["full_name"],
                         "character_image": nina_data.get("image"),
-                        "content": EP2_USB_EXPLANATION_FALLBACK,
+                        "content": EP3_USB_EXPLANATION_FALLBACK,
                         "message_id": message_id,
                         "show_explain": True,
                     }
                 )
             else:
-                messages.append({"type": "system", "content": EP2_USB_EXPLANATION_FALLBACK})
+                messages.append({"type": "system", "content": EP3_USB_EXPLANATION_FALLBACK})
             _sync_last_public_responder_from_messages(state, messages)
             return messages
 
@@ -1169,15 +1300,17 @@ async def _handle_ep2_scripted_public_message(
 
     # Decide if Nina should interject in this turn based on EP2 prompt conditions.
     nina_cue: Optional[str] = None
-    university_visited = "university_ep2" in ep2_state.get("visited_locations", [])
+    university_visited = bool(
+        {"university_ep3", "university_ep2"} & set(ep2_state.get("visited_locations", []))
+    )
     analysis_done = ep2_state.get("university_analysis_done", False)
 
-    if current_location == "university_ep2":
+    if current_location in {"university_ep3", "university_ep2"}:
         if force_usb_analysis_prompt:
             ep2_state["university_analysis_done"] = True
             analysis_done = True
 
-    elif current_location == "alex_apartment_ep2":
+    elif current_location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
         ep2_state["alex_apartment_turns"] = int(ep2_state.get("alex_apartment_turns", 0)) + 1
 
         if not analysis_done:
@@ -1257,7 +1390,7 @@ async def _handle_ep2_scripted_public_message(
                 }
             )
 
-    if current_location == "university_ep2":
+    if current_location in {"university_ep3", "university_ep2"}:
         ep2_state["james_player_messages"] = int(ep2_state.get("james_player_messages", 0)) + 1
         if (
             ep2_state["james_player_messages"] == 3
@@ -1275,16 +1408,23 @@ async def _handle_ep2_scripted_public_message(
 
 def resolve_clue_text_path(clue_id: str, episode: int) -> str:
     """Resolve clue text path with support for both `Clue` and `clue` naming."""
-    candidates = [
-        get_game_text_path(f"Clue{clue_id}.txt", episode),
-        get_game_text_path(f"clue{clue_id}.txt", episode),
-    ]
-    for candidate in candidates:
-        absolute_candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate)
-        if os.path.exists(absolute_candidate):
-            return candidate
+    episode_candidates = [episode]
+    # Episode 2 reuses clue files 1–3 from episode 1.
+    if episode == EP2_PAULINE_STAGE and str(clue_id) in {"1", "2", "3"}:
+        episode_candidates.append(EP1_PARTY_STAGE)
+
+    for ep in episode_candidates:
+        candidates = [
+            get_game_text_path(f"Clue{clue_id}.txt", ep),
+            get_game_text_path(f"clue{clue_id}.txt", ep),
+        ]
+        for candidate in candidates:
+            absolute_candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)), candidate)
+            if os.path.exists(absolute_candidate):
+                return candidate
+
     # Keep deterministic fallback for logging/error handling.
-    return candidates[0]
+    return get_game_text_path(f"Clue{clue_id}.txt", episode)
 
 
 def _extract_buttons_from_text(content: str) -> Tuple[str, List[Dict[str, str]]]:
@@ -1354,7 +1494,11 @@ def resolve_action_text_from_game_texts(
     if not normalized.endswith(".txt"):
         normalized = f"{normalized}.txt"
 
-    file_content = _load_game_text_optional(normalized, episode)
+    file_content = _load_game_text_optional(
+        normalized,
+        episode,
+        fallback_episode=EP2_PAULINE_STAGE if episode == EP1_PARTY_STAGE else None,
+    )
     if not file_content:
         return None
 
@@ -1404,11 +1548,6 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
         return [{"type": "error", "content": "Game not initialized."}]
 
     normalized_action = (action or "").strip().replace("\\", "/").lower()
-    if state.get("current_stage", 1) == 1 and normalized_action in EP1_PART2_TRIGGER_ACTIONS:
-        # Enter EP1 phase 2 exactly when Pauline appears at the doorway.
-        set_stage_location(state, 1, EP1_PART2_LOCATION)
-        state["ep1_phase2_unlocked"] = True
-
     episode = state.get("current_stage", 1)
     payload = resolve_action_text_from_game_texts(action, episode)
     if not payload:
@@ -1424,6 +1563,16 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
             message["buttons"] = buttons
         messages.append(message)
 
+    if (
+        episode == EP2_PAULINE_STAGE
+        and normalized_action in EP2_PAULINE_DOORWAY_ACTIONS
+    ):
+        state["onboarding_step"] = "investigation_started"
+        state.setdefault("accuse_offer_pending", False)
+        state.setdefault("accuse_in_case_materials", True)
+        state.setdefault("accuse_unlocked", True)
+        messages.extend(await handle_main_menu(participant_code))
+
     _sync_last_public_responder_for_public_mode(state, messages)
     return messages
 
@@ -1434,8 +1583,9 @@ async def handle_accuse_nina_enters(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if state.get("current_stage", 1) != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    episode = state.get("current_stage", 1)
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     messages = await handle_game_text_action(participant_code, "accuse_nina_enters")
     for msg in messages:
@@ -1454,8 +1604,9 @@ async def handle_accuse_nina_to_public(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if state.get("current_stage", 1) != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    episode = state.get("current_stage", 1)
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     state["mode"] = "public"
     state["current_character"] = None
@@ -1474,7 +1625,7 @@ async def handle_accuse_nina_to_public(participant_code: str) -> List[Dict]:
     messages[0]["show_explain"] = False
 
     last_msg = messages[-1]
-    last_msg["buttons"] = _build_ep1_accusation_buttons(state, include_back=True)
+    last_msg["buttons"] = _build_accusation_buttons(state, episode, include_back=True)
     last_msg["show_explain"] = False
     merged_ui = dict(last_msg.get("ui", {}))
     merged_ui["caseMaterialsAccusationAvailable"] = bool(state.get("accuse_in_case_materials", False))
@@ -1488,11 +1639,12 @@ async def handle_accuse_select_target(participant_code: str, accused_key: str) -
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if state.get("current_stage", 1) != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    episode = state.get("current_stage", 1)
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     normalized_key = str(accused_key or "").strip().lower()
-    allowed_targets = _ep1_accusable_suspect_keys(state)
+    allowed_targets = _accusable_suspect_keys(state, episode)
     if normalized_key not in allowed_targets:
         return [{"type": "error", "content": "Unknown accusation target."}]
 
@@ -1571,7 +1723,7 @@ async def handle_accuse_reason_message(participant_code: str, message_text: str)
         state["accuse_waiting_for_reason"] = False
         return [{"type": "system", "content": "Choose who you want to accuse first."}]
 
-    if _word_count_whitespace(message_text) < EP1_ACCUSATION_REASON_MIN_WORDS:
+    if _word_count_whitespace(message_text) < EP2_ACCUSATION_REASON_MIN_WORDS:
         state["accuse_waiting_for_reason"] = True
         messages = [
             {
@@ -1598,12 +1750,12 @@ async def handle_ep1_usb_received(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if int(state.get("current_stage", 1)) != 1:
-        return [{"type": "system", "content": "This action is available in Episode 1."}]
+    if int(state.get("current_stage", 1)) != EP2_PAULINE_STAGE:
+        return [{"type": "system", "content": "This action is available in Episode 2."}]
 
     if (
         not state.get("game_completed")
-        or state.get("accused_character") != EP1_ACCUSATION_CORRECT_KEY
+        or state.get("accused_character") != EP2_ACCUSATION_CORRECT_KEY
     ):
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
@@ -1618,7 +1770,7 @@ async def handle_ep1_usb_received(participant_code: str) -> List[Dict]:
 
     state["ep1_usb_drive_unlocked"] = True
 
-    raw_nina = load_system_prompt(get_game_text_path("outro_nina.txt", 1))
+    raw_nina = load_system_prompt(get_game_text_path("outro_nina.txt", EP2_PAULINE_STAGE))
     nina_body, nina_buttons = _extract_buttons_from_text(raw_nina)
     nina_blocks = _extract_scripted_message_blocks(nina_body, default_sender="nina")
     if not nina_blocks:
@@ -1648,10 +1800,10 @@ async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if int(state.get("current_stage", 1)) != 1:
-        return [{"type": "system", "content": "This action is available in Episode 1."}]
+    if int(state.get("current_stage", 1)) != EP2_PAULINE_STAGE:
+        return [{"type": "system", "content": "This action is available in Episode 2."}]
 
-    if not state.get("game_completed") or state.get("accused_character") != EP1_ACCUSATION_CORRECT_KEY:
+    if not state.get("game_completed") or state.get("accused_character") != EP2_ACCUSATION_CORRECT_KEY:
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
     if not state.get("ep1_usb_drive_unlocked"):
@@ -1660,7 +1812,7 @@ async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
     if state.get("ep1_outro_narrator_shown"):
         return []
 
-    raw = load_system_prompt(get_game_text_path("outro_narrator.txt", 1))
+    raw = load_system_prompt(get_game_text_path("outro_narrator.txt", EP2_PAULINE_STAGE))
     narrator_body, narrator_buttons = _extract_buttons_from_text(raw)
     narrator_body = narrator_body.strip()
     if not narrator_body:
@@ -1691,8 +1843,8 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if int(state.get("current_stage", 1)) != 1:
-        return [{"type": "system", "content": "This action is available in Episode 1."}]
+    if int(state.get("current_stage", 1)) != EP2_PAULINE_STAGE:
+        return [{"type": "system", "content": "This action is available in Episode 2."}]
 
     if not state.get("ep1_outro_narrator_shown"):
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
@@ -1762,7 +1914,7 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
     """Handle hidden test-only chat commands. Return None when not a command."""
     normalized = (message_text or "").strip().lower()
     is_debug_command = normalized.startswith("/debug")
-    if normalized not in TEST_EP1_PAULINE_COMMANDS and not is_debug_command:
+    if normalized not in TEST_EP1_INTERCOM_COMMANDS and not is_debug_command:
         return None
 
     state = GAME_STATE.get(participant_code)
@@ -1785,21 +1937,18 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
         status_text = "enabled" if debug_enabled else "disabled"
         return [{"type": "system", "content": f"Debug mode {status_text} for TEST/ROBERTA."}]
 
-    if state.get("current_stage", 1) != 1:
+    if state.get("current_stage", 1) != EP1_PARTY_STAGE:
         return [{"type": "system", "content": "Switch to Episode 1 first, then run /pauline."}]
 
-    # Mark EP1 phase 2 as unlocked and switch location so Pauline becomes available.
-    set_stage_location(state, 1, EP1_PART2_LOCATION)
-    state["ep1_phase2_unlocked"] = True
-
     messages: List[Dict] = []
-    entrance_message = _build_ep1_pauline_entrance_message(participant_code)
-    if entrance_message:
-        messages.append(entrance_message)
+    ending_message = _build_ep1_intercom_ending_message(participant_code)
+    if ending_message:
+        messages.append(ending_message)
     else:
         messages.append(
-            {"type": "system", "content": "Pauline is now available in Episode 1."}
+            {"type": "system", "content": "The intercom buzzes. Episode 1 ends here."}
         )
+    await complete_stage(participant_code, EP1_PARTY_STAGE)
 
     await game_state_manager.save_game_state(participant_code, state)
     return messages
@@ -1883,7 +2032,7 @@ def initialize_game_state(participant_code: str) -> Dict:
         "stage_progress": stage_progress,
         "global_knowledge": [],  # List of dicts: {"stage": int, "information": str, "source": str, "importance": str}
         "episode_messages": {},  # stage_num -> list of message dicts shown in chat for that episode
-        "stage_locations": {"2": EP2_DEFAULT_LOCATION},
+        "stage_locations": {"3": EP3_DEFAULT_LOCATION},
     }
 
 
@@ -1956,20 +2105,44 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         state["debug_mode"] = True
 
     if "stage_locations" not in state:
-        state["stage_locations"] = {"2": EP2_DEFAULT_LOCATION}
+        state["stage_locations"] = {"3": EP3_DEFAULT_LOCATION}
     else:
         stage_locations = state.get("stage_locations", {})
-        if not stage_locations.get("2") and not stage_locations.get(2):
-            stage_locations["2"] = EP2_DEFAULT_LOCATION
-            state["stage_locations"] = stage_locations
+        # Legacy: part2_ep1 inside old episode 1 → promote player to episode 2.
+        legacy_ep1_location = stage_locations.get("1") or stage_locations.get(1)
+        if legacy_ep1_location == "part2_ep1" or state.get("ep1_phase2_unlocked"):
+            if int(state.get("current_stage", 1)) == 1:
+                state["current_stage"] = EP2_PAULINE_STAGE
+            stage_locations.pop("1", None)
+            stage_locations.pop(1, None)
+        # Legacy formula episode was stage 2 → stage 3.
+        legacy_ep2_location = stage_locations.get("2") or stage_locations.get(2)
+        if legacy_ep2_location and int(state.get("current_stage", 1)) == 2:
+            if legacy_ep2_location.endswith("_ep2"):
+                migrated = legacy_ep2_location.replace("_ep2", "_ep3")
+            else:
+                migrated = legacy_ep2_location
+            stage_locations["3"] = migrated
+            stage_locations.pop("2", None)
+            stage_locations.pop(2, None)
+            state["current_stage"] = EP3_FORMULA_STAGE
+        if not stage_locations.get("3") and not stage_locations.get(3):
+            stage_locations["3"] = EP3_DEFAULT_LOCATION
+        state["stage_locations"] = stage_locations
 
     if "last_public_responder" not in state:
         state["last_public_responder"] = None
     if "public_followup_lock" not in state:
         state["public_followup_lock"] = None
 
-    # EP1 simplification: Arrest Order is always available from Case Materials.
-    if state.get("current_stage", 1) == 1 and not state.get("game_completed", False):
+    # Arrest Order in Case Materials during accusation episodes (until closed).
+    current_stage = int(state.get("current_stage", 1))
+    if current_stage == EP1_PARTY_STAGE and not _ep1_stage_completed(state):
+        state["accuse_offer_pending"] = False
+        state["accuse_in_case_materials"] = True
+        state["accuse_unlocked"] = True
+        state.setdefault("accused_wrong_keys", set())
+    elif current_stage == EP2_PAULINE_STAGE and not state.get("game_completed", False):
         state["accuse_offer_pending"] = False
         state["accuse_in_case_materials"] = True
         state["accuse_unlocked"] = True
@@ -2161,7 +2334,17 @@ async def switch_stage(participant_code: str, stage_number: int) -> bool:
     # Update current stage
     old_stage = state.get("current_stage", 1)
     state["current_stage"] = stage_number
-    
+
+    if stage_number == EP2_PAULINE_STAGE and old_stage == EP1_PARTY_STAGE:
+        _carry_episode_dialog_history(participant_code, EP1_PARTY_STAGE, EP2_PAULINE_STAGE)
+        state["accusation_attempts"] = 0
+        state["accused_wrong_keys"] = set()
+        state["accuse_pending_target"] = None
+        state["accuse_waiting_for_reason"] = False
+        state["accuse_offer_pending"] = False
+        state["accuse_in_case_materials"] = True
+        state["accuse_unlocked"] = True
+
     # Sync legacy fields with current stage progress
     stage_progress = state["stage_progress"].get(stage_number, {})
     state["clues_examined"] = stage_progress.get("clues_examined", set())
@@ -2179,8 +2362,8 @@ async def switch_stage(participant_code: str, stage_number: int) -> bool:
     return True
 
 
-async def start_game_handler(participant_code: str) -> List[Dict]:
-    """Handle game start - return list of messages to display."""
+async def start_game_handler(participant_code: str) -> Tuple[List[Dict], Dict]:
+    """Handle game start - return messages to display and start metadata."""
     messages = []
     
     # Check for existing game state
@@ -2212,30 +2395,45 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     
     state = GAME_STATE[participant_code]
     episode = state.get("current_stage", 1)
-    episode_messages = state.get("episode_messages", {})
-    # Keys may be int (in-memory) or str (after JSON load)
-    ep_key = str(episode)
-    stored = episode_messages.get(episode, episode_messages.get(ep_key, []))
+    stored = get_messages_for_current_location(state, episode)
     
-    # Return stored messages when user returns to an already-visited episode
+    # Return stored messages when user returns to an already-visited episode/location
     if stored:
         personalized_stored, changed = _personalize_questionnaire_links_in_messages(
             stored, participant_code, state
         )
         if changed:
+            episode_messages = state.get("episode_messages", {})
+            ep_key = str(episode)
             stored_key = episode if episode in episode_messages else ep_key
-            episode_messages[stored_key] = personalized_stored
+            all_episode_messages = _get_stored_episode_messages(state, episode)
+            location_key = get_stage_location(state, episode) if episode_has_locations(episode) else None
+            default_location = STAGE_CONFIG.get(episode, {}).get("default_location")
+            personalized_index = 0
+            rebuilt: List[Dict] = []
+            for msg in all_episode_messages:
+                if (
+                    isinstance(msg, dict)
+                    and personalized_index < len(personalized_stored)
+                    and _message_belongs_to_location(msg, location_key, default_location)
+                ):
+                    rebuilt.append(personalized_stored[personalized_index])
+                    personalized_index += 1
+                else:
+                    rebuilt.append(msg)
+            episode_messages[stored_key] = rebuilt
             state["episode_messages"] = episode_messages
             await game_state_manager.save_game_state(participant_code, state)
-        return personalized_stored
+        return personalized_stored, {"animate_messages": False}
     
     # Onboarding (welcome + language level) only for episode 1. Episodes 2+ start with case intro.
-    if episode != 1:
+    if episode != EP1_PARTY_STAGE:
+        if episode == EP2_PAULINE_STAGE:
+            _carry_episode_dialog_history(participant_code, EP1_PARTY_STAGE, EP2_PAULINE_STAGE)
         messages = await handle_case_intro(participant_code, "case_intro_begin")
-        episode_messages[ep_key] = episode_messages.get(episode, episode_messages.get(ep_key, [])) + messages
-        state["episode_messages"] = episode_messages
+        append_episode_messages(state, episode, messages)
         await game_state_manager.save_game_state(participant_code, state)
-        return messages
+        return messages, {"animate_messages": True}
     
     # Start with welcome message (episode 1 only)
     welcome_text = load_system_prompt(get_game_text_path("onboarding_1_welcome.txt", episode))
@@ -2258,13 +2456,12 @@ async def start_game_handler(participant_code: str) -> List[Dict]:
     })
     
     state["onboarding_step"] = "welcome_shown"
-    episode_messages[ep_key] = episode_messages.get(episode, episode_messages.get(ep_key, [])) + messages
-    state["episode_messages"] = episode_messages
+    append_episode_messages(state, episode, messages)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
     
-    return messages
+    return messages, {"animate_messages": False}
 
 
 async def handle_onboarding_button(participant_code: str, action: str) -> List[Dict]:
@@ -2485,6 +2682,12 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     
     episode = state.get("current_stage", 1)
     intro_files = STAGE_CONFIG.get(episode, {}).get("intro_files", [])
+
+    if episode == EP2_PAULINE_STAGE:
+        state["onboarding_step"] = "investigation_started"
+        state.setdefault("accuse_offer_pending", False)
+        state.setdefault("accuse_in_case_materials", True)
+        state.setdefault("accuse_unlocked", True)
     
     if action == "case_intro_begin":
         if not intro_files:
@@ -2574,24 +2777,24 @@ async def handle_location_transition(participant_code: str, action: str) -> List
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    target_location = EP2_LOCATION_ACTIONS.get(action)
+    target_location = EP3_LOCATION_ACTIONS.get(action)
     if not target_location:
         return [{"type": "error", "content": "Unknown location action."}]
 
     stage_number = state.get("current_stage", 1)
-    if stage_number != 2:
-        return [{"type": "error", "content": "This action is available only in episode 2."}]
+    if stage_number != EP3_FORMULA_STAGE:
+        return [{"type": "error", "content": "This action is available only in episode 3."}]
 
-    locations = STAGE_CONFIG.get(2, {}).get("locations", {})
+    locations = STAGE_CONFIG.get(EP3_FORMULA_STAGE, {}).get("locations", {})
     if target_location not in locations:
         return [{"type": "error", "content": "Location is not configured."}]
 
-    set_stage_location(state, 2, target_location)
+    set_stage_location(state, EP3_FORMULA_STAGE, target_location)
     state["current_character"] = None
     state["onboarding_step"] = "investigation_started"
     _clear_public_followup_lock(state)
-    if target_location in EP2_SCRIPTED_LOCATIONS:
-        state["mode"] = EP2_WITNESS_MODE
+    if target_location in EP3_SCRIPTED_LOCATIONS:
+        state["mode"] = EP3_WITNESS_MODE
     else:
         state["mode"] = "public"
 
@@ -2610,12 +2813,12 @@ async def handle_location_transition(participant_code: str, action: str) -> List
         transition_message["image"] = location_image
         transition_message["ui"] = {"imageFirst": True}
     messages = [transition_message]
-    if target_location in EP2_SCRIPTED_LOCATIONS:
+    if target_location in EP3_SCRIPTED_LOCATIONS:
         await _append_ep2_witness_opener_if_needed(
             participant_code,
             state,
             messages,
-            current_stage=2,
+            current_stage=EP3_FORMULA_STAGE,
             location=target_location,
         )
     else:
@@ -2632,7 +2835,7 @@ async def handle_main_menu(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if state.get("mode") == EP2_WITNESS_MODE:
+    if state.get("mode") == EP3_WITNESS_MODE:
         return []
     
     menu_text = "What would you like to do?"
@@ -2715,7 +2918,7 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
         return [{"type": "error", "content": "Invalid character."}]
 
     if _ep1_dialogs_closed(state):
-        return [_ep1_dialogs_closed_reply()]
+        return [_closed_dialogs_reply(state)]
 
     current_stage = state.get("current_stage", 1)
     available_characters = set(get_characters_for_stage(state, current_stage))
@@ -2828,7 +3031,7 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
         return [{"type": "error", "content": "Game not initialized."}]
     
     if _ep1_dialogs_closed(state):
-        return [_ep1_dialogs_closed_reply()]
+        return [_closed_dialogs_reply(state)]
     
     char_key = state.get("current_character")
     
@@ -2916,14 +3119,6 @@ async def handle_private_message(participant_code: str, message_text: str) -> Li
             "show_explain": False
         })
     
-    # Save state
-    if _should_unlock_ep1_part2(state):
-        set_stage_location(state, 1, EP1_PART2_LOCATION)
-        state["ep1_phase2_unlocked"] = True
-        entrance_message = _build_ep1_pauline_entrance_message(participant_code)
-        if entrance_message:
-            messages.append(entrance_message)
-
     await game_state_manager.save_game_state(participant_code, state)
     
     return messages
@@ -2943,7 +3138,7 @@ async def handle_nina_message(
         return [{"type": "error", "content": "Game not initialized."}]
     
     if _ep1_dialogs_closed(state):
-        return [_ep1_dialogs_closed_reply()]
+        return [_closed_dialogs_reply(state)]
     
     char_key = "nina"
     char_data = CHARACTER_DATA.get(char_key)
@@ -3026,17 +3221,17 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         return [{"type": "error", "content": "Game not initialized."}]
     
     if _ep1_dialogs_closed(state):
-        return [_ep1_dialogs_closed_reply()]
+        return [_closed_dialogs_reply(state)]
     
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
     stage_characters = set(get_characters_for_stage(state, current_stage))
     debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
 
-    if current_stage == 2 and current_location == EP2_DEFAULT_LOCATION:
+    if current_stage == EP3_FORMULA_STAGE and current_location == EP3_DEFAULT_LOCATION:
         return await handle_nina_message(participant_code, message_text, chat_scope="public")
 
-    if current_stage == 2 and current_location in EP2_SCRIPTED_LOCATIONS:
+    if current_stage == EP3_FORMULA_STAGE and current_location in EP3_SCRIPTED_LOCATIONS:
         return await _handle_ep2_scripted_public_message(
             participant_code,
             message_text,
@@ -3358,11 +3553,11 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
     current_stage = state.get("current_stage", 1)
     current_location = get_stage_location(state, current_stage)
     is_ep2_witness_scene = (
-        current_stage == 2 and current_location in EP2_SCRIPTED_LOCATIONS
+        current_stage == EP3_FORMULA_STAGE and current_location in EP3_SCRIPTED_LOCATIONS
     )
 
     if is_ep2_witness_scene:
-        state["mode"] = EP2_WITNESS_MODE
+        state["mode"] = EP3_WITNESS_MODE
     else:
         state["mode"] = "public"
     
@@ -3388,7 +3583,16 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
         )
         await game_state_manager.save_game_state(participant_code, state)
         return messages
-    
+
+    # EP2 intro hub: leaving Nina's private chat at the start location brings the
+    # player back to the location choice instead of an empty "public" room.
+    if current_stage == EP3_FORMULA_STAGE and current_location == EP3_DEFAULT_LOCATION:
+        state["mode"] = "public"
+        choice_messages = await handle_game_text_action(participant_code, "nina_location_choice")
+        await game_state_manager.save_game_state(participant_code, state)
+        if choice_messages:
+            return choice_messages
+
     mode_text = "You're now speaking with everyone in public. Ask your questions!"
     
     # Log system message
@@ -3418,7 +3622,7 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     clues_count = get_clues_count_for_stage(current_stage, state)
 
     buttons = []
-    if current_stage == 1 and state.get("ep1_usb_drive_unlocked"):
+    if current_stage == EP2_PAULINE_STAGE and state.get("ep1_usb_drive_unlocked"):
         clue_ids = ["4", "1", "2", "3"]
     else:
         clue_ids = [str(i) for i in range(1, clues_count + 1)]
@@ -3467,7 +3671,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     except (TypeError, ValueError):
         return [{"type": "error", "content": "Invalid clue id."}]
 
-    if episode == 1 and clue_number == 4 and not state.get("ep1_usb_drive_unlocked"):
+    if episode == EP2_PAULINE_STAGE and clue_number == 4 and not state.get("ep1_usb_drive_unlocked"):
         return [{"type": "system", "content": "You don't have that evidence yet.", "show_explain": False}]
 
     if clue_number < 1 or clue_number > clues_count:
@@ -3492,7 +3696,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     log_message("clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
     
     clue_image = f"ep{episode}/clue{clue_id}.png"
-    if episode == 1 and clue_id == "4":
+    if episode == EP2_PAULINE_STAGE and clue_id == "4":
         clue_image = "ep1/plane-drive.png"
 
     clue_message = {
@@ -3504,8 +3708,12 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     }
 
     current_location = get_stage_location(state, episode)
-    if episode == 2 and clue_id == "1" and current_location == "university_ep2":
-        clue_message["buttons"] = [{"text": EP2_USB_SHARE_BUTTON_TEXT, "action": EP2_USB_SHARE_ACTION}]
+    if (
+        episode == EP3_FORMULA_STAGE
+        and clue_id == "1"
+        and current_location in {"university_ep3", "university_ep2"}
+    ):
+        clue_message["buttons"] = [{"text": EP3_USB_SHARE_BUTTON_TEXT, "action": EP3_USB_SHARE_ACTION}]
 
     messages.append(clue_message)
     
@@ -3515,11 +3723,22 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     return messages
 
 
-def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
-    """Episode 1 ended after a final accusation (correct or last allowed wrong guess)."""
+def _ep1_investigation_closed(state: Optional[Dict]) -> bool:
+    """Episode 1 (pre-Pauline) investigation is over after the intercom ending."""
     if not state:
         return False
-    return int(state.get("current_stage", 1)) == 1 and bool(state.get("game_completed", False))
+    if int(state.get("current_stage", 1)) != EP1_PARTY_STAGE:
+        return False
+    return _ep1_stage_completed(state)
+
+
+def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
+    """Episode 2 (Pauline arc) ended after a final accusation."""
+    if not state:
+        return False
+    if int(state.get("current_stage", 1)) == EP1_PARTY_STAGE:
+        return _ep1_investigation_closed(state)
+    return int(state.get("current_stage", 1)) == EP2_PAULINE_STAGE and bool(state.get("game_completed", False))
 
 
 def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
@@ -3560,7 +3779,17 @@ def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict
     }
 
 
-def _ep1_dialogs_closed_reply() -> Dict:
+def _ep1_investigation_closed_reply() -> Dict:
+    return {
+        "type": "system",
+        "content": (
+            "Episode 1 is complete. The intercom is ringing — come back for Episode 2 when it unlocks."
+        ),
+        "show_explain": False,
+    }
+
+
+def _ep2_dialogs_closed_reply() -> Dict:
     return {
         "type": "system",
         "content": "The case is closed. You can read the chat above, but the investigation won't continue.",
@@ -3568,38 +3797,60 @@ def _ep1_dialogs_closed_reply() -> Dict:
     }
 
 
-# EP1 accusation flow handlers
-def _ep1_accusable_suspect_keys(state: Dict) -> List[str]:
-    """Suspects who may be accused in EP1 (Pauline only after part 2 / her entrance)."""
-    keys = [k for k in EP1_ACCUSATION_SUSPECT_KEYS if k in CHARACTER_DATA]
-    if get_stage_location(state, 1) != EP1_PART2_LOCATION:
-        keys = [k for k in keys if k != "pauline"]
+def _closed_dialogs_reply(state: Dict) -> Dict:
+    if int(state.get("current_stage", 1)) == EP1_PARTY_STAGE:
+        return _ep1_investigation_closed_reply()
+    return _ep2_dialogs_closed_reply()
+
+
+# Accusation flow helpers (episode 1 and 2)
+def _accusable_suspect_keys(state: Dict, episode: int) -> List[str]:
+    """Suspects who may be accused in the current accusation episode."""
+    if episode == EP1_PARTY_STAGE:
+        suspect_keys = EP1_ACCUSATION_SUSPECT_KEYS
+    else:
+        suspect_keys = EP2_ACCUSATION_SUSPECT_KEYS
+    keys = [k for k in suspect_keys if k in CHARACTER_DATA]
     excluded_keys = set(state.get("accused_wrong_keys", set()) or set())
     keys = [k for k in keys if k not in excluded_keys]
     return keys
 
 
-def _get_ep1_accusation_max_attempts(state: Dict) -> int:
-    """Use fewer attempts before Pauline appears in EP1 part 2."""
-    if get_stage_location(state, 1) == EP1_PART2_LOCATION:
-        return EP1_ACCUSATION_MAX_ATTEMPTS_AFTER_PAULINE
-    return EP1_ACCUSATION_MAX_ATTEMPTS_BEFORE_PAULINE
+def _get_accusation_max_attempts(state: Dict, episode: int) -> int:
+    if episode == EP1_PARTY_STAGE:
+        return EP1_ACCUSATION_MAX_ATTEMPTS
+    return EP2_ACCUSATION_MAX_ATTEMPTS
 
 
-def _build_ep1_accusation_buttons(state: Dict, include_back: bool = True) -> List[Dict[str, str]]:
+def _build_accusation_buttons(state: Dict, episode: int, include_back: bool = True) -> List[Dict[str, str]]:
     buttons = [
         {"text": f"{CHARACTER_DATA[k]['full_name']}", "action": f"accuse_{k}"}
-        for k in _ep1_accusable_suspect_keys(state)
+        for k in _accusable_suspect_keys(state, episode)
     ]
     if include_back:
         buttons.append({"text": "⬅️ Back to Main Menu", "action": "show_main_menu"})
     return buttons
 
 
-def _build_ep1_accuse_tim_finale_messages(participant_code: str) -> List[Dict]:
-    """Tim's scripted confession + Take the drive CTA (correct EP1 accusation or Nina-assisted finale)."""
-    accused_key = EP1_ACCUSATION_CORRECT_KEY
-    win_text = load_system_prompt(get_game_text_path("accuse_tim_final.txt", 1))
+async def _append_ep1_intercom_finale(
+    participant_code: str,
+    state: Dict,
+    messages: List[Dict],
+) -> List[Dict]:
+    """End episode 1 with the intercom ring (no action buttons)."""
+    ending_message = _build_ep1_intercom_ending_message(participant_code)
+    if ending_message:
+        messages.append(ending_message)
+    state["accuse_unlocked"] = False
+    state["accuse_in_case_materials"] = False
+    await complete_stage(participant_code, EP1_PARTY_STAGE)
+    return messages
+
+
+def _build_ep2_accuse_tim_finale_messages(participant_code: str) -> List[Dict]:
+    """Tim's scripted confession + Take the drive CTA (correct accusation or Nina-assisted finale)."""
+    accused_key = EP2_ACCUSATION_CORRECT_KEY
+    win_text = load_system_prompt(get_game_text_path("accuse_tim_final.txt", EP2_PAULINE_STAGE))
     win_body, win_buttons = _extract_buttons_from_text(win_text)
     win_blocks = _extract_scripted_message_blocks(win_body, default_sender=accused_key)
     if not win_blocks:
@@ -3623,10 +3874,10 @@ def _build_ep1_accuse_tim_finale_messages(participant_code: str) -> List[Dict]:
     return win_messages
 
 
-def _build_ep1_accusation_warning_message(state: Dict) -> Dict:
+def _build_accusation_warning_message(state: Dict, episode: int) -> Dict:
     """Build the "Are you sure?" accusation warning; buttons come from accuse_warning.txt."""
-    raw = load_system_prompt(get_game_text_path("accuse_warning.txt", 1))
-    max_attempts = _get_ep1_accusation_max_attempts(state)
+    raw = load_system_prompt(get_game_text_path("accuse_warning.txt", EP2_PAULINE_STAGE))
+    max_attempts = _get_accusation_max_attempts(state, episode)
     chances_text = "1 chance" if max_attempts == 1 else f"{max_attempts} chances"
     raw = re.sub(r"\*\d+\s+chances\*", f"*{chances_text}*", raw, count=1)
     body, buttons = _extract_buttons_from_text(raw)
@@ -3647,8 +3898,8 @@ async def handle_accuse_offer_declined(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
 
     episode = state.get("current_stage", 1)
-    if episode != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = True
@@ -3673,8 +3924,8 @@ async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
 
     episode = state.get("current_stage", 1)
-    if episode != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = True
@@ -3682,7 +3933,7 @@ async def handle_accuse_offer_accepted(participant_code: str) -> List[Dict]:
     state["accused_character"] = None
     state["accused_wrong_keys"] = set()
 
-    return [_build_ep1_accusation_warning_message(state)]
+    return [_build_accusation_warning_message(state, episode)]
 
 
 async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
@@ -3692,8 +3943,8 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
 
     episode = state.get("current_stage", 1)
-    if episode != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     if _ep1_dialogs_closed(state):
         return [
@@ -3707,7 +3958,7 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
 
     # Hard-stop if all accusation attempts are already used.
     attempts = int(state.get("accusation_attempts", 0))
-    max_attempts = _get_ep1_accusation_max_attempts(state)
+    max_attempts = _get_accusation_max_attempts(state, episode)
     if attempts >= max_attempts:
         return [
             {
@@ -3737,7 +3988,7 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
                 "show_explain": False,
                 "ui": {"switchToPublicMode": True},
             },
-            _build_ep1_accusation_warning_message(state),
+            _build_accusation_warning_message(state, episode),
         ]
 
     # Allow opening even if chat offer wasn't explicitly declined (stale UI), but keep state consistent.
@@ -3747,23 +3998,23 @@ async def handle_accuse_open_menu(participant_code: str) -> List[Dict]:
     if int(state.get("accusation_attempts", 0)) <= 0:
         state["accused_wrong_keys"] = set()
 
-    return [_build_ep1_accusation_warning_message(state)]
+    return [_build_accusation_warning_message(state, episode)]
 
 
 async def handle_make_accusation(participant_code: str, accused_key: str) -> List[Dict]:
-    """Handle final player accusation for EP1."""
+    """Handle final player accusation in episode 1 (cliffhanger) or episode 2 (resolution)."""
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
     episode = state.get("current_stage", 1)
-    if episode != 1:
-        return [{"type": "system", "content": "Accusation is available in Episode 1."}]
+    if not _is_accusation_episode(episode):
+        return [{"type": "system", "content": "Accusation is not available in this episode."}]
 
     # Do not allow new accusations after attempts are exhausted.
     attempts = int(state.get("accusation_attempts", 0))
-    max_attempts = _get_ep1_accusation_max_attempts(state)
-    if attempts >= max_attempts:
+    max_attempts = _get_accusation_max_attempts(state, episode)
+    if attempts >= max_attempts or (episode == EP1_PARTY_STAGE and _ep1_stage_completed(state)):
         return [
             {
                 "type": "system",
@@ -3775,7 +4026,7 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         ]
 
     accused_key = str(accused_key or "").strip().lower()
-    allowed_targets = _ep1_accusable_suspect_keys(state)
+    allowed_targets = _accusable_suspect_keys(state, episode)
     if accused_key not in allowed_targets:
         return [{"type": "error", "content": "Unknown accusation target."}]
 
@@ -3798,28 +4049,61 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
                 "show_explain": False,
                 "ui": {"switchToPublicMode": True},
             },
-            _build_ep1_accusation_warning_message(state),
+            _build_accusation_warning_message(state, episode),
         ]
 
     state["accuse_offer_pending"] = False
     state["accuse_in_case_materials"] = False
-
     state["accused_character"] = accused_key
+    state["accusation_attempts"] = int(state.get("accusation_attempts", 0)) + 1
 
+    # Episode 1: one accusation, then intercom cliffhanger (Tim → intercom at once; wrong → defense → intercom).
+    if episode == EP1_PARTY_STAGE:
+        messages: List[Dict] = []
+        if accused_key != EP1_ACCUSATION_CORRECT_KEY:
+            wrong_keys = set(state.get("accused_wrong_keys", set()) or set())
+            wrong_keys.add(accused_key)
+            state["accused_wrong_keys"] = wrong_keys
+            defense_filename = f"defense_{accused_key}.txt"
+            defense_text = _load_game_text_optional(
+                defense_filename,
+                EP1_PARTY_STAGE,
+                fallback_episode=EP2_PAULINE_STAGE,
+            )
+            if not defense_text:
+                defense_text = "❌ That doesn't match."
+            defense_body, _defense_file_buttons = _extract_buttons_from_text(defense_text)
+            defense_blocks = _extract_scripted_message_blocks(defense_body, default_sender=accused_key)
+            if not defense_blocks:
+                defense_blocks = [("narrator", defense_text)]
+            for _index, (block_sender, block_text) in enumerate(defense_blocks):
+                msg = _build_character_message_for_sender(
+                    participant_code=participant_code,
+                    text=block_text,
+                    sender_key=block_sender or accused_key,
+                )
+                msg["show_explain"] = False
+                msg["ui"] = {"caseMaterialsAccusationAvailable": False}
+                messages.append(msg)
+        messages = await _append_ep1_intercom_finale(participant_code, state, messages)
+        _sync_last_public_responder_for_public_mode(state, messages)
+        await game_state_manager.save_game_state(participant_code, state)
+        return messages
+
+    # Episode 2: full resolution flow
     # Correct accusation -> win
-    if accused_key == EP1_ACCUSATION_CORRECT_KEY:
+    if accused_key == EP2_ACCUSATION_CORRECT_KEY:
         state["game_completed"] = True
         state["accuse_unlocked"] = False
         state["accuse_in_case_materials"] = False
+        await complete_stage(participant_code, EP2_PAULINE_STAGE)
 
         # Win outro chain: USB -> outro_nina.txt -> narrator (handle_ep1_outro_narrator) -> questionnaire (outro_questionnaire).
-        messages = _build_ep1_accuse_tim_finale_messages(participant_code)
+        messages = _build_ep2_accuse_tim_finale_messages(participant_code)
         _sync_last_public_responder_for_public_mode(state, messages)
         return messages
 
     # Wrong accusation -> attempts & defense
-    max_attempts = _get_ep1_accusation_max_attempts(state)
-    state["accusation_attempts"] = int(state.get("accusation_attempts", 0)) + 1
     attempts = state["accusation_attempts"]
     wrong_keys = set(state.get("accused_wrong_keys", set()) or set())
     wrong_keys.add(accused_key)
@@ -3827,7 +4111,11 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
 
     # Always show accused character defense text on wrong accusations.
     defense_filename = f"defense_{accused_key}.txt"
-    defense_text = _load_game_text_optional(defense_filename, 1)
+    defense_text = _load_game_text_optional(
+        defense_filename,
+        EP2_PAULINE_STAGE,
+        fallback_episode=EP1_PARTY_STAGE,
+    )
     if not defense_text:
         # Fallback if file is missing
         defense_text = "❌ That doesn't match."
@@ -3835,7 +4123,7 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     defense_buttons = []
     # If we still have attempts left, allow trying again.
     if attempts < max_attempts:
-        defense_buttons = _build_ep1_accusation_buttons(state, include_back=True)
+        defense_buttons = _build_accusation_buttons(state, EP2_PAULINE_STAGE, include_back=True)
 
     defense_body, defense_file_buttons = _extract_buttons_from_text(defense_text)
     defense_blocks = _extract_scripted_message_blocks(defense_body, default_sender=accused_key)
@@ -3876,8 +4164,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         state["game_completed"] = True
         state["accuse_unlocked"] = False
         state["accuse_in_case_materials"] = False
-        state["accused_character"] = EP1_ACCUSATION_CORRECT_KEY
-        nina_hint_text = _load_game_text_optional("outro_lose_nina_hint.txt", 1)
+        state["accused_character"] = EP2_ACCUSATION_CORRECT_KEY
+        await complete_stage(participant_code, EP2_PAULINE_STAGE)
+        nina_hint_text = _load_game_text_optional("outro_lose_nina_hint.txt", EP2_PAULINE_STAGE)
         nina_hint_body, _nina_hint_buttons = _extract_buttons_from_text(nina_hint_text or "")
         nina_hint_blocks = _extract_scripted_message_blocks(nina_hint_body, default_sender="nina")
         nina_hint_messages: List[Dict] = []
@@ -3890,11 +4179,11 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             n_msg["show_explain"] = False
             n_msg["ui"] = {"caseMaterialsAccusationAvailable": False}
             nina_hint_messages.append(n_msg)
-        tim_finale = _build_ep1_accuse_tim_finale_messages(participant_code)
+        tim_finale = _build_ep2_accuse_tim_finale_messages(participant_code)
         if tim_finale:
             first_tim = tim_finale[0]
             first_ui = dict(first_tim.get("ui") or {})
-            first_ui["preDisplayDelayMs"] = EP1_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS
+            first_ui["preDisplayDelayMs"] = EP2_NINA_LOSE_HINT_TO_TIM_FINALE_PRE_DELAY_MS
             first_tim["ui"] = first_ui
         messages = [*defense_messages, *nina_hint_messages, *tim_finale]
         _sync_last_public_responder_for_public_mode(state, messages)
@@ -4114,11 +4403,11 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    if state.get("current_stage", 1) != 2:
+    if state.get("current_stage", 1) != EP3_FORMULA_STAGE:
         return [{"type": "error", "content": "This action is available only in episode 2."}]
 
     current_location = get_stage_location(state, 2)
-    if current_location != "university_ep2":
+    if current_location not in {"university_ep3", "university_ep2"}:
         return [{"type": "error", "content": "You can show the USB to James only at the university."}]
 
     ep2_state = _get_ep2_director_state(state)
@@ -4133,12 +4422,12 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
 
     messages = [
         _build_character_message_for_sender(
-            participant_code, EP2_USB_HANDOVER_NARRATOR, "narrator"
+            participant_code, EP3_USB_HANDOVER_NARRATOR, "narrator"
         )
     ]
 
     handover_reply = await _ask_james_at_university(
-        participant_code, state, EP2_JAMES_USB_HANDOVER_TRIGGER
+        participant_code, state, EP3_JAMES_USB_HANDOVER_TRIGGER
     )
     ep2_state["usb_handover_reacted"] = True
     messages.append(_build_james_character_message(participant_code, handover_reply))
@@ -4148,7 +4437,7 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
             participant_code,
             state,
             messages,
-            EP2_JAMES_USB_FORMULA_TRIGGER,
+            EP3_JAMES_USB_FORMULA_TRIGGER,
         )
 
     _sync_last_public_responder_for_public_mode(state, messages)

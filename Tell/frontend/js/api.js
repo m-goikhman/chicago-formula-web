@@ -438,13 +438,16 @@ async function loadGame() {
         // Remove the loading message
         removeLoadingMessage();
         
-        // Display all messages from backend (instant: full history from server, e.g. after reload)
+        // Display all messages from backend.
+        // Fresh ep2+ case intro: animate Nina typing like ep1 case intro.
+        // Stored episode history / reload: show instantly.
         if (data.messages && Array.isArray(data.messages)) {
             const chatArea = document.getElementById('chatArea');
             if (chatArea) {
                 chatArea.innerHTML = '';
             }
-            await displayMessagesSequentially(data.messages, 0, { instant: true });
+            const displayOptions = data.animate_messages === true ? {} : { instant: true };
+            await displayMessagesSequentially(data.messages, 0, displayOptions);
             if (typeof window.applyChatScopeVisibility === 'function') {
                 window.applyChatScopeVisibility();
             }
@@ -727,7 +730,16 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         
         // Display response messages
         if (data.messages && Array.isArray(data.messages)) {
-            await displayMessagesSequentially(data.messages);
+            if (data.replace_chat) {
+                const chatArea = document.getElementById('chatArea');
+                if (chatArea) {
+                    chatArea.innerHTML = '';
+                }
+                clearTellChatScrollPosition();
+                await displayMessagesSequentially(data.messages, 0, { instant: true });
+            } else {
+                await displayMessagesSequentially(data.messages);
+            }
             // Input area will be shown automatically by checkAndShowInputArea
             // when the "👥 FOUR PEOPLE ARE IN THE APARTMENT" message appears
         } else if (data.detail) {
@@ -735,7 +747,11 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             addMessage('error', 'Error', data.detail);
         }
 
-        if (normalizedAction === 'mode_public' || normalizedAction.startsWith('talk_')) {
+        if (
+            data.replace_chat
+            || normalizedAction === 'mode_public'
+            || normalizedAction.startsWith('talk_')
+        ) {
             if (typeof window.applyChatScopeVisibility === 'function') {
                 window.applyChatScopeVisibility();
             }
@@ -836,9 +852,22 @@ async function sendMessage() {
         }
 
         if (data && data.messages && Array.isArray(data.messages)) {
-            await displayMessagesSequentially(data.messages);
+            if (data.replace_chat) {
+                const chatArea = document.getElementById('chatArea');
+                if (chatArea) {
+                    chatArea.innerHTML = '';
+                }
+                clearTellChatScrollPosition();
+                await displayMessagesSequentially(data.messages, 0, { instant: true });
+            } else {
+                await displayMessagesSequentially(data.messages);
+            }
         } else if (data && data.message) {
             addMessage('bot', 'Game', data.message);
+        }
+
+        if (typeof window.applyChatScopeVisibility === 'function') {
+            window.applyChatScopeVisibility();
         }
 
         if (typingMsg) typingMsg.remove();
@@ -1350,6 +1379,8 @@ async function loadEpisodeSelector() {
         window.currentStageNumber = currentStage;
         window.ep1GameCompleted = Boolean(data.game_completed);
         window.ep1UsbDriveUnlocked = Boolean(data.ep1_usb_drive_unlocked);
+        const ep1StageInfo = stagesInfo.find((s) => s.stage === 1);
+        window.ep1PartyCompleted = ep1StageInfo?.status === 'completed' || ep1StageInfo?.completed === true;
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);

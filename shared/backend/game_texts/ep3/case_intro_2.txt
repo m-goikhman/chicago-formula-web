@@ -1,0 +1,13 @@
+[from: narrator]
+You open the file from the drive. Pages of equations, symbols, Greek letters — dense and technical. You don't understand a word of it.
+---
+[from: nina]
+Yeah... I can't make any sense of it either. This is way over both our heads — we need someone who actually knows what they're looking at.
+---
+[from: nina]
+Two ways to go: we can talk to Alex himself, or take it to someone at the university. Where do you want to start?
+
+[buttons]
+Go to the university|nina_university_brief
+Go to Alex's apartment|nina_alex_brief
+Hold on, Nina|talk_nina

@@ -1,0 +1,7 @@
+[from: nina]
+So — where do you want to start? Alex, or the university?
+
+[buttons]
+Go to the university|nina_university_brief
+Go to Alex's apartment|nina_alex_brief
+Hold on, Nina|talk_nina

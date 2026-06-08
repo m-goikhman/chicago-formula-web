@@ -108,21 +108,17 @@ def get_prompt_path(character_key: str, episode: int, location: Optional[str] = 
         basename = f"prompt_{character_key}.md"
         location_candidates = [location]
 
-        # Episode 1 uses dedicated prompt folders by phase:
-        # - part1_ep1 -> no_pauline
-        # - part2_ep1 -> pauline (with fallback to no_pauline below)
-        ep1_location_aliases = {
-            "part1_ep1": ["no_pauline"],
-            "part2_ep1": ["pauline", "no_pauline"],
-            # Backward compatibility for legacy saved stage_locations values.
-            "pauline": ["pauline", "no_pauline"],
-            "no_pauline": ["no_pauline"],
+        # Legacy location keys from the former episode 2 (formula) map to ep3 folders.
+        legacy_ep3_aliases = {
+            "default_ep2": ["default_ep3", "default"],
+            "university_ep2": ["university_ep3", "university"],
+            "alex_apartment_ep2": ["alex_apartment_ep3", "alex_apartment"],
         }
-        for alias in ep1_location_aliases.get(location, []):
+        for alias in legacy_ep3_aliases.get(location, []):
             if alias not in location_candidates:
                 location_candidates.append(alias)
 
-        # Support aliases like "default_ep2" -> "default" so
+        # Support aliases like "default_ep3" -> "default" so
         # prompt_nina_ep2_default.md is resolved for default scene.
         location_without_episode_suffix = re.sub(r"_ep\d+$", "", location)
         if location_without_episode_suffix and location_without_episode_suffix != location:
@@ -164,8 +160,8 @@ def get_game_text_path(basename: str, episode: int) -> str:
     return f"game_texts/ep{episode}/{basename}"
 
 
-EP2_JAMES_USB_HANDOVER_INJECT_PATH = "prompts/ep2/university_ep2/james_usb_handover_inject.md"
-EP2_JAMES_USB_FORMULA_PROMPT_PATH = "prompts/ep2/university_ep2/prompt_james_formula_ep2.md"
+EP3_JAMES_USB_HANDOVER_INJECT_PATH = "prompts/ep3/university_ep3/james_usb_handover_inject.md"
+EP3_JAMES_USB_FORMULA_PROMPT_PATH = "prompts/ep3/university_ep3/prompt_james_formula_ep2.md"
 
 
 def _append_ep2_james_usb_handover_inject(character_prompt: str, state: Optional[Dict]) -> str:
@@ -176,7 +172,7 @@ def _append_ep2_james_usb_handover_inject(character_prompt: str, state: Optional
         return character_prompt
     if ep2_state.get("usb_handover_reacted", False):
         return character_prompt
-    handover_path = EP2_JAMES_USB_HANDOVER_INJECT_PATH
+    handover_path = EP3_JAMES_USB_HANDOVER_INJECT_PATH
     if not os.path.exists(os.path.join(_BASE_DIR, handover_path)):
         return character_prompt
     handover_prompt = load_system_prompt(handover_path)
@@ -191,7 +187,7 @@ def _append_ep2_james_usb_formula_prompt(character_prompt: str, state: Optional[
     ep2_state = state.get("ep2_director") or {}
     if not ep2_state.get("usb_context_explained", False):
         return character_prompt
-    formula_path = EP2_JAMES_USB_FORMULA_PROMPT_PATH
+    formula_path = EP3_JAMES_USB_FORMULA_PROMPT_PATH
     if not os.path.exists(os.path.join(_BASE_DIR, formula_path)):
         return character_prompt
     formula_prompt = load_system_prompt(formula_path)
@@ -229,7 +225,7 @@ def combine_character_prompt(
         # Load character-specific prompt (episode-aware path)
         character_prompt_path = get_prompt_path(character_name, episode, location)
         character_prompt = load_system_prompt(character_prompt_path)
-        if character_name == "james" and episode == 2 and location == "university_ep2":
+        if character_name == "james" and episode == 3 and location in {"university_ep3", "university_ep2"}:
             character_prompt = _append_ep2_james_usb_handover_inject(character_prompt, state)
             character_prompt = _append_ep2_james_usb_formula_prompt(character_prompt, state)
 

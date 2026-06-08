@@ -172,7 +172,9 @@ function checkAndCloseOverlay() {
     }
 }
 
-const EP2_SCRIPTED_LOCATIONS = {
+const EP3_SCRIPTED_LOCATIONS = {
+    university_ep3: 'james',
+    alex_apartment_ep3: 'alex',
     university_ep2: 'james',
     alex_apartment_ep2: 'alex',
 };
@@ -187,15 +189,15 @@ function getCurrentStageLocationKey() {
 }
 
 function getEp2ScriptedWitnessKey() {
-    if (Number(window.currentStageNumber || 1) !== 2) {
+    if (Number(window.currentStageNumber || 1) !== 3) {
         return null;
     }
     const locationKey = getCurrentStageLocationKey();
-    return EP2_SCRIPTED_LOCATIONS[locationKey] || null;
+    return EP3_SCRIPTED_LOCATIONS[locationKey] || null;
 }
 
 function getEp2SwitchableLocations() {
-    if (Number(window.currentStageNumber || 1) !== 2) {
+    if (Number(window.currentStageNumber || 1) !== 3) {
         return [];
     }
     const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
@@ -210,7 +212,7 @@ function getCurrentEp2Location() {
 function shouldShowEp2LocationHeader() {
     const navigationBar = document.getElementById('navigationBar');
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
-    if (!hasInvestigationStarted || Number(window.currentStageNumber || 1) !== 2) {
+    if (!hasInvestigationStarted || Number(window.currentStageNumber || 1) !== 3) {
         return false;
     }
     return Boolean(getEp2ScriptedWitnessKey()) && getEp2SwitchableLocations().length > 1;
@@ -356,7 +358,10 @@ function populateCharactersDrawer() {
     const stageChars = window.currentStageCharacters || [];
     const list = buildCharactersDrawerList(stageChars);
 
-    const ep1CaseClosed = Number(window.currentStageNumber || 1) === 1 && Boolean(window.ep1GameCompleted);
+    const stageNum = Number(window.currentStageNumber || 1);
+    const ep1PartyClosed = stageNum === 1 && Boolean(window.ep1PartyCompleted);
+    const ep2CaseClosed = stageNum === 2 && Boolean(window.ep1GameCompleted);
+    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed;
 
     charactersList.innerHTML = '';
     list.forEach(char => {
@@ -536,14 +541,16 @@ function updatePrivateModeControls() {
     const currentStage = Number(window.currentStageNumber || 1);
     const navigationBar = document.getElementById('navigationBar');
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
-    const shouldShowEp1PublicAvatar = currentStage === 1 && hasInvestigationStarted;
+    const shouldShowEp1PublicAvatar = (currentStage === 1 || currentStage === 2) && hasInvestigationStarted;
     const shouldShowEp2PublicAvatar = Boolean(ep2Witness && hasInvestigationStarted);
     const isEp2LocationHeader = shouldShowEp2LocationHeader();
     const currentEp2Location = getCurrentEp2Location();
     const ep2LocationImageUrl = buildImageUrl(
         currentEp2Location?.location_image || currentEp2Location?.texture_image
     );
-    const ep1CaseClosed = currentStage === 1 && Boolean(window.ep1GameCompleted);
+    const ep1PartyClosed = currentStage === 1 && Boolean(window.ep1PartyCompleted);
+    const ep2CaseClosed = currentStage === 2 && Boolean(window.ep1GameCompleted);
+    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed;
     const publicModeLabel = ep2Witness
         ? 'Together with Nina Reyes'
         : 'Public chat (Everyone)';
@@ -641,31 +648,35 @@ async function backToCommonDialogue() {
 function populateCaseMaterialsDrawer() {
     const materialsList = document.getElementById('caseMaterialsList');
     const currentStage = window.currentStageNumber || 1;
-    const showAccusationButton = currentStage === 1;
-    const materials = currentStage === 2
-        ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep2_clue_1' }]
-        : currentStage === 1
-            ? (() => {
-                const base = [
+    const partyClueMaterials = (includeUsb) => {
+        const base = [
+            { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
+            { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
+            { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
+        ];
+        if (includeUsb) {
+            return [{ emoji: '🔍', name: 'The USB Drive', action: 'examine_clue_4' }, ...base];
+        }
+        return base;
+    };
+    const showAccusationButton = currentStage === 1 || currentStage === 2;
+    const materials = currentStage === 3
+        ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep3_clue_1' }]
+        : currentStage === 2
+            ? partyClueMaterials(Boolean(window.ep1UsbDriveUnlocked))
+            : currentStage === 1
+                ? partyClueMaterials(false)
+                : [
                     { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
                     { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-                    { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
+                    { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
+                    { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
                 ];
-                if (window.ep1UsbDriveUnlocked) {
-                    return [{ emoji: '🔍', name: 'The USB Drive', action: 'examine_clue_4' }, ...base];
-                }
-                return base;
-            })()
-            : [
-                { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-                { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-                { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
-                { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
-            ];
 
-    // EP1 simplification: Arrest Order is available until the episode is definitively closed.
-    const ep1Finished = showAccusationButton && Boolean(window.ep1GameCompleted);
-    if (showAccusationButton && !ep1Finished) {
+    const ep1AccusationClosed = currentStage === 1 && Boolean(window.ep1PartyCompleted);
+    const ep2AccusationClosed = currentStage === 2 && Boolean(window.ep1GameCompleted);
+    const accusationClosed = ep1AccusationClosed || ep2AccusationClosed;
+    if (showAccusationButton && !accusationClosed) {
         if (Array.isArray(materials)) {
             materials.push({ emoji: '⚖️', name: 'Arrest Order', action: 'accuse_open_menu' });
         }

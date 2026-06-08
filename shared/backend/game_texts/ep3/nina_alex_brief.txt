@@ -1,0 +1,9 @@
+[from: nina]
+Alright. Alex is the one whose formula was on that drive — and the one who got attacked for it. Hearing his side first could help.
+---
+[from: nina]
+Ask him what happened, about his work, and about Tim. And the drive's in your case materials if you want another look before we go.
+
+[buttons]
+Let's go to Alex's apartment|go_alex_apartment_ep3
+Actually, let's start at the university|nina_university_brief

@@ -144,6 +144,12 @@ function displayMessage(msg) {
             window.populateCaseMaterialsDrawer();
         }
     }
+    if (msg.ui && msg.ui.episodeComplete === true && msg.ui.completedStage === 1) {
+        window.ep1PartyCompleted = true;
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
+        }
+    }
     if (msg.ui && msg.ui.ep1GameCompleted === true) {
         window.ep1GameCompleted = true;
         window.ninaPublicDialogueStarted = true;

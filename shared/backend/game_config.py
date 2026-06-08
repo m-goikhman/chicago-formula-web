@@ -24,27 +24,13 @@ STAGE_UNLOCK_DELAY_DAYS = 7  # Days between stage unlocks
 STAGE_CONFIG = {
     1: {
         "name": "The Party",
-        "clues_count": 4,
+        "clues_count": 3,
         "clue_names": [
             "Med Report & Personal Items",
             "The Weapon",
             "The Note",
-            "The USB Drive",
         ],
-        "characters": ["tim", "pauline", "fiona", "ronnie"],
-        "default_location": "part1_ep1",
-        "locations": {
-            "part1_ep1": {
-                "name": "Party - Before Pauline",
-                "characters": ["tim", "ronnie", "fiona"],
-                "show_in_switcher": False,
-            },
-            "part2_ep1": {
-                "name": "Party - Pauline Arrives",
-                "characters": ["tim", "ronnie", "fiona", "pauline"],
-                "show_in_switcher": False,
-            },
-        },
+        "characters": ["tim", "fiona", "ronnie"],
         "intro_files": [
             {"file": "case_intro_1_call.txt", "type": "character", "character": "nina"},
             {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina"},
@@ -56,51 +42,60 @@ STAGE_CONFIG = {
             "Tim stole the USB drive containing Alex's AI trading formula",
             "Tim has serious debt problems with Ronnie",
             "Alex was attacked to steal the USB drive",
-            "The USB drive contains a revolutionary AI trading formula for Alex's PhD thesis"
         ]
     },
     2: {
+        "name": "Pauline Arrives",
+        "clues_count": 4,
+        "clue_names": [
+            "Med Report & Personal Items",
+            "The Weapon",
+            "The Note",
+            "The USB Drive",
+        ],
+        "characters": ["tim", "pauline", "fiona", "ronnie"],
+        "intro_files": [
+            {"file": "pauline_entrance.txt", "type": "system"},
+        ],
+        "key_information": [
+            "The USB drive contains a revolutionary AI trading formula for Alex's PhD thesis",
+            "Pauline Thompson arrived unexpectedly during the party investigation",
+        ]
+    },
+    3: {
         "name": "The Formula",
         "clues_count": 1,
         "clue_names": ["the formula"],
         "characters": ["nina"],  # Fallback for stages without location config
-        "default_location": "default_ep2",
+        "default_location": "default_ep3",
         "locations": {
-            "default_ep2": {
-                "name": "Episode 2 - Start",
+            "default_ep3": {
+                "name": "Episode 3 - Start",
                 "characters": ["nina"],
-                "action": "go_default_ep2",
+                "action": "go_default_ep3",
                 "show_in_switcher": False,
                 "private_dialogue_openers": {
-                    "nina": "dialogue_openers/default_ep2/nina.txt"
+                    "nina": "dialogue_openers/default_ep3/nina.txt"
                 }
             },
-            "university_ep2": {
+            "university_ep3": {
                 "name": "University",
                 "characters": ["nina", "james"],
-                "action": "go_university_ep2",
+                "action": "go_university_ep3",
                 "texture_image": "ep2/university_texture.png",
                 "location_image": "ep2/university.png",
             },
-            "alex_apartment_ep2": {
+            "alex_apartment_ep3": {
                 "name": "Alex's apartment",
                 "characters": ["nina", "alex"],
-                "action": "go_alex_apartment_ep2",
+                "action": "go_alex_apartment_ep3",
                 "texture_image": "ep2/alex_apartment_texture.png",
                 "location_image": "ep2/apartment.png",
             }
         },
         "intro_files": [
-            {"file": "case_intro_1.txt"}
-        ],
-        "key_information": []
-    },
-    3: {
-        "name": "Stage 3",
-        "clues_count": 0,  # To be configured when content is created
-        "characters": ["tim", "pauline", "fiona", "ronnie"],
-        "intro_files": [
-            {"file": "intro.txt"}
+            {"file": "case_intro_1.txt", "type": "character", "character": "nina"},
+            {"file": "case_intro_2.txt", "type": "character", "character": "nina", "image": "ep2/clue1.png"}
         ],
         "key_information": []
     },
@@ -120,7 +115,7 @@ STAGE_CONFIG = {
 # Loading uses utils.get_prompt_path(character_key, episode) to resolve the path.
 CHARACTER_DATA = {
     "tim": {"prompt_file": "prompts/ep1/prompt_tim.md", "full_name": "Tim Kane", "image": "ep1/tim.png"},
-    "pauline": {"prompt_file": "prompts/ep1/prompt_pauline.md", "full_name": "Pauline Thompson", "image": "ep1/pauline.png"},
+    "pauline": {"prompt_file": "prompts/ep2/prompt_pauline.md", "full_name": "Pauline Thompson", "image": "ep1/pauline.png"},
     "fiona": {"prompt_file": "prompts/ep1/prompt_fiona.md", "full_name": "Fiona McAllister", "image": "ep1/fiona.png"},
     "ronnie": {"prompt_file": "prompts/ep1/prompt_ronnie.md", "full_name": "Ronnie Snapper", "image": "ep1/ronnie.png"},
     "tutor": {"prompt_file": "prompts/prompt_tutor.md", "full_name": "English Tutor", "image": None},
@@ -128,13 +123,12 @@ CHARACTER_DATA = {
     "narrator": {"prompt_file": "prompts/prompt_narrator.md", "full_name": "Narrator", "image": None},
     "director": {"prompt_file": "prompts/ep1/prompt_director.md", "full_name": "Game Director", "image": None},
     "lexicographer": {"prompt_file": "prompts/prompt_lexicographer.md", "full_name": "Lexicographer", "image": None},
-    "susan": {"prompt_file": "prompts/ep2/prompt_susan.md", "full_name": "Susan Nakamura", "image": "ep2/susan.png"},
-    "james": {"prompt_file": "prompts/ep2/prompt_james.md", "full_name": "James Thornton", "image": "ep2/james.png"},
-    "alex": {"prompt_file": "prompts/ep2/alex_apartment_ep2/prompt_alex.md", "full_name": "Alex Martin", "image": "ep2/alex.png"},
+    "susan": {"prompt_file": "prompts/ep4/prompt_susan.md", "full_name": "Susan Nakamura", "image": "ep2/susan.png"},
+    "james": {"prompt_file": "prompts/ep3/prompt_james.md", "full_name": "James Thornton", "image": "ep2/james.png"},
+    "alex": {"prompt_file": "prompts/ep3/alex_apartment_ep3/prompt_alex.md", "full_name": "Alex Martin", "image": "ep2/alex.png"},
 }
 
 # --- Global State Variables ---
 GAME_STATE = {}
 user_histories = {}
 message_cache = {}
-
