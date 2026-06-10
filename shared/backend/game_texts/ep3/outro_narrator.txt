@@ -1,0 +1,17 @@
+[sender: narrator]
+Outside, Chicago went on as if nothing had changed. The tall buildings still rose into the grey winter sky. The holiday lights still blinked in shop windows, warm and far away.
+
+But something had changed. The drive that everyone wanted — the one Tim attacked a friend for, the one that put Alex in a hospital bed — held nothing of value. A few pages of clever-looking symbols that meant nothing at all.
+
+All that fear, all that violence, over a formula that was never real.
+
+And somewhere across the city, Alex Martin sat in his apartment — still polite, still smiling, still hiding the one thing that actually mattered.
+
+---
+[sender: tutor]
+We'll stop here for now. The formula is solved — but the real mystery is only beginning. Why did Alex lie? And whose money was he really moving?
+
+Those are questions for next time.
+
+[buttons]
+For now, the job is done|ep3_outro_questionnaire

@@ -60,6 +60,7 @@ gcloud-key*.json
 
 # Local development
 .local/
+prompts/ep4/ep4_flow.md
 
 # Test coverage
 .coverage

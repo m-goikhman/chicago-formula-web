@@ -1,3 +1,8 @@
-What we found at the university changes everything. The formula is worthless. Alex wasn't even a student anymore. But Pauline swears their business made real money. And Ronnie is still waiting to be paid back. Time to talk to all of them again — now that you know the truth. Let's see what they have to say.
-[buttons]
-🔍 Game Menu|case_intro_next
+[from: narrator]
+Your phone rings.
+---
+[from: fiona]
+Detective? This is Fiona McAllistaire, Alex's girlfriend.
+---
+[from: fiona]
+I think, Alex has been kidnapped.

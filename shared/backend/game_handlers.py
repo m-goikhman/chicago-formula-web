@@ -35,8 +35,10 @@ logger = logging.getLogger(__name__)
 EP1_PARTY_STAGE = 1
 EP2_PAULINE_STAGE = 2
 EP3_FORMULA_STAGE = 3
+EP4_STAGE = 4
 
 EP3_DEFAULT_LOCATION = "default_ep3"
+EP4_DEFAULT_LOCATION = "precinct_ep4"
 EP3_SCRIPTED_LOCATIONS = {"university_ep3", "alex_apartment_ep3"}
 EP3_SCRIPTED_WITNESS_KEYS = {
     "university_ep3": "james",
@@ -61,6 +63,9 @@ EP3_JAMES_USB_FORMULA_TRIGGER = (
     "and give your brief expert verdict."
 )
 EP3_USB_EXPLANATION_FALLBACK = "I think Dr. Thornton needs more information."
+EP3_UNIVERSITY_FINAL_AFTER_DOUBT_IMAGE = "usb_collection.png"
+EP3_HEAD_OUT_ACTION = "ep3_head_out"
+EP3_HEAD_OUT_SWITCHER_NAME = "Let's head out"
 
 EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 10
 EP1_PRIVATE_MIN_TURNS_ANY = 12
@@ -503,6 +508,19 @@ def _is_public_group_address(message_text: str) -> bool:
     return not addressed_to_single_person
 
 
+def _resolve_location_transition(action: str, stage_number: int) -> Optional[str]:
+    """Map a go_* action to a location key for the given stage."""
+    legacy_target = EP3_LOCATION_ACTIONS.get(action)
+    if legacy_target and stage_number == EP3_FORMULA_STAGE:
+        return legacy_target
+
+    locations = STAGE_CONFIG.get(stage_number, {}).get("locations", {})
+    for location_key, location_cfg in locations.items():
+        if location_cfg.get("action") == action:
+            return location_key
+    return None
+
+
 def get_stage_location(state: Dict, stage_number: int) -> Optional[str]:
     """Get current location key for a stage, when configured."""
     stage_config = STAGE_CONFIG.get(stage_number, {})
@@ -523,6 +541,70 @@ def set_stage_location(state: Dict, stage_number: int, location_key: str) -> Non
     stage_locations = state.get("stage_locations", {})
     stage_locations[str(stage_number)] = location_key
     state["stage_locations"] = stage_locations
+
+
+def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
+    """Build location switcher metadata for a stage (episode-aware exit menu for EP3)."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    locations_cfg = stage_config.get("locations", {})
+    if not locations_cfg:
+        return []
+
+    current_location = get_stage_location(state, stage_number)
+    if stage_number == EP3_FORMULA_STAGE:
+        ep2_state = _get_ep2_director_state(state)
+        if ep2_state.get("ep3_outro_nina_shown", False):
+            current_cfg = locations_cfg.get(current_location, {})
+            return [
+                {
+                    "key": current_location,
+                    "name": current_cfg.get("name", current_location or "Location"),
+                    "action": current_cfg.get("action"),
+                    "texture_image": current_cfg.get("texture_image"),
+                    "location_image": current_cfg.get("location_image"),
+                    "switcher_visible": True,
+                    "current": True,
+                }
+            ]
+        if (
+            current_location in {"university_ep3", "university_ep2"}
+            and ep2_state.get("university_exit_menu_active", False)
+            and not ep2_state.get("ep3_outro_nina_shown", False)
+        ):
+            current_cfg = locations_cfg.get(current_location, {})
+            return [
+                {
+                    "key": current_location,
+                    "name": current_cfg.get("name", current_location),
+                    "action": current_cfg.get("action"),
+                    "texture_image": current_cfg.get("texture_image"),
+                    "location_image": current_cfg.get("location_image"),
+                    "switcher_visible": True,
+                    "current": True,
+                },
+                {
+                    "key": EP3_HEAD_OUT_ACTION,
+                    "name": EP3_HEAD_OUT_SWITCHER_NAME,
+                    "action": EP3_HEAD_OUT_ACTION,
+                    "switcher_visible": True,
+                    "current": False,
+                },
+            ]
+
+    locations_info: List[Dict] = []
+    for location_key, location_cfg in locations_cfg.items():
+        locations_info.append(
+            {
+                "key": location_key,
+                "name": location_cfg.get("name", location_key),
+                "action": location_cfg.get("action"),
+                "texture_image": location_cfg.get("texture_image"),
+                "location_image": location_cfg.get("location_image"),
+                "switcher_visible": location_cfg.get("show_in_switcher", True),
+                "current": location_key == current_location,
+            }
+        )
+    return locations_info
 
 
 def episode_has_locations(stage_number: int) -> bool:
@@ -926,18 +1008,21 @@ def _mentions_formula_confrontation(text: str) -> bool:
     )
 
 
+_PLANE_PLAIN_STORY_PATTERNS = [
+    re.compile(r"\bairplane\b", re.IGNORECASE),
+    re.compile(r"\bplane\b", re.IGNORECASE),
+    re.compile(r"\bplain\b", re.IGNORECASE),
+    re.compile(r"\bmix[- ]up\b", re.IGNORECASE),
+    re.compile(r"\bmixed\s+up\b", re.IGNORECASE),
+    re.compile(r"\banother\s+drive\b", re.IGNORECASE),
+    re.compile(r"\bwrong\s+drive\b", re.IGNORECASE),
+]
+
+
 def _mentions_plane_plain_story(text: str) -> bool:
-    return _contains_any(
-        text,
-        [
-            "plane",
-            "plain",
-            "mix-up",
-            "mixed up",
-            "another drive",
-            "wrong drive",
-        ],
-    )
+    if not (text or "").strip():
+        return False
+    return any(pattern.search(text) for pattern in _PLANE_PLAIN_STORY_PATTERNS)
 
 
 def _is_english_usb_explanation(text: str) -> bool:
@@ -1003,9 +1088,9 @@ async def _ask_james_at_university(
     messages_for_debug: Optional[List[Dict]] = None,
 ) -> str:
     current_language_level = state.get("current_language_level", "B1")
-    current_location = get_stage_location(state, 2)
+    current_location = get_stage_location(state, EP3_FORMULA_STAGE)
     system_prompt = combine_character_prompt(
-        "james", current_language_level, 2, current_location, state=state
+        "james", current_language_level, EP3_FORMULA_STAGE, current_location, state=state
     )
     try:
         if debug_mode_enabled and messages_for_debug is not None:
@@ -1092,6 +1177,7 @@ def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state.setdefault("alex_apartment_preuni_nudge_done", False)
     ep2_state.setdefault("alex_apartment_confront_hint_done", False)
     ep2_state.setdefault("alex_apartment_doubt_seed_done", False)
+    ep2_state.setdefault("university_final_after_doubt_done", False)
     ep2_state.setdefault("alex_apartment_wrap_done", False)
     ep2_state.setdefault("alex_apartment_post_verdict_turns_without_confront", 0)
     ep2_state.setdefault("usb_handover_requested", False)
@@ -1100,6 +1186,9 @@ def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state.setdefault("james_player_messages", 0)
     ep2_state.setdefault("james_formula_played", False)
     ep2_state.setdefault("witness_openers_played", [])
+    ep2_state.setdefault("university_exit_menu_active", False)
+    ep2_state.setdefault("ep3_outro_nina_shown", False)
+    ep2_state.setdefault("ep3_outro_questionnaire_shown", False)
     return ep2_state
 
 
@@ -1844,6 +1933,95 @@ async def handle_ep1_usb_received(participant_code: str) -> List[Dict]:
     return outro_messages
 
 
+def _build_scripted_nina_outro_messages(
+    participant_code: str,
+    episode: int,
+    *,
+    first_block_ui: Optional[Dict] = None,
+    last_block_ui: Optional[Dict] = None,
+) -> List[Dict]:
+    """Load outro_nina.txt blocks as Nina character messages in the main chat."""
+    raw_nina = load_system_prompt(get_game_text_path("outro_nina.txt", episode))
+    nina_body, nina_buttons = _extract_buttons_from_text(raw_nina)
+    nina_blocks = _extract_scripted_message_blocks(nina_body, default_sender="nina")
+    if not nina_blocks:
+        nina_blocks = [("nina", nina_body.strip() or raw_nina)]
+
+    outro_messages: List[Dict] = []
+    for index, (block_sender, block_text) in enumerate(nina_blocks):
+        msg = _build_character_message_for_sender(
+            participant_code, block_text, block_sender or "nina"
+        )
+        msg["show_explain"] = False
+        msg["chat_scope"] = "public"
+        ui: Dict = {"caseMaterialsAccusationAvailable": False}
+        if index == 0 and first_block_ui:
+            ui.update(first_block_ui)
+        if index == len(nina_blocks) - 1 and last_block_ui:
+            ui.update(last_block_ui)
+        msg["ui"] = ui
+        if index == len(nina_blocks) - 1 and nina_buttons:
+            msg["buttons"] = nina_buttons
+        outro_messages.append(msg)
+    return outro_messages
+
+
+async def handle_ep3_head_out(participant_code: str) -> List[Dict]:
+    """Episode 3 university finale: Nina outro in the main chat after the player heads out."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP3_FORMULA_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    current_location = get_stage_location(state, EP3_FORMULA_STAGE)
+    if current_location not in {"university_ep3", "university_ep2"}:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep2_state = _get_ep2_director_state(state)
+    if not ep2_state.get("university_final_after_doubt_done", False):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if not ep2_state.get("university_exit_menu_active", False):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if ep2_state.get("ep3_outro_nina_shown", False):
+        return []
+
+    ep2_state["university_exit_menu_active"] = False
+    ep2_state["ep3_outro_nina_shown"] = True
+
+    outro_messages = _build_scripted_nina_outro_messages(participant_code, EP3_FORMULA_STAGE)
+    _sync_last_public_responder_for_public_mode(state, outro_messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return outro_messages
+
+
+async def handle_ep3_outro_questionnaire(participant_code: str) -> List[Dict]:
+    """Episode 3 weekly questionnaire after Nina's outro."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP3_FORMULA_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep2_state = _get_ep2_director_state(state)
+    if not ep2_state.get("ep3_outro_nina_shown", False):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if ep2_state.get("ep3_outro_questionnaire_shown", False):
+        return []
+
+    ep2_state["ep3_outro_questionnaire_shown"] = True
+    await complete_stage(participant_code, EP3_FORMULA_STAGE)
+
+    outro = _ep3_outro_questionnaire_message(participant_code, state)
+    await game_state_manager.save_game_state(participant_code, state)
+    return [outro]
+
+
 async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
     """After Nina's win outro: show narrator block (typewriter + image) like intro-B1."""
     state = GAME_STATE.get(participant_code)
@@ -2193,6 +2371,9 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
             state["current_stage"] = EP3_FORMULA_STAGE
         if not stage_locations.get("3") and not stage_locations.get(3):
             stage_locations["3"] = EP3_DEFAULT_LOCATION
+        if int(state.get("current_stage", 1)) == EP4_STAGE:
+            if not stage_locations.get("4") and not stage_locations.get(4):
+                stage_locations["4"] = EP4_DEFAULT_LOCATION
         state["stage_locations"] = stage_locations
 
     if "last_public_responder" not in state:
@@ -2837,29 +3018,31 @@ async def start_investigation(participant_code: str) -> List[Dict]:
 
 
 async def handle_location_transition(participant_code: str, action: str) -> List[Dict]:
-    """Handle transitions between episode 2 locations."""
+    """Handle transitions between location-based episode scenes."""
     state = GAME_STATE.get(participant_code)
 
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
 
-    target_location = EP3_LOCATION_ACTIONS.get(action)
+    stage_number = state.get("current_stage", 1)
+    target_location = _resolve_location_transition(action, stage_number)
     if not target_location:
         return [{"type": "error", "content": "Unknown location action."}]
 
-    stage_number = state.get("current_stage", 1)
-    if stage_number != EP3_FORMULA_STAGE:
-        return [{"type": "error", "content": "This action is available only in episode 3."}]
-
-    locations = STAGE_CONFIG.get(EP3_FORMULA_STAGE, {}).get("locations", {})
-    if target_location not in locations:
+    locations = STAGE_CONFIG.get(stage_number, {}).get("locations", {})
+    if not locations or target_location not in locations:
         return [{"type": "error", "content": "Location is not configured."}]
 
-    set_stage_location(state, EP3_FORMULA_STAGE, target_location)
+    if stage_number == EP3_FORMULA_STAGE:
+        ep2_state = _get_ep2_director_state(state)
+        if ep2_state.get("ep3_outro_nina_shown", False):
+            return [{"type": "error", "content": "That isn't available right now."}]
+
+    set_stage_location(state, stage_number, target_location)
     state["current_character"] = None
     state["onboarding_step"] = "investigation_started"
     _clear_public_followup_lock(state)
-    if target_location in EP3_SCRIPTED_LOCATIONS:
+    if stage_number == EP3_FORMULA_STAGE and target_location in EP3_SCRIPTED_LOCATIONS:
         state["mode"] = EP3_WITNESS_MODE
     else:
         state["mode"] = "public"
@@ -2873,20 +3056,39 @@ async def handle_location_transition(participant_code: str, action: str) -> List
         "type": "system",
         "content": transition_text,
         "message_style": "narrator",
+        "ui": {"showInput": True},
     }
     location_image = location_cfg.get("location_image")
     if location_image:
         transition_message["image"] = location_image
-        transition_message["ui"] = {"imageFirst": True}
+        transition_message["ui"]["imageFirst"] = True
     messages = [transition_message]
-    if target_location in EP3_SCRIPTED_LOCATIONS:
-        await _append_ep2_witness_opener_if_needed(
-            participant_code,
-            state,
-            messages,
-            current_stage=EP3_FORMULA_STAGE,
-            location=target_location,
-        )
+    if stage_number == EP3_FORMULA_STAGE:
+        if target_location in {"university_ep3", "university_ep2"}:
+            ep2_state = _get_ep2_director_state(state)
+            if (
+                ep2_state.get("alex_apartment_doubt_seed_done", False)
+                and not ep2_state.get("university_final_after_doubt_done", False)
+                and _append_scripted_game_text_to_messages(
+                    participant_code,
+                    messages,
+                    "nina_university_final",
+                    EP3_FORMULA_STAGE,
+                )
+            ):
+                ep2_state["university_final_after_doubt_done"] = True
+                ep2_state["university_exit_menu_active"] = True
+                messages[-1]["image"] = EP3_UNIVERSITY_FINAL_AFTER_DOUBT_IMAGE
+        if target_location in EP3_SCRIPTED_LOCATIONS:
+            await _append_ep2_witness_opener_if_needed(
+                participant_code,
+                state,
+                messages,
+                current_stage=EP3_FORMULA_STAGE,
+                location=target_location,
+            )
+        else:
+            messages.extend(await handle_main_menu(participant_code))
     else:
         messages.extend(await handle_main_menu(participant_code))
     await game_state_manager.save_game_state(participant_code, state)
@@ -3764,6 +3966,8 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     clue_image = f"ep{episode}/clue{clue_id}.png"
     if episode == EP2_PAULINE_STAGE and clue_id == "4":
         clue_image = "ep1/plane-drive.png"
+    elif episode == EP3_FORMULA_STAGE and clue_id == "1":
+        clue_image = "ep2/clue1.png"
 
     clue_message = {
         "type": "clue",
@@ -3799,12 +4003,18 @@ def _ep1_investigation_closed(state: Optional[Dict]) -> bool:
 
 
 def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
-    """Episode 2 (Pauline arc) ended after a final accusation."""
+    """True when the active episode investigation is finished and chat input should be disabled."""
     if not state:
         return False
-    if int(state.get("current_stage", 1)) == EP1_PARTY_STAGE:
+    current_stage = int(state.get("current_stage", 1))
+    if current_stage == EP1_PARTY_STAGE:
         return _ep1_investigation_closed(state)
-    return int(state.get("current_stage", 1)) == EP2_PAULINE_STAGE and bool(state.get("game_completed", False))
+    if current_stage == EP2_PAULINE_STAGE:
+        return bool(state.get("game_completed", False))
+    if current_stage == EP3_FORMULA_STAGE:
+        ep2_state = state.get("ep2_director", {})
+        return bool(ep2_state.get("ep3_outro_nina_shown", False))
+    return False
 
 
 def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
@@ -3817,7 +4027,8 @@ def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional
             "You can keep exploring the next episode whenever you like."
         )
 
-    text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", 1))
+    episode = int((state or {}).get("current_stage", 1))
+    text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", episode))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
     calendar_link = _build_next_episode_calendar_link(state)
     if WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK in text:
@@ -3861,6 +4072,22 @@ def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict
     }
 
 
+def _ep3_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+    text = build_weekly_outro_questionnaire_text(participant_code, state)
+    return {
+        "type": "system",
+        "content": text,
+        "message_style": "tutor",
+        "show_explain": False,
+        "ui": {
+            "caseMaterialsAccusationAvailable": False,
+            "episodeComplete": True,
+            "completedStage": EP3_FORMULA_STAGE,
+            "ep3GameCompleted": True,
+        },
+    }
+
+
 def _ep1_investigation_closed_reply() -> Dict:
     return {
         "type": "system",
@@ -3879,9 +4106,20 @@ def _ep2_dialogs_closed_reply() -> Dict:
     }
 
 
+def _ep3_dialogs_closed_reply() -> Dict:
+    return {
+        "type": "system",
+        "content": "Episode 3 is complete for this week. You can read the chat above, but the investigation won't continue until the next episode unlocks.",
+        "show_explain": False,
+    }
+
+
 def _closed_dialogs_reply(state: Dict) -> Dict:
-    if int(state.get("current_stage", 1)) == EP1_PARTY_STAGE:
+    current_stage = int(state.get("current_stage", 1))
+    if current_stage == EP1_PARTY_STAGE:
         return _ep1_investigation_closed_reply()
+    if current_stage == EP3_FORMULA_STAGE:
+        return _ep3_dialogs_closed_reply()
     return _ep2_dialogs_closed_reply()
 
 
@@ -4490,9 +4728,9 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "Game not initialized."}]
 
     if state.get("current_stage", 1) != EP3_FORMULA_STAGE:
-        return [{"type": "error", "content": "This action is available only in episode 2."}]
+        return [{"type": "error", "content": "This action is available only in episode 3."}]
 
-    current_location = get_stage_location(state, 2)
+    current_location = get_stage_location(state, EP3_FORMULA_STAGE)
     if current_location not in {"university_ep3", "university_ep2"}:
         return [{"type": "error", "content": "You can show the USB to James only at the university."}]
 

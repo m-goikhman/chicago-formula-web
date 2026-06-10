@@ -102,7 +102,39 @@ STAGE_CONFIG = {
     4: {
         "name": "Stage 4",
         "clues_count": 0,  # To be configured when content is created
-        "characters": ["tim", "pauline", "fiona", "ronnie"],
+        "characters": ["fiona", "susan", "ronnie", "pauline", "nina"],
+        "default_location": "precinct_ep4",
+        "locations": {
+            "precinct_ep4": {
+                "name": "Precinct",
+                "characters": ["fiona"],
+                "action": "go_precinct_ep4",
+                "show_in_switcher": False,
+            },
+            "university_ep4": {
+                "name": "University",
+                "characters": ["susan"],
+                "action": "go_university_ep4",
+                "texture_image": "ep2/university_texture.png",
+                "location_image": "ep2/university.png",
+            },
+            "bar_ep4": {
+                "name": "Bar",
+                "characters": ["ronnie"],
+                "action": "go_bar_ep4",
+            },
+            "pauline_office_ep4": {
+                "name": "Pauline's office",
+                "characters": ["pauline"],
+                "action": "go_pauline_office_ep4",
+            },
+            "phone_ep4": {
+                "name": "Phone",
+                "characters": ["nina"],
+                "action": "go_phone_ep4",
+                "show_in_switcher": False,
+            },
+        },
         "intro_files": [
             {"file": "intro.txt"}
         ],

@@ -1,0 +1,10 @@
+[sender: nina]
+Good work, Detective. The conversation with Alex was not an easy one.
+----
+So here is where we are. The famous formula — the one Tim attacked Alex for, the one that was supposed to make someone rich — is nonsense. The expert was very clear. It is not a real formula at all.
+----
+Which leaves a much bigger question. If the formula was useless, then how did Alex and Pauline manage to make money on trading?
+----
+But not tonight. Go home and get some sleep. I'll see you in a week — and we'll find an answer.
+[buttons]
+See you!|ep3_outro_questionnaire

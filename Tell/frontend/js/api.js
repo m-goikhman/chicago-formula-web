@@ -315,7 +315,46 @@ function shouldPersistButtonRowAfterClick(action) {
     return normalizedAction === 'menu_talk' || normalizedAction === 'menu_evidence';
 }
 
+function isCurrentStageCaseClosed() {
+    const stage = Number(window.currentStageNumber || 1);
+    const ep1PartyClosed = stage === 1 && Boolean(window.ep1PartyCompleted);
+    const ep2CaseClosed = stage === 2 && Boolean(window.ep1GameCompleted);
+    const ep3CaseClosed = stage === 3 && Boolean(window.ep3GameCompleted);
+    return ep1PartyClosed || ep2CaseClosed || ep3CaseClosed;
+}
+
+function shouldRestoreInputFromLoadedMessages(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return false;
+    }
+    if (isNavigationUnlocked()) {
+        return true;
+    }
+    return messages.some((message) => {
+        if (!message || typeof message !== 'object') {
+            return false;
+        }
+        if (message.type === 'menu') {
+            return true;
+        }
+        if (message.type === 'system') {
+            return String(message.content || '').trim().startsWith('You arrived at');
+        }
+        if (message.ui && message.ui.showInput === true) {
+            return true;
+        }
+        return false;
+    });
+}
+
 function ensureMainInputVisible() {
+    if (isCurrentStageCaseClosed()) {
+        return;
+    }
+    if (typeof window.revealMainInputArea === 'function') {
+        window.revealMainInputArea();
+        return;
+    }
     const inputArea = document.getElementById('inputArea');
     if (!inputArea) return;
     inputArea.style.display = 'flex';
@@ -448,6 +487,9 @@ async function loadGame() {
             }
             const displayOptions = data.animate_messages === true ? {} : { instant: true };
             await displayMessagesSequentially(data.messages, 0, displayOptions);
+            if (shouldRestoreInputFromLoadedMessages(data.messages)) {
+                ensureMainInputVisible();
+            }
             if (typeof window.applyChatScopeVisibility === 'function') {
                 window.applyChatScopeVisibility();
             }
@@ -491,7 +533,11 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     }
 
     if (
-        (normalizedAction === 'ep1_outro_narrator' || normalizedAction === 'outro_questionnaire')
+        (
+            normalizedAction === 'ep1_outro_narrator'
+            || normalizedAction === 'outro_questionnaire'
+            || normalizedAction === 'ep3_outro_questionnaire'
+        )
         && normalizedSelectedOptionText
     ) {
         const currentChatScope = (typeof window.getActiveChatScope === 'function')
@@ -709,7 +755,13 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         // Some actions can change available characters inside the same episode.
         // Refresh stage info so "Who's here" is immediately in sync.
         if (
-            (action.startsWith('go_') || normalizedAction === 'pauline_entrance_doorway' || normalizedAction === 'pauline_entrance_doorway.txt')
+            (
+                action.startsWith('go_')
+                || normalizedAction === 'pauline_entrance_doorway'
+                || normalizedAction === 'pauline_entrance_doorway.txt'
+                || normalizedAction === 'ep3_head_out'
+                || normalizedAction === 'ep3_outro_questionnaire'
+            )
             && typeof loadEpisodeSelector === 'function'
         ) {
             await loadEpisodeSelector();
@@ -740,8 +792,15 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             } else {
                 await displayMessagesSequentially(data.messages);
             }
-            // Input area will be shown automatically by checkAndShowInputArea
-            // when the "👥 FOUR PEOPLE ARE IN THE APARTMENT" message appears
+            if (
+                normalizedAction.startsWith('go_')
+                || normalizedAction.startsWith('talk_')
+                || normalizedAction === 'mode_public'
+                || normalizedAction === 'show_main_menu'
+                || normalizedAction === 'start_investigation'
+            ) {
+                ensureMainInputVisible();
+            }
         } else if (data.detail) {
             // Handle error messages from backend
             addMessage('error', 'Error', data.detail);
@@ -1381,6 +1440,8 @@ async function loadEpisodeSelector() {
         window.ep1UsbDriveUnlocked = Boolean(data.ep1_usb_drive_unlocked);
         const ep1StageInfo = stagesInfo.find((s) => s.stage === 1);
         window.ep1PartyCompleted = ep1StageInfo?.status === 'completed' || ep1StageInfo?.completed === true;
+        const ep3StageInfo = stagesInfo.find((s) => s.stage === 3);
+        window.ep3GameCompleted = ep3StageInfo?.status === 'completed' || ep3StageInfo?.completed === true;
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);

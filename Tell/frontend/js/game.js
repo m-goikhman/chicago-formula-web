@@ -1,27 +1,40 @@
 // Game logic functions
 // Note: inputAreaShown is defined in init.js and accessible via window.inputAreaShown
 
+function revealMainInputArea() {
+    const inputArea = document.getElementById('inputArea');
+    if (!inputArea) return;
+    inputArea.style.display = 'flex';
+    window.inputAreaShown = true;
+    if (typeof window.updatePrivateModeControls === 'function') {
+        window.updatePrivateModeControls();
+    }
+}
+
 function checkAndShowInputArea(messageContent, msgObj) {
     const inputArea = document.getElementById('inputArea');
     if (!inputArea || window.inputAreaShown) return;
 
+    if (msgObj?.ui?.showInput === true) {
+        revealMainInputArea();
+        return;
+    }
+
+    // Episode 3 scripted locations: backend sends a narrator line on arrival.
+    if (messageContent && messageContent.trim().startsWith('You arrived at')) {
+        revealMainInputArea();
+        return;
+    }
+
     // Episode 1: show input when main menu appears after "Start Investigation!" (this message text)
     if (messageContent && messageContent.trim().startsWith('👥 FOUR PEOPLE ARE IN THE APARTMENT')) {
-        inputArea.style.display = 'flex';
-        window.inputAreaShown = true;
-        if (typeof window.updatePrivateModeControls === 'function') {
-            window.updatePrivateModeControls();
-        }
+        revealMainInputArea();
         return;
     }
     // Episodes 2–4 (or if user skipped to them before finishing ep1 onboarding): show input when menu is shown
     // Backend sends type "menu" for main menu and sub-menus once investigation has started for that episode
     if (msgObj && msgObj.type === 'menu') {
-        inputArea.style.display = 'flex';
-        window.inputAreaShown = true;
-        if (typeof window.updatePrivateModeControls === 'function') {
-            window.updatePrivateModeControls();
-        }
+        revealMainInputArea();
     }
 }
 
@@ -150,8 +163,27 @@ function displayMessage(msg) {
             window.applyEp1CaseClosedUi();
         }
     }
+    if (msg.ui && msg.ui.episodeComplete === true && msg.ui.completedStage === 3) {
+        window.ep3GameCompleted = true;
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
+        }
+    }
     if (msg.ui && msg.ui.ep1GameCompleted === true) {
         window.ep1GameCompleted = true;
+        window.ninaPublicDialogueStarted = true;
+        if (typeof currentCharacter !== 'undefined') {
+            currentCharacter = null;
+        }
+        if (typeof window.setActiveCharacterDrawerItem === 'function') {
+            window.setActiveCharacterDrawerItem(null);
+        }
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
+        }
+    }
+    if (msg.ui && msg.ui.ep3GameCompleted === true) {
+        window.ep3GameCompleted = true;
         window.ninaPublicDialogueStarted = true;
         if (typeof currentCharacter !== 'undefined') {
             currentCharacter = null;
@@ -384,3 +416,4 @@ function sleep(ms) {
 window.displayMessage = displayMessage;
 window.displayMessagesSequentially = displayMessagesSequentially;
 window.checkAndShowInputArea = checkAndShowInputArea;
+window.revealMainInputArea = revealMainInputArea;

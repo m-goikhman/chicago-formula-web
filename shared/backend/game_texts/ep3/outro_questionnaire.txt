@@ -1,0 +1,7 @@
+Thanks for playing!
+
+Please answer this [questionnaire:]({{QUESTIONNAIRE_LINK}}) (the link will take you to Google Forms).
+It will take about 3-5 minutes of your time.
+
+The game will continue next week.
+You can [add a weekly reminder to Google Calendar]({{NEXT_EPISODE_CALENDAR_LINK}}) to get notified when the next episode unlocks.

@@ -414,7 +414,10 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep1_usb_received,
         handle_ep1_outro_narrator,
         handle_ep1_outro_questionnaire,
+        handle_ep3_head_out,
+        handle_ep3_outro_questionnaire,
         handle_get_final_summary,
+        get_stage_locations_info,
         append_episode_messages,
         get_messages_for_current_location,
         get_stage_location,
@@ -441,6 +444,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
     elif request.action in [
         "go_default_ep3", "go_university_ep3", "go_alex_apartment_ep3",
         "go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2",
+        "go_precinct_ep4", "go_university_ep4", "go_bar_ep4",
+        "go_pauline_office_ep4", "go_phone_ep4",
     ]:
         messages = await handle_location_transition(participant_code, request.action)
     elif request.action == "start_investigation":
@@ -463,6 +468,10 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep1_outro_narrator(participant_code)
     elif request.action == "outro_questionnaire":
         messages = await handle_ep1_outro_questionnaire(participant_code)
+    elif request.action == "ep3_head_out":
+        messages = await handle_ep3_head_out(participant_code)
+    elif request.action == "ep3_outro_questionnaire":
+        messages = await handle_ep3_outro_questionnaire(participant_code)
     elif request.action == "get_final_summary":
         messages = await handle_get_final_summary(participant_code)
     elif request.action.startswith("examine_ep3_clue_") or request.action.startswith("examine_ep2_clue_"):
@@ -1048,7 +1057,13 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     participant_code = current_user["participant_code"]
     logger.info(f"Getting available stages for participant: {participant_code}")
     
-    from .game_handlers import get_available_stages, GAME_STATE, get_characters_for_stage, get_stage_location
+    from .game_handlers import (
+        get_available_stages,
+        GAME_STATE,
+        get_characters_for_stage,
+        get_stage_location,
+        get_stage_locations_info,
+    )
     from .game_config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
     # Ensure state is loaded
@@ -1081,17 +1096,8 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             location_cfg = stage_config.get("locations", {}).get(default_location, {})
             character_keys = location_cfg.get("characters", stage_config.get("characters", []))
             current_location = default_location
-        locations_info = []
-        for location_key, location_cfg in stage_config.get("locations", {}).items():
-            locations_info.append({
-                "key": location_key,
-                "name": location_cfg.get("name", location_key),
-                "action": location_cfg.get("action"),
-                "texture_image": location_cfg.get("texture_image"),
-                "location_image": location_cfg.get("location_image"),
-                "switcher_visible": location_cfg.get("show_in_switcher", True),
-                "current": location_key == current_location,
-            })
+        game_state = GAME_STATE.get(participant_code, {})
+        locations_info = get_stage_locations_info(game_state, stage_num)
         characters = [
             {"key": k, "full_name": CHARACTER_DATA[k]["full_name"], "image": CHARACTER_DATA.get(k, {}).get("image")}
             for k in character_keys if k in CHARACTER_DATA
