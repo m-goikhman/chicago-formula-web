@@ -508,6 +508,19 @@ def _is_public_group_address(message_text: str) -> bool:
     return not addressed_to_single_person
 
 
+def ensure_stage_default_location(state: Dict, stage_number: int) -> None:
+    """Persist the configured default location when a location episode has none stored yet."""
+    stage_config = STAGE_CONFIG.get(stage_number, {})
+    default_location = stage_config.get("default_location")
+    if not default_location or not stage_config.get("locations"):
+        return
+    stage_locations = state.get("stage_locations", {})
+    if stage_locations.get(str(stage_number)) or stage_locations.get(stage_number):
+        return
+    stage_locations[str(stage_number)] = default_location
+    state["stage_locations"] = stage_locations
+
+
 def _resolve_location_transition(action: str, stage_number: int) -> Optional[str]:
     """Map a go_* action to a location key for the given stage."""
     legacy_target = EP3_LOCATION_ACTIONS.get(action)
@@ -699,6 +712,40 @@ def resolve_conversation_history_key(participant_code: str, state: Optional[Dict
     return f"{participant_code}:{episode}"
 
 
+EP4_FIONA_REASSURANCE_BUTTON = {
+    "text": "We'll look into this",
+    "action": "say_as_user>ep4_fiona_reassured",
+}
+
+
+def _get_ep4_director_state(state: Dict) -> Dict:
+    ep4_state = state.setdefault("ep4_director", {})
+    ep4_state.setdefault("awaiting_reassurance", False)
+    ep4_state.setdefault("fiona_reassured_done", False)
+    ep4_state.setdefault("fiona_left_precinct", False)
+    ep4_state.setdefault("nina_split_up_shown", False)
+    if ep4_state.get("nina_split_up_shown"):
+        ep4_state["fiona_left_precinct"] = True
+    return ep4_state
+
+
+def _ep4_fiona_has_mentioned_ronnie(reply_text: str) -> bool:
+    """True when Fiona's reply mentions Ronnie (either 'Ronnie' or 'Snapper' is enough)."""
+    lowered = (reply_text or "").lower()
+    return "ronnie" in lowered or "snapper" in lowered
+
+
+def _maybe_attach_ep4_fiona_reassurance_button(
+    ep4_state: Dict, reply_text: str, message: Dict
+) -> None:
+    if ep4_state.get("awaiting_reassurance") or ep4_state.get("fiona_reassured_done"):
+        return
+    if not _ep4_fiona_has_mentioned_ronnie(reply_text):
+        return
+    ep4_state["awaiting_reassurance"] = True
+    message["buttons"] = [EP4_FIONA_REASSURANCE_BUTTON]
+
+
 def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
     """Resolve active character set for a stage and location."""
     stage_config = STAGE_CONFIG.get(stage_number, {})
@@ -707,6 +754,12 @@ def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
         return stage_config.get("characters", [])
 
     location_key = get_stage_location(state, stage_number)
+    if stage_number == EP4_STAGE and location_key == "precinct_ep4":
+        ep4_state = state.get("ep4_director") or {}
+        if ep4_state.get("fiona_left_precinct"):
+            return ["nina"]
+        return ["fiona"]
+
     location_config = locations.get(location_key, {})
     location_characters = location_config.get("characters")
     if isinstance(location_characters, list):
@@ -1680,6 +1733,140 @@ def _build_character_message_for_sender(participant_code: str, text: str, sender
     }
 
 
+async def handle_ep4_fiona_reassured(participant_code: str) -> List[Dict]:
+    """EP4 precinct: player reassures Fiona; she thanks them and leaves."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if get_stage_location(state, EP4_STAGE) != "precinct_ep4":
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if ep4_state.get("fiona_reassured_done"):
+        return []
+    if not ep4_state.get("awaiting_reassurance"):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state["awaiting_reassurance"] = False
+    ep4_state["fiona_reassured_done"] = True
+
+    messages: List[Dict] = []
+    if not _append_scripted_game_text_to_messages(
+        participant_code, messages, "fiona_thanks", EP4_STAGE
+    ):
+        return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    state["last_public_responder"] = "fiona"
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
+async def _handle_ep4_precinct_fiona_message(
+    participant_code: str,
+    message_text: str,
+    state: Dict,
+) -> List[Dict]:
+    """EP4 precinct opening: free public dialogue with Fiona until she mentions Ronnie."""
+    messages: List[Dict] = []
+    ep4_state = _get_ep4_director_state(state)
+    char_key = "fiona"
+    char_data = CHARACTER_DATA[char_key]
+    current_language_level = state.get("current_language_level", "B1")
+    current_location = get_stage_location(state, EP4_STAGE)
+    system_prompt = combine_character_prompt(
+        char_key, current_language_level, EP4_STAGE, current_location, state=state
+    )
+    debug_mode_enabled = _is_debug_mode_enabled(state, participant_code)
+
+    log_message("user", message_text, participant_code)
+    if debug_mode_enabled:
+        debug_snapshot = _build_public_input_debug_snapshot(
+            participant_code=participant_code,
+            state=state,
+            char_key=char_key,
+            system_prompt=system_prompt,
+            user_input=message_text,
+        )
+        _append_debug_message(messages, debug_snapshot)
+
+    reply_text: Optional[str] = None
+    try:
+        reply_text = await ask_for_dialogue(
+            participant_code,
+            message_text,
+            system_prompt,
+            char_key,
+        )
+        if debug_mode_enabled:
+            _append_contradiction_guard_debug_message(messages, state)
+    except Exception as exc:
+        logger.error(f"Failed to get EP4 Fiona reply: {exc}")
+
+    if reply_text and reply_text.strip():
+        reply_text = reply_text.strip()
+        message_id = generate_message_id()
+        save_message_to_cache(message_id, reply_text, char_key)
+        log_message(f"character_{char_key}", reply_text, participant_code)
+        state["last_public_responder"] = char_key
+        fiona_message = {
+            "type": "character",
+            "character": char_key,
+            "character_name": char_data["full_name"],
+            "character_image": char_data.get("image"),
+            "content": reply_text,
+            "message_id": message_id,
+            "show_explain": True,
+        }
+        _maybe_attach_ep4_fiona_reassurance_button(ep4_state, reply_text, fiona_message)
+        messages.append(fiona_message)
+    else:
+        messages.append(
+            {
+                "type": "character",
+                "character": char_key,
+                "character_name": char_data["full_name"],
+                "character_image": char_data.get("image"),
+                "content": "[Character is thinking...]",
+                "show_explain": False,
+            }
+        )
+
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
+async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
+    """EP4 precinct: Nina briefs the detective and offers location choices."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if not ep4_state.get("fiona_reassured_done"):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+    if ep4_state.get("nina_split_up_shown"):
+        return []
+
+    ep4_state["nina_split_up_shown"] = True
+    messages: List[Dict] = []
+    if not _append_scripted_game_text_to_messages(
+        participant_code, messages, "nina_split_up", EP4_STAGE
+    ):
+        return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    state["last_public_responder"] = "nina"
+    _sync_last_public_responder_for_public_mode(state, messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
 async def handle_game_text_action(participant_code: str, action: str) -> List[Dict]:
     """Show a message loaded directly from game_texts via action path."""
     state = GAME_STATE.get(participant_code)
@@ -1688,6 +1875,12 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
 
     normalized_action = (action or "").strip().replace("\\", "/").lower()
     episode = state.get("current_stage", 1)
+    if episode == EP4_STAGE and normalized_action == "nina_split_up":
+        return await handle_ep4_nina_split_up(participant_code)
+
+    if episode == EP4_STAGE and normalized_action == "fiona_to_nina":
+        _get_ep4_director_state(state)["fiona_left_precinct"] = True
+
     payload = resolve_action_text_from_game_texts(action, episode)
     if not payload:
         return []
@@ -2372,9 +2565,11 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
         if not stage_locations.get("3") and not stage_locations.get(3):
             stage_locations["3"] = EP3_DEFAULT_LOCATION
         if int(state.get("current_stage", 1)) == EP4_STAGE:
-            if not stage_locations.get("4") and not stage_locations.get(4):
-                stage_locations["4"] = EP4_DEFAULT_LOCATION
+            ensure_stage_default_location(state, EP4_STAGE)
         state["stage_locations"] = stage_locations
+
+    if int(state.get("current_stage", 1)) == EP4_STAGE:
+        _get_ep4_director_state(state)
 
     if "last_public_responder" not in state:
         state["last_public_responder"] = None
@@ -2581,6 +2776,7 @@ async def switch_stage(participant_code: str, stage_number: int) -> bool:
     # Update current stage
     old_stage = state.get("current_stage", 1)
     state["current_stage"] = stage_number
+    ensure_stage_default_location(state, stage_number)
 
     if stage_number == EP2_PAULINE_STAGE and old_stage == EP1_PARTY_STAGE:
         _carry_episode_dialog_history(participant_code, EP1_PARTY_STAGE, EP2_PAULINE_STAGE)
@@ -2929,6 +3125,8 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     
     episode = state.get("current_stage", 1)
     intro_files = STAGE_CONFIG.get(episode, {}).get("intro_files", [])
+    if episode_has_locations(episode):
+        ensure_stage_default_location(state, episode)
 
     if episode == EP2_PAULINE_STAGE:
         state["onboarding_step"] = "investigation_started"
@@ -2956,7 +3154,9 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     content_blocks = _extract_scripted_message_blocks(content, default_sender=default_intro_sender)
     if not content_blocks:
         content_blocks = [(default_intro_sender, "Continue.")]
-    default_button_text = "🔍 Game Menu" if step >= len(intro_files) - 1 else "Next"
+    is_last_intro_step = step >= len(intro_files) - 1
+    ep4_skip_menu_after_intro = episode == EP4_STAGE and is_last_intro_step
+    default_button_text = "🔍 Game Menu" if is_last_intro_step else "Next"
     fallback_buttons = [{"text": default_button_text, "action": "case_intro_next"}]
 
     buttons = parsed_buttons or fallback_buttons
@@ -2990,14 +3190,41 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
             }
 
         if is_last_part:
-            msg["buttons"] = buttons
+            if ep4_skip_menu_after_intro:
+                msg["ui"] = {"showInput": True}
+            else:
+                msg["buttons"] = buttons
         if index == 0 and entry.get("image"):
             msg["image"] = entry["image"]
         messages.append(msg)
 
+    if ep4_skip_menu_after_intro:
+        _mark_investigation_started(state)
+        state["mode"] = "public"
+        state["current_character"] = None
+        state["last_public_responder"] = "fiona"
+        _get_ep4_director_state(state)
+
     _sync_last_public_responder_for_public_mode(state, messages)
     await game_state_manager.save_game_state(participant_code, state)
     return messages
+
+
+def _mark_investigation_started(state: Dict) -> None:
+    """Persist investigation-start flags shared by intro completion and start_investigation."""
+    state["onboarding_step"] = "investigation_started"
+    if not state.get("game_start_at"):
+        cet_tz = pytz.timezone('Europe/Berlin')
+        state["game_start_at"] = datetime.now(cet_tz).isoformat()
+    _ensure_absolute_stage_unlock_schedule(state)
+
+
+def _prepare_ep4_precinct_conversation(state: Dict) -> None:
+    """EP4 opening: stay at the precinct and route free text to Fiona."""
+    ensure_stage_default_location(state, EP4_STAGE)
+    state["mode"] = "public"
+    state["current_character"] = None
+    state["last_public_responder"] = "fiona"
 
 
 async def start_investigation(participant_code: str) -> List[Dict]:
@@ -3007,11 +3234,11 @@ async def start_investigation(participant_code: str) -> List[Dict]:
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
     
-    state["onboarding_step"] = "investigation_started"
-    if not state.get("game_start_at"):
-        cet_tz = pytz.timezone('Europe/Berlin')
-        state["game_start_at"] = datetime.now(cet_tz).isoformat()
-    _ensure_absolute_stage_unlock_schedule(state)
+    _mark_investigation_started(state)
+    if state.get("current_stage") == EP4_STAGE:
+        _prepare_ep4_precinct_conversation(state)
+        await game_state_manager.save_game_state(participant_code, state)
+        return []
     await game_state_manager.save_game_state(participant_code, state)
     
     return await handle_main_menu(participant_code)
@@ -3498,6 +3725,31 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
 
     if current_stage == EP3_FORMULA_STAGE and current_location == EP3_DEFAULT_LOCATION:
         return await handle_nina_message(participant_code, message_text, chat_scope="public")
+
+    if current_stage == EP4_STAGE and current_location == "precinct_ep4":
+        ep4_state = _get_ep4_director_state(state)
+        if ep4_state.get("awaiting_reassurance") or (
+            ep4_state.get("fiona_reassured_done") and not ep4_state.get("nina_split_up_shown")
+        ):
+            await game_state_manager.save_game_state(participant_code, state)
+            return [
+                {
+                    "type": "system",
+                    "content": "Use the button above to continue.",
+                    "show_explain": False,
+                }
+            ]
+        if ep4_state.get("nina_split_up_shown"):
+            await game_state_manager.save_game_state(participant_code, state)
+            return [
+                {
+                    "type": "system",
+                    "content": "Choose where to go next.",
+                    "show_explain": False,
+                }
+            ]
+        if not ep4_state.get("fiona_reassured_done"):
+            return await _handle_ep4_precinct_fiona_message(participant_code, message_text, state)
 
     if current_stage == EP3_FORMULA_STAGE and current_location in EP3_SCRIPTED_LOCATIONS:
         return await _handle_ep2_scripted_public_message(

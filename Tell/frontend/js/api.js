@@ -330,6 +330,9 @@ function shouldRestoreInputFromLoadedMessages(messages) {
     if (isNavigationUnlocked()) {
         return true;
     }
+    if (messages.some((message) => message && message.type === 'user')) {
+        return true;
+    }
     return messages.some((message) => {
         if (!message || typeof message !== 'object') {
             return false;
@@ -511,18 +514,24 @@ async function loadGame() {
 
 async function handleAction(action, closeDrawersOnSuccess = true, selectedOptionText = '') {
     console.log('Handling action:', action);
-    const normalizedAction = String(action || '').trim().toLowerCase();
+    let normalizedAction = String(action || '').trim().toLowerCase();
     const normalizedSelectedOptionText = String(selectedOptionText || '').trim();
 
     // Frontend-only: show the button label as the player's line; no API or other side effects.
-    if (normalizedAction === 'say_as_user') {
+    // Optional follow-up: say_as_user>action_key runs the server action after posting the line.
+    if (normalizedAction === 'say_as_user' || normalizedAction.startsWith('say_as_user>')) {
         if (normalizedSelectedOptionText) {
             const currentChatScope = (typeof window.getActiveChatScope === 'function')
                 ? window.getActiveChatScope()
                 : 'public';
             addMessage('user', 'You', normalizedSelectedOptionText, null, null, false, { chatScope: currentChatScope });
         }
-        return;
+        if (normalizedAction.startsWith('say_as_user>')) {
+            action = normalizedAction.slice('say_as_user>'.length);
+            normalizedAction = String(action || '').trim().toLowerCase();
+        } else {
+            return;
+        }
     }
 
     if (normalizedAction.startsWith('accuse_') && normalizedSelectedOptionText) {
@@ -761,6 +770,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
                 || normalizedAction === 'pauline_entrance_doorway.txt'
                 || normalizedAction === 'ep3_head_out'
                 || normalizedAction === 'ep3_outro_questionnaire'
+                || normalizedAction === 'fiona_to_nina'
             )
             && typeof loadEpisodeSelector === 'function'
         ) {
@@ -798,6 +808,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
                 || normalizedAction === 'mode_public'
                 || normalizedAction === 'show_main_menu'
                 || normalizedAction === 'start_investigation'
+                || normalizedAction === 'case_intro_next'
             ) {
                 ensureMainInputVisible();
             }

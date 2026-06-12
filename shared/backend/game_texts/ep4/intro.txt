@@ -1,8 +1,8 @@
 [from: narrator]
-Your phone rings.
+Fiona McAllister walks into the precinct. She looks pale and frightened.
 ---
 [from: fiona]
-Detective? This is Fiona McAllistaire, Alex's girlfriend.
+Detective? I'm Fiona — Alex's girlfriend.
 ---
 [from: fiona]
-I think, Alex has been kidnapped.
+I'm afraid Alex has been kidnapped.

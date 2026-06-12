@@ -1,0 +1,5 @@
+[from: narrator]
+Fiona goes away. She looks slightly relieved.
+
+[buttons]
+I need to talk to Nina|say_as_user>nina_split_up

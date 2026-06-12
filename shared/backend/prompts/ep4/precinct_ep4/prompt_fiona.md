@@ -30,7 +30,7 @@ You are calling the detective who is investigating the attack. You believe Alex 
 
 ### What You Found Today
 - The apartment was quiet. Alex was not there.
-- His phone is off. It goes straight to voicemail.
+- His phone is gone, it is off and goes straight to voicemail.
 - Some of his clothes are gone, and one of his bags is missing.
 - His medicine for his head injury is still on the counter. He has not taken it.
 - There is no note, no text, nothing.

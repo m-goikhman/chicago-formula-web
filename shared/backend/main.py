@@ -416,6 +416,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep1_outro_questionnaire,
         handle_ep3_head_out,
         handle_ep3_outro_questionnaire,
+        handle_ep4_fiona_reassured,
         handle_get_final_summary,
         get_stage_locations_info,
         append_episode_messages,
@@ -472,6 +473,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep3_head_out(participant_code)
     elif request.action == "ep3_outro_questionnaire":
         messages = await handle_ep3_outro_questionnaire(participant_code)
+    elif request.action == "ep4_fiona_reassured":
+        messages = await handle_ep4_fiona_reassured(participant_code)
     elif request.action == "get_final_summary":
         messages = await handle_get_final_summary(participant_code)
     elif request.action.startswith("examine_ep3_clue_") or request.action.startswith("examine_ep2_clue_"):

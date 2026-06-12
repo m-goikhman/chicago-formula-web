@@ -196,31 +196,81 @@ function getEp2ScriptedWitnessKey() {
     return EP3_SCRIPTED_LOCATIONS[locationKey] || null;
 }
 
-function getEp2SwitchableLocations() {
-    if (Number(window.currentStageNumber || 1) !== 3) {
+function episodeUsesLocationNavigation() {
+    const stage = Number(window.currentStageNumber || 1);
+    const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
+    return (stage === 3 || stage === 4) && locations.length > 0;
+}
+
+function getSwitchableStageLocations() {
+    if (!episodeUsesLocationNavigation()) {
         return [];
     }
     const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
     return locations.filter((loc) => loc?.switcher_visible !== false && !!loc?.action);
 }
 
-function getCurrentEp2Location() {
-    const locations = getEp2SwitchableLocations();
+function getEp2SwitchableLocations() {
+    return getSwitchableStageLocations();
+}
+
+function getCurrentStageLocation() {
+    const locationKey = getCurrentStageLocationKey();
+    const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
+    if (locationKey) {
+        const matched = locations.find((loc) => loc.key === locationKey);
+        if (matched) {
+            return matched;
+        }
+    }
     return locations.find((loc) => loc.current) || null;
 }
 
-function shouldShowEp2LocationHeader() {
+function getCurrentEp2Location() {
+    return getCurrentStageLocation();
+}
+
+function shouldShowLocationHeader() {
     const navigationBar = document.getElementById('navigationBar');
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
-    if (!hasInvestigationStarted || Number(window.currentStageNumber || 1) !== 3) {
+    const stage = Number(window.currentStageNumber || 1);
+    if (!hasInvestigationStarted || !episodeUsesLocationNavigation()) {
         return false;
     }
-    if (Boolean(window.ep3GameCompleted)) {
+    if (stage === 3) {
+        if (Boolean(window.ep3GameCompleted)) {
+            return false;
+        }
+        const switchableLocations = getSwitchableStageLocations();
+        const hasExitAction = switchableLocations.some((loc) => loc?.action === 'ep3_head_out');
+        return Boolean(getEp2ScriptedWitnessKey()) && (switchableLocations.length > 1 || hasExitAction);
+    }
+    if (stage === 4) {
+        const inputArea = document.getElementById('inputArea');
+        const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
+        return Boolean(getCurrentStageLocation()) && (hasInvestigationStarted || isInputVisible);
+    }
+    return false;
+}
+
+function shouldShowLocationDropdown() {
+    if (!shouldShowLocationHeader()) {
         return false;
     }
-    const switchableLocations = getEp2SwitchableLocations();
-    const hasExitAction = switchableLocations.some((loc) => loc?.action === 'ep3_head_out');
-    return Boolean(getEp2ScriptedWitnessKey()) && (switchableLocations.length > 1 || hasExitAction);
+    const stage = Number(window.currentStageNumber || 1);
+    if (stage === 3) {
+        const switchableLocations = getSwitchableStageLocations();
+        return switchableLocations.length > 1
+            || switchableLocations.some((loc) => loc?.action === 'ep3_head_out');
+    }
+    if (stage === 4) {
+        return getSwitchableStageLocations().length > 1;
+    }
+    return false;
+}
+
+function shouldShowEp2LocationHeader() {
+    return shouldShowLocationHeader();
 }
 
 function closeLocationHeaderDropdown() {
@@ -236,7 +286,7 @@ function closeLocationHeaderDropdown() {
 }
 
 function toggleLocationHeaderDropdown(event) {
-    if (!shouldShowEp2LocationHeader()) {
+    if (!shouldShowLocationDropdown()) {
         return;
     }
     if (event) {
@@ -264,15 +314,22 @@ function renderLocationHeaderDropdown() {
         return;
     }
 
-    if (!shouldShowEp2LocationHeader()) {
+    if (!shouldShowLocationHeader()) {
         closeLocationHeaderDropdown();
         dropdown.innerHTML = '';
         context.classList.remove('has-location-dropdown');
         return;
     }
 
-    context.classList.add('has-location-dropdown');
-    const locations = getEp2SwitchableLocations();
+    const hasDropdown = shouldShowLocationDropdown();
+    context.classList.toggle('has-location-dropdown', hasDropdown);
+    if (!hasDropdown) {
+        closeLocationHeaderDropdown();
+        dropdown.innerHTML = '';
+        return;
+    }
+
+    const locations = getSwitchableStageLocations();
     dropdown.innerHTML = '';
     locations.forEach((location) => {
         const item = document.createElement('div');
@@ -549,10 +606,16 @@ function updatePrivateModeControls() {
     const hasInvestigationStarted = Boolean(navigationBar && navigationBar.style.display !== 'none');
     const shouldShowEp1PublicAvatar = (currentStage === 1 || currentStage === 2) && hasInvestigationStarted;
     const shouldShowEp2PublicAvatar = Boolean(ep2Witness && hasInvestigationStarted);
-    const isEp2LocationHeader = shouldShowEp2LocationHeader();
-    const currentEp2Location = getCurrentEp2Location();
-    const ep2LocationImageUrl = buildImageUrl(
-        currentEp2Location?.location_image || currentEp2Location?.texture_image
+    const isLocationHeader = shouldShowLocationHeader();
+    const hasLocationDropdown = shouldShowLocationDropdown();
+    const currentStageLocation = getCurrentStageLocation();
+    const singleLocationCharacter = currentStage === 4 && stageCharacters.length === 1
+        ? stageCharacters[0]
+        : null;
+    const locationHeaderImageUrl = buildImageUrl(
+        currentStageLocation?.location_image
+        || currentStageLocation?.texture_image
+        || singleLocationCharacter?.image
     );
     const ep1PartyClosed = currentStage === 1 && Boolean(window.ep1PartyCompleted);
     const ep2CaseClosed = currentStage === 2 && Boolean(window.ep1GameCompleted);
@@ -567,8 +630,8 @@ function updatePrivateModeControls() {
         backToCommonDialogueBtn.classList.toggle('is-private', isPrivateModeActive);
     }
     if (headerContextAvatar) {
-        const avatarSrc = isEp2LocationHeader && ep2LocationImageUrl
-            ? ep2LocationImageUrl
+        const avatarSrc = isLocationHeader && locationHeaderImageUrl
+            ? locationHeaderImageUrl
             : (isPrivateModeActive && privateAvatarUrl
                 ? privateAvatarUrl
                 : (shouldShowEp2PublicAvatar && ep2PublicAvatarUrl
@@ -577,8 +640,8 @@ function updatePrivateModeControls() {
         if (avatarSrc) {
             headerContextAvatar.src = avatarSrc;
             headerContextAvatar.style.display = 'block';
-            headerContextAvatar.alt = isEp2LocationHeader
-                ? (currentEp2Location?.name || 'Current location')
+            headerContextAvatar.alt = isLocationHeader
+                ? (currentStageLocation?.name || 'Current location')
                 : (isPrivateModeActive
                     ? `${privateCharacterLabel} avatar`
                     : (ep2Witness ? `${ep2Witness.full_name} avatar` : 'Group chat avatar'));
@@ -590,19 +653,19 @@ function updatePrivateModeControls() {
     }
     if (headerModeContext) {
         const shouldShowHeaderContext = !isLoginVisible && Boolean(
-            (isEp2LocationHeader && ep2LocationImageUrl)
+            (isLocationHeader && (locationHeaderImageUrl || currentStageLocation?.name))
             || (isPrivateModeActive && privateAvatarUrl)
             || (!isPrivateModeActive && (shouldShowEp1PublicAvatar || shouldShowEp2PublicAvatar))
         );
         headerModeContext.style.display = shouldShowHeaderContext ? 'inline-flex' : 'none';
-        headerModeContext.classList.toggle('is-private', isPrivateModeActive && !isEp2LocationHeader);
-        headerModeContext.classList.toggle('has-location-dropdown', isEp2LocationHeader);
-        headerModeContext.title = isEp2LocationHeader
-            ? `Current location: ${currentEp2Location?.name || 'Location'}`
+        headerModeContext.classList.toggle('is-private', isPrivateModeActive && !isLocationHeader);
+        headerModeContext.classList.toggle('has-location-dropdown', hasLocationDropdown);
+        headerModeContext.title = isLocationHeader
+            ? `Current location: ${currentStageLocation?.name || 'Location'}`
             : (isPrivateModeActive
                 ? `Private chat with ${privateCharacterLabel}`
                 : publicModeLabel);
-        if (isEp2LocationHeader) {
+        if (hasLocationDropdown) {
             headerModeContext.style.cursor = 'pointer';
             headerModeContext.setAttribute('role', 'button');
             headerModeContext.setAttribute('aria-haspopup', 'menu');
@@ -625,11 +688,18 @@ function updatePrivateModeControls() {
         } else {
             inputElement.disabled = false;
             if (isInputVisible) {
+                const singleLocationPartner = !isPrivateModeActive
+                    && currentStage === 4
+                    && stageCharacters.length === 1
+                    ? stageCharacters[0].full_name
+                    : null;
                 inputElement.placeholder = isPrivateModeActive
                     ? `Message ${privateCharacterLabel}...`
                     : (ep2Witness
                         ? `Message ${ep2Witness.full_name}...`
-                        : 'Type a message to everyone...');
+                        : (singleLocationPartner
+                            ? `Message ${singleLocationPartner}...`
+                            : 'Type a message to everyone...'));
             }
         }
     }
