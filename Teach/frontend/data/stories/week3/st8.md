@@ -9,3 +9,9 @@ They talk for twenty minutes. Alex is calm and cooperative. He talks about the e
 "She's fine," Nina says.
 
 Alex is quiet for a moment. "I feel — I don't know. I'm not angry, exactly. I feel sad. Tim was in trouble and didn't ask for help. He could have just talked to me." He shakes his head slowly. "I didn't know it had gotten that bad for him."
+
+Nina watches him. He is warm and easy to talk to. Everything he says is reasonable. Everything he says matches the facts.
+
+She takes out her notebook.
+
+"Alex," she says. "I've been to the university this morning."

@@ -12,6 +12,7 @@ window.TeachWeekContent = (() => {
         const appendNextButton = deps.appendNextButton || (() => {});
         const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
         const requestTeachOutroQuestionnaire = deps.requestTeachOutroQuestionnaire || null;
+        const buildLocalOutroQuestionnaireText = deps.buildLocalOutroQuestionnaireText || null;
         const getWeekExerciseSummary = deps.getWeekExerciseSummary || (() => null);
         const getWeekStepProgress = deps.getWeekStepProgress || (() => 1);
         const setWeekStepProgress = deps.setWeekStepProgress || (() => {});
@@ -230,30 +231,31 @@ window.TeachWeekContent = (() => {
                     }
 
                     const messageText = content.querySelector('.message-text');
+                    const outroOptions = {
+                        participantCode: String(options.participantCode || '').trim(),
+                        isDemoMode: options.isDemoMode === true,
+                        firstLoginAtMs: Number(options.firstLoginAtMs) || Date.now()
+                    };
                     const renderOutroText = (extraText = '') => {
-                        if (!messageText) {
+                        if (!messageText || typeof renderMarkdownInto !== 'function') {
                             return;
                         }
-                        const normalizedExtra = String(extraText || '').trim();
-                        if (typeof window.marked?.parse === 'function') {
-                            messageText.innerHTML = normalizedExtra
-                                ? window.marked.parse(normalizedExtra, { breaks: true })
-                                : '';
-                        } else {
-                            messageText.textContent = normalizedExtra;
-                        }
+                        renderMarkdownInto(messageText, extraText);
                     };
+                    const fallbackOutroText = typeof buildLocalOutroQuestionnaireText === 'function'
+                        ? buildLocalOutroQuestionnaireText(week.id, outroOptions)
+                        : '';
+
+                    renderOutroText(fallbackOutroText);
 
                     if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
-                        requestTeachOutroQuestionnaire(week.id)
+                        requestTeachOutroQuestionnaire(week.id, outroOptions)
                             .then((outroText) => {
-                                renderOutroText(outroText);
+                                renderOutroText(outroText || fallbackOutroText);
                             })
                             .catch(() => {
-                                renderOutroText();
+                                renderOutroText(fallbackOutroText);
                             });
-                    } else if (messageText) {
-                        renderOutroText();
                     }
 
                     return outroMessage;
@@ -283,10 +285,6 @@ window.TeachWeekContent = (() => {
         sequence.forEach((step, index) => {
             const nextStep = sequence[index + 1];
             if (!nextStep) {
-                return;
-            }
-            if (step.type === 'final_outro') {
-                step.label = '';
                 return;
             }
             step.label = buildNextButtonLabel(step.type, {

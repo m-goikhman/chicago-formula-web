@@ -294,6 +294,7 @@
         TeachUI.renderWeekContent(chatArea, currentWeek, {
             participantCode: TeachAuth?.getParticipantCode?.() || '',
             isDemoMode: TeachAuth?.isDemoMode?.() === true,
+            firstLoginAtMs: Number(TeachState.toSerializableSnapshot?.()?.firstLoginAt) || Date.now(),
             notesValue: TeachState.getNotes(currentWeek.id),
             onNotesReady: ({ notesTextarea, notesStatusEl: statusEl }) => {
                 notesStatusEl = statusEl || null;

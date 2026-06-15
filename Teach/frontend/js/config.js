@@ -17,6 +17,35 @@ const ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
     + '1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform'
 );
 const ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = '326737977';
+const WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK = '{{QUESTIONNAIRE_LINK}}';
+const NEXT_EPISODE_CALENDAR_TEMPLATE_LINK = '{{NEXT_EPISODE_CALENDAR_LINK}}';
+const WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK = 'https://forms.gle/hWc2Uedw8KkdCLhv6';
+const WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
+    'https://docs.google.com/forms/d/e/'
+    + '1FAIpQLSf7wqiYQXAQZLF3I_lbItkm2iAG8ro6aYUhkj8z7bHt_Pj0WQ/viewform'
+);
+const WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = '1171438860';
+const WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = '1690586821';
+const CALENDAR_REMINDER_TITLE = 'Teach&Tell: Next episode unlock';
+const CALENDAR_REMINDER_DETAILS = (
+    'Your next Teach&Tell episode is now unlocked. '
+    + 'Episodes unlock every week from your game start date. '
+    + 'Open the game: https://chicago-formula-n.web.app/'
+);
+const TEACH_DEMO_OUTRO_TEXT = [
+    'Thanks for playing!',
+    '',
+    'You can keep exploring the next episode whenever you like.'
+].join('\n');
+const TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE = [
+    'Thanks for playing!',
+    '',
+    `Please answer this [questionnaire:](${WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK}) (the link will take you to Google Forms).`,
+    'It will take about 3-5 minutes of your time.',
+    '',
+    'The game will continue next week.',
+    `You can [add a weekly reminder to Google Calendar](${NEXT_EPISODE_CALENDAR_TEMPLATE_LINK}) to get notified when the next episode unlocks.`
+].join('\n');
 const TEACH_DEMO_ONBOARDING_INTRO = [
     'This is Demo of control group condition.',
     '',
@@ -100,6 +129,16 @@ window.TEACH_CONFIG = {
     ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
     ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
     ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY,
+    WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK,
+    NEXT_EPISODE_CALENDAR_TEMPLATE_LINK,
+    WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
+    WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL,
+    WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY,
+    WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
+    CALENDAR_REMINDER_TITLE,
+    CALENDAR_REMINDER_DETAILS,
+    TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
+    TEACH_DEMO_OUTRO_TEXT,
     TEACH_ONBOARDING_WELCOME_TEMPLATE,
     TEACH_DEMO_ONBOARDING_INTRO,
     TEACH_DEMO_SURVEY_FOLD_LABEL

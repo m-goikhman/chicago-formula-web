@@ -10,7 +10,17 @@ const TeachUI = (() => {
         ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK,
         ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
         ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL,
-        ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY
+        ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY,
+        WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK,
+        NEXT_EPISODE_CALENDAR_TEMPLATE_LINK,
+        WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK,
+        WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL,
+        WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY,
+        WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
+        CALENDAR_REMINDER_TITLE,
+        CALENDAR_REMINDER_DETAILS,
+        TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
+        TEACH_DEMO_OUTRO_TEXT
     } = window.TEACH_CONFIG || {};
 
     function buildOnboardingQuestionnaireLink(participantCode = '') {
@@ -39,6 +49,90 @@ const TeachUI = (() => {
             personalizedLink
         );
         return result;
+    }
+
+    function parseTeachWeekNumber(weekId = '') {
+        const normalized = String(weekId || '').trim().toLowerCase();
+        if (normalized.startsWith('week')) {
+            const parsed = Number.parseInt(normalized.slice(4), 10);
+            if (Number.isFinite(parsed)) {
+                return Math.max(1, Math.min(4, parsed));
+            }
+        }
+        return 1;
+    }
+
+    function buildWeeklyQuestionnaireLink(participantCode = '', weekId = 'week1') {
+        const normalizedCode = String(participantCode || '').trim().toUpperCase();
+        const weekNumber = parseTeachWeekNumber(weekId);
+        if (!normalizedCode || !WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY || !WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL) {
+            return WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK;
+        }
+
+        const params = new URLSearchParams({
+            usp: 'pp_url',
+            [`entry.${WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY}`]: normalizedCode,
+            [`entry.${WEEKLY_QUESTIONNAIRE_WEEK_ENTRY}`]: String(weekNumber)
+        });
+        return `${WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL}?${params.toString()}`;
+    }
+
+    function buildNextEpisodeCalendarLink(weekId = 'week1', firstLoginAtMs = Date.now()) {
+        const weekNumber = parseTeachWeekNumber(weekId);
+        const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+        const unlockAt = new Date(Number(firstLoginAtMs) || Date.now());
+        unlockAt.setTime(unlockAt.getTime() + (weekNumber * WEEK_IN_MS));
+
+        const formatDay = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}${month}${day}`;
+        };
+
+        const startDay = formatDay(unlockAt);
+        const endDate = new Date(unlockAt);
+        endDate.setDate(endDate.getDate() + 1);
+        const params = new URLSearchParams({
+            action: 'TEMPLATE',
+            text: CALENDAR_REMINDER_TITLE || 'Teach&Tell: Next episode unlock',
+            dates: `${startDay}/${formatDay(endDate)}`,
+            details: CALENDAR_REMINDER_DETAILS || ''
+        });
+        return `https://calendar.google.com/calendar/render?${params.toString()}`;
+    }
+
+    function personalizeOutroQuestionnaireLink(text, participantCode = '', weekId = 'week1', firstLoginAtMs = Date.now()) {
+        if (!text) {
+            return text;
+        }
+        const questionnaireLink = buildWeeklyQuestionnaireLink(participantCode, weekId);
+        const calendarLink = buildNextEpisodeCalendarLink(weekId, firstLoginAtMs);
+        let result = String(text);
+        result = result.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, questionnaireLink);
+        result = result.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, questionnaireLink);
+        result = result.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendarLink);
+        result = result.replace(
+            /https:\/\/docs\.google\.com\/forms\/d\/e\/1FAIpQLSf7wqiYQXAQZLF3I_lbItkm2iAG8ro6aYUhkj8z7bHt_Pj0WQ\/viewform(?:\?[^\s)]*)?/g,
+            questionnaireLink
+        );
+        return result;
+    }
+
+    function buildLocalOutroQuestionnaireText(weekId, options = {}) {
+        if (options.isDemoMode === true) {
+            return TEACH_DEMO_OUTRO_TEXT || 'Thanks for playing!';
+        }
+        const template = TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE;
+        if (!template) {
+            return 'Thanks for playing! Please complete the weekly questionnaire in Google Forms.';
+        }
+        return personalizeOutroQuestionnaireLink(
+            template,
+            options.participantCode,
+            weekId,
+            options.firstLoginAtMs
+        );
     }
 
     function renderMarkdownInto(element, markdownText) {
@@ -282,9 +376,11 @@ const TeachUI = (() => {
         return summary;
     }
 
-    async function requestTeachOutroQuestionnaire(weekId) {
+    async function requestTeachOutroQuestionnaire(weekId, options = {}) {
+        const fallbackText = () => buildLocalOutroQuestionnaireText(weekId, options);
+
         if (!apiClient || !TeachAuth || typeof TeachAuth.callWithSessionRecovery !== 'function') {
-            throw new Error('Outro is unavailable right now.');
+            return fallbackText();
         }
 
         const normalizedWeekId = String(weekId || '').trim() || 'week1';
@@ -293,23 +389,24 @@ const TeachUI = (() => {
             token: TeachAuth.getToken?.() || ''
         });
 
-        const { response, data, authFailureHandled } = await TeachAuth.callWithSessionRecovery(executeRequest, {
-            authFailureMessage: 'Could not load outro right now.'
-        });
+        try {
+            const { response, data, authFailureHandled } = await TeachAuth.callWithSessionRecovery(executeRequest, {
+                authFailureMessage: 'Could not load outro right now.'
+            });
 
-        if (authFailureHandled) {
-            throw new Error('Could not load outro right now.');
-        }
-        if (!response?.ok) {
-            const detail = data && (data.detail || data.error || data.message);
-            throw new Error(detail || 'Could not load outro right now.');
-        }
+            if (authFailureHandled || !response?.ok) {
+                return fallbackText();
+            }
 
-        const text = String(data?.text || '').trim();
-        if (!text) {
-            throw new Error('Could not load outro right now.');
+            const text = String(data?.text || '').trim();
+            if (!text) {
+                return fallbackText();
+            }
+            return text;
+        } catch (error) {
+            console.warn('[TeachUI] Outro questionnaire API failed, using local template:', error);
+            return fallbackText();
         }
-        return text;
     }
 
     function parseChoiceRevealConfig(rawContent = '') {
@@ -499,6 +596,7 @@ const TeachUI = (() => {
                 appendNextButton,
                 requestTutorFinalSummary,
                 requestTeachOutroQuestionnaire,
+                buildLocalOutroQuestionnaireText,
                 getWeekExerciseSummary: TeachState?.getWeekExerciseSummary || (() => null),
                 getWeekStepProgress: TeachState?.getWeekStepProgress || (() => 1),
                 setWeekStepProgress: TeachState?.setWeekStepProgress || (() => {}),
