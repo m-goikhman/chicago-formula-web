@@ -18,10 +18,9 @@ const ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
 );
 const ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = '326737977';
 const TEACH_DEMO_ONBOARDING_INTRO = [
-    'Hi! 👋',
-    'Welcome to the Teach demo.',
+    'This is Demo of control group condition.',
     '',
-    'Read the story, complete the exercises, and try the writing tasks with tutor feedback.',
+    'You can check all the episodes in the game.',
 ].join('\n');
 
 const TEACH_DEMO_SURVEY_FOLD_LABEL = 'Study questionnaires (not required for demo)';
@@ -41,26 +40,23 @@ const TEACH_ONBOARDING_WELCOME_TEMPLATE = [
 const TEACH_WEEKS = [
     {
         id: 'week1',
-        title: 'Week 1 · The Party',
+        title: 'Episode 1 · The Party',
         source: '../week1_the_party.md',
         order: 1
     },
     {
         id: 'week2',
-        title: 'Week 2 · Secrets & Shadows',
-        source: '../week2_secrets_and_shadows.md',
+        title: 'Episode 2 · Someone Unexpected',
         order: 2
     },
     {
         id: 'week3',
-        title: 'Week 3 · The Attack',
-        source: '../week3_the_attack.md',
+        title: 'Episode 3 · The Formula',
         order: 3
     },
     {
         id: 'week4',
-        title: 'Week 4 · The Investigation',
-        source: '../week4_the_investigation.md',
+        title: 'Episode 4 · Someone Missing',
         order: 4
     }
 ];

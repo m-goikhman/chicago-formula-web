@@ -1,17 +1,11 @@
-Alex Martin looks better than Nina expected.
+Dr. James Thornton is a postdoctoral researcher in the Finance Department at the University of Chicago Business School. He is thirty years old, but people often assume he is older — and a professor — because of his formal manner and the quiet authority with which he speaks. He meets Nina in a shared office. Three other desks are empty — the semester is over. Only James is still here, and his corner looks like no one ever leaves: papers in perfect stacks, everything in its place.
 
-"Sergeant Reyes." He holds out his hand. "Thank you for everything. Really."
+Nina explains the situation briefly and passes him the USB drive.
 
-Nina shakes it and sits down beside the sofa.
+Dr. Thornton inserts it into his computer, opens the file, and reads. After less than a minute, he looks up.
 
-They talk for twenty minutes. Alex is calm and cooperative. He talks about the evening of December 18th — the party, Tim, the argument with Pauline, the USB drive. He confirms everything the investigation had already established. He asks about Fiona.
+"This is nonsense," he says.
 
-"She's fine," Nina says.
+Nina waits.
 
-Alex is quiet for a moment. "I feel — I don't know. I'm not angry, exactly. I feel sad. Tim was in trouble and didn't ask for help. He could have just talked to me." He shakes his head slowly. "I didn't know it had gotten that bad for him."
-
-Nina watches him. He is warm and easy to talk to. Everything he says is reasonable. Everything he says matches the facts.
-
-She takes out her notebook.
-
-"Alex," she says. "I've been to the university this morning."
+"I don't mean it's a failed attempt," he continues. "I mean it isn't mathematics at all. It is symbols arranged to look like mathematics. Someone wrote this specifically to impress people who don't know the field."
