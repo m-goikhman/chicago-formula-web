@@ -446,7 +446,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         "go_default_ep3", "go_university_ep3", "go_alex_apartment_ep3",
         "go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2",
         "go_precinct_ep4", "go_university_ep4", "go_bar_ep4",
-        "go_pauline_office_ep4", "go_phone_ep4",
+        "go_pauline_office_ep4", "go_phone_ep4", "go_motel_ep4",
     ]:
         messages = await handle_location_transition(participant_code, request.action)
     elif request.action == "start_investigation":
@@ -569,9 +569,12 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             get_messages_for_current_location,
             get_stage_location,
             episode_has_locations,
+            maybe_trigger_ep4_nina_phone_located,
+            _normalize_ep4_public_dialogue_mode,
         )
 
         state = GAME_STATE.get(participant_code, {})
+        _normalize_ep4_public_dialogue_mode(state)
         mode = state.get("mode", "public")
         episode = state.get("current_stage", 1)
         location_before_message = (
@@ -680,6 +683,12 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
         messages = await handle_public_message(participant_code, request.text)
         state = GAME_STATE.get(participant_code)
         if state is not None:
+            phone_located_messages = await maybe_trigger_ep4_nina_phone_located(
+                participant_code, state, request.text
+            )
+            if phone_located_messages:
+                messages = (messages or []) + phone_located_messages
+
             episode = state.get("current_stage", 1)
             request_text = str(request.text or "").strip()
             stored_messages = []
@@ -1066,6 +1075,8 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         get_characters_for_stage,
         get_stage_location,
         get_stage_locations_info,
+        ep4_nina_modal_chat_available,
+        get_dialogue_mode_metadata,
     )
     from .game_config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
@@ -1117,13 +1128,16 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             "locations": locations_info,
         })
     
+    game_state = GAME_STATE.get(participant_code, {})
     return {
         "available_stages": available_stages,
         "current_stage": current_stage,
         "stages_completed": stages_completed,
         "stages_info": stages_info,
-        "game_completed": bool(GAME_STATE.get(participant_code, {}).get("game_completed", False)),
-        "ep1_usb_drive_unlocked": bool(GAME_STATE.get(participant_code, {}).get("ep1_usb_drive_unlocked", False)),
+        "game_completed": bool(game_state.get("game_completed", False)),
+        "ep1_usb_drive_unlocked": bool(game_state.get("ep1_usb_drive_unlocked", False)),
+        "ep4_nina_chat_available": ep4_nina_modal_chat_available(game_state),
+        **get_dialogue_mode_metadata(game_state),
     }
 
 

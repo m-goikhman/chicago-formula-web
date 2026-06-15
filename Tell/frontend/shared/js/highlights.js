@@ -43,10 +43,13 @@ class HighlightManager {
     // Generate unique message ID based on content hash
     generateMessageId(messageContent = null) {
         if (messageContent) {
+            const text = typeof messageContent === 'string'
+                ? messageContent
+                : JSON.stringify(messageContent);
             // Generate hash from content
             let hash = 0;
-            for (let i = 0; i < messageContent.length; i++) {
-                const char = messageContent.charCodeAt(i);
+            for (let i = 0; i < text.length; i++) {
+                const char = text.charCodeAt(i);
                 hash = ((hash << 5) - hash) + char;
                 hash = hash & hash; // Convert to 32bit integer
             }

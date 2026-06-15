@@ -196,13 +196,60 @@ function getEp2ScriptedWitnessKey() {
     return EP3_SCRIPTED_LOCATIONS[locationKey] || null;
 }
 
+function isEp4HubLocationKey(locationKey) {
+    const hubKeys = Array.isArray(window.EP4_HUB_LOCATION_KEYS) ? window.EP4_HUB_LOCATION_KEYS : [];
+    return hubKeys.includes(String(locationKey || '').trim());
+}
+
+function isEp4HubNavigationActive() {
+    if (Number(window.currentStageNumber || 1) !== 4 || !window.ep4NinaChatAvailable) {
+        return false;
+    }
+    return isEp4HubLocationKey(getCurrentStageLocationKey());
+}
+
+function getEp4HubSwitchableLocations() {
+    if (!isEp4HubNavigationActive()) {
+        return [];
+    }
+
+    const currentKey = getCurrentStageLocationKey();
+    const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
+    let switchable = locations.filter((loc) => (
+        isEp4HubLocationKey(loc?.key)
+        && loc?.switcher_visible !== false
+        && !!loc?.action
+    ));
+
+    if (switchable.length <= 1 && typeof window.EP4_HUB_LOCATION_FALLBACK === 'object') {
+        switchable = Object.entries(window.EP4_HUB_LOCATION_FALLBACK).map(([key, cfg]) => ({
+            key,
+            name: cfg.name,
+            action: cfg.action,
+            texture_image: cfg.texture_image,
+            location_image: cfg.location_image,
+            switcher_visible: true,
+            current: key === currentKey,
+        }));
+    }
+
+    return switchable;
+}
+
 function episodeUsesLocationNavigation() {
     const stage = Number(window.currentStageNumber || 1);
     const locations = Array.isArray(window.currentStageLocations) ? window.currentStageLocations : [];
+    if (stage === 4 && (isEp4HubNavigationActive() || getCurrentStageLocationKey())) {
+        return true;
+    }
     return (stage === 3 || stage === 4) && locations.length > 0;
 }
 
 function getSwitchableStageLocations() {
+    const stage = Number(window.currentStageNumber || 1);
+    if (stage === 4) {
+        return getEp4HubSwitchableLocations();
+    }
     if (!episodeUsesLocationNavigation()) {
         return [];
     }
@@ -221,6 +268,14 @@ function getCurrentStageLocation() {
         const matched = locations.find((loc) => loc.key === locationKey);
         if (matched) {
             return matched;
+        }
+        const fallback = window.EP4_HUB_LOCATION_FALLBACK?.[locationKey];
+        if (fallback) {
+            return {
+                key: locationKey,
+                ...fallback,
+                current: true,
+            };
         }
     }
     return locations.find((loc) => loc.current) || null;
@@ -246,25 +301,31 @@ function shouldShowLocationHeader() {
         return Boolean(getEp2ScriptedWitnessKey()) && (switchableLocations.length > 1 || hasExitAction);
     }
     if (stage === 4) {
+        if (!isEp4HubNavigationActive()) {
+            return false;
+        }
         const inputArea = document.getElementById('inputArea');
         const isInputVisible = Boolean(inputArea && inputArea.style.display !== 'none');
-        return Boolean(getCurrentStageLocation()) && (hasInvestigationStarted || isInputVisible);
+        return Boolean(getCurrentStageLocationKey()) && (hasInvestigationStarted || isInputVisible);
     }
     return false;
 }
 
 function shouldShowLocationDropdown() {
+    const stage = Number(window.currentStageNumber || 1);
+    if (stage === 4) {
+        if (!isEp4HubNavigationActive()) {
+            return false;
+        }
+        return getEp4HubSwitchableLocations().length > 1;
+    }
     if (!shouldShowLocationHeader()) {
         return false;
     }
-    const stage = Number(window.currentStageNumber || 1);
     if (stage === 3) {
         const switchableLocations = getSwitchableStageLocations();
         return switchableLocations.length > 1
             || switchableLocations.some((loc) => loc?.action === 'ep3_head_out');
-    }
-    if (stage === 4) {
-        return getSwitchableStageLocations().length > 1;
     }
     return false;
 }
@@ -314,7 +375,7 @@ function renderLocationHeaderDropdown() {
         return;
     }
 
-    if (!shouldShowLocationHeader()) {
+    if (!shouldShowLocationHeader() && !isEp4HubNavigationActive()) {
         closeLocationHeaderDropdown();
         dropdown.innerHTML = '';
         context.classList.remove('has-location-dropdown');
@@ -329,7 +390,8 @@ function renderLocationHeaderDropdown() {
         return;
     }
 
-    const locations = getSwitchableStageLocations();
+    const stage = Number(window.currentStageNumber || 1);
+    const locations = stage === 4 ? getEp4HubSwitchableLocations() : getSwitchableStageLocations();
     dropdown.innerHTML = '';
     locations.forEach((location) => {
         const item = document.createElement('div');
@@ -448,6 +510,13 @@ function populateCharactersDrawer() {
                 : `<span class="drawer-item-initial">${(char.name || '?')[0]}</span>`;
         }
         
+        const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
+            ? String(char.action).slice(5).toLowerCase()
+            : null;
+        if (keyFromAction) {
+            item.dataset.characterKey = keyFromAction;
+        }
+
         item.innerHTML = `
             <div class="drawer-item-icon">${iconHTML}</div>
             <div class="drawer-item-text">
@@ -463,9 +532,6 @@ function populateCharactersDrawer() {
                 if (char.action === 'mode_public') {
                     currentCharacter = null;
                 } else {
-                    const keyFromAction = String(char.action || '').toLowerCase().startsWith('talk_')
-                        ? String(char.action).slice(5).toLowerCase()
-                        : null;
                     currentCharacter = { name: char.name, image: char.image, key: keyFromAction };
                 }
                 updatePrivateModeControls();
@@ -481,14 +547,18 @@ function populateCharactersDrawer() {
     updatePrivateModeControls();
 }
 
-function setActiveCharacterDrawerItem(characterName = null) {
+function setActiveCharacterDrawerItem(characterName = null, characterKey = null) {
     const drawerItems = document.querySelectorAll('#charactersList .drawer-item');
     if (!drawerItems.length) return;
 
     drawerItems.forEach((item) => item.classList.remove('active'));
 
     const normalizedTarget = (characterName || '').trim().toLowerCase();
+    const normalizedKey = (characterKey || '').trim().toLowerCase();
     const targetItem = Array.from(drawerItems).find((item) => {
+        if (normalizedKey && item.dataset.characterKey === normalizedKey) {
+            return true;
+        }
         const itemName = (item.querySelector('.name')?.textContent || '').trim().toLowerCase();
         if (normalizedTarget) {
             return itemName === normalizedTarget;
@@ -554,11 +624,15 @@ function applyChatScopeVisibility() {
     const messages = chatArea.querySelectorAll('.message');
     messages.forEach((messageElement) => {
         const isHiddenByUser = messageElement.dataset.userHidden === 'true';
+        const isNarratorMessage = messageElement.classList.contains('narrator-message');
         const scope = (messageElement.dataset.chatScope || 'public').trim().toLowerCase();
         const isPrivateMessage = scope.startsWith('private:');
-        const shouldHideByScope = activeScope === 'public'
+        let shouldHideByScope = activeScope === 'public'
             ? isPrivateMessage
             : scope !== activeScope;
+        if (isNarratorMessage) {
+            shouldHideByScope = false;
+        }
 
         const shouldHide = isHiddenByUser || shouldHideByScope;
         messageElement.style.display = shouldHide ? 'none' : 'flex';
@@ -592,8 +666,8 @@ function updatePrivateModeControls() {
         activeDrawerName &&
         activeDrawerName === activeCharacterName
     );
-    const privateCharacterLabel = activeCharacterNameRaw || activeDrawerNameRaw;
     const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    const privateCharacterLabel = activeCharacterNameRaw || activeDrawerNameRaw;
     const ep2WitnessKey = getEp2ScriptedWitnessKey();
     const ep2Witness = ep2WitnessKey
         ? stageCharacters.find((character) => character.key === ep2WitnessKey)
@@ -607,6 +681,8 @@ function updatePrivateModeControls() {
     const shouldShowEp1PublicAvatar = (currentStage === 1 || currentStage === 2) && hasInvestigationStarted;
     const shouldShowEp2PublicAvatar = Boolean(ep2Witness && hasInvestigationStarted);
     const isLocationHeader = shouldShowLocationHeader();
+    const isEp4HubNavigation = isEp4HubNavigationActive();
+    const treatAsLocationHeader = isLocationHeader || isEp4HubNavigation;
     const hasLocationDropdown = shouldShowLocationDropdown();
     const currentStageLocation = getCurrentStageLocation();
     const singleLocationCharacter = currentStage === 4 && stageCharacters.length === 1
@@ -628,11 +704,12 @@ function updatePrivateModeControls() {
     privateModeControls.style.display = isPrivateModeActive && isInputVisible ? 'flex' : 'none';
     if (backToCommonDialogueBtn) {
         backToCommonDialogueBtn.classList.toggle('is-private', isPrivateModeActive);
+        backToCommonDialogueBtn.style.display = isEp4HubNavigation ? 'none' : '';
     }
     if (headerContextAvatar) {
-        const avatarSrc = isLocationHeader && locationHeaderImageUrl
+        const avatarSrc = treatAsLocationHeader && locationHeaderImageUrl
             ? locationHeaderImageUrl
-            : (isPrivateModeActive && privateAvatarUrl
+            : (isPrivateModeActive && privateAvatarUrl && !treatAsLocationHeader
                 ? privateAvatarUrl
                 : (shouldShowEp2PublicAvatar && ep2PublicAvatarUrl
                     ? ep2PublicAvatarUrl
@@ -640,7 +717,7 @@ function updatePrivateModeControls() {
         if (avatarSrc) {
             headerContextAvatar.src = avatarSrc;
             headerContextAvatar.style.display = 'block';
-            headerContextAvatar.alt = isLocationHeader
+            headerContextAvatar.alt = treatAsLocationHeader
                 ? (currentStageLocation?.name || 'Current location')
                 : (isPrivateModeActive
                     ? `${privateCharacterLabel} avatar`
@@ -653,14 +730,17 @@ function updatePrivateModeControls() {
     }
     if (headerModeContext) {
         const shouldShowHeaderContext = !isLoginVisible && Boolean(
-            (isLocationHeader && (locationHeaderImageUrl || currentStageLocation?.name))
-            || (isPrivateModeActive && privateAvatarUrl)
+            (treatAsLocationHeader && (locationHeaderImageUrl || currentStageLocation?.name))
+            || (isPrivateModeActive && privateAvatarUrl && !treatAsLocationHeader)
             || (!isPrivateModeActive && (shouldShowEp1PublicAvatar || shouldShowEp2PublicAvatar))
         );
         headerModeContext.style.display = shouldShowHeaderContext ? 'inline-flex' : 'none';
-        headerModeContext.classList.toggle('is-private', isPrivateModeActive && !isLocationHeader);
+        headerModeContext.classList.toggle(
+            'is-private',
+            isPrivateModeActive && !treatAsLocationHeader
+        );
         headerModeContext.classList.toggle('has-location-dropdown', hasLocationDropdown);
-        headerModeContext.title = isLocationHeader
+        headerModeContext.title = treatAsLocationHeader
             ? `Current location: ${currentStageLocation?.name || 'Location'}`
             : (isPrivateModeActive
                 ? `Private chat with ${privateCharacterLabel}`

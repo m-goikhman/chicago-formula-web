@@ -385,10 +385,25 @@ const TeachState = (() => {
         return true;
     }
 
+    function hasUnrestrictedEpisodeAccess() {
+        return window.TeachAuth?.hasUnrestrictedEpisodeAccess?.() === true;
+    }
+
     function getWeekAvailability() {
+        const availability = new Map();
+        if (hasUnrestrictedEpisodeAccess()) {
+            weeks.forEach((week) => {
+                availability.set(week.id, {
+                    locked: false,
+                    status: 'available',
+                    failedConditions: []
+                });
+            });
+            return availability;
+        }
+
         const nowMs = Date.now();
         const firstLoginAtMs = Number(state.firstLoginAt) || nowMs;
-        const availability = new Map();
         weeks.forEach((week, index) => {
             if (index === 0) {
                 availability.set(week.id, {

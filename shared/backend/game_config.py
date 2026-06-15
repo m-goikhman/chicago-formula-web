@@ -102,7 +102,7 @@ STAGE_CONFIG = {
     4: {
         "name": "Someone Missing",
         "clues_count": 0,  # To be configured when content is created
-        "characters": ["fiona", "susan", "ronnie", "pauline", "nina"],
+        "characters": ["fiona", "susan", "ronnie", "pauline", "alex", "nina"],
         "default_location": "precinct_ep4",
         "locations": {
             "precinct_ep4": {
@@ -127,11 +127,19 @@ STAGE_CONFIG = {
                 "name": "Pauline's office",
                 "characters": ["pauline"],
                 "action": "go_pauline_office_ep4",
+                "location_image": "ep4/office.png",
             },
             "phone_ep4": {
                 "name": "Phone",
                 "characters": ["nina"],
                 "action": "go_phone_ep4",
+                "show_in_switcher": False,
+            },
+            "motel_ep4": {
+                "name": "Motel",
+                "characters": ["alex"],
+                "action": "go_motel_ep4",
+                "location_image": "ep4/motel.png",
                 "show_in_switcher": False,
             },
         },

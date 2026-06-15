@@ -20,3 +20,4 @@ So, where do you want to start?
 The university — Susan|go_university_ep4
 The bar — Ronnie|go_bar_ep4
 Pauline's office|go_pauline_office_ep4
+Hold on, Nina|talk_nina

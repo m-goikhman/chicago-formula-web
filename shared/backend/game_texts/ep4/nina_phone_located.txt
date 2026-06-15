@@ -1,0 +1,21 @@
+[from: nina]
+Detective — drop what you're doing. Alex's phone just came back online. We've got a location.
+---
+[from: nina]
+It's in suburb, around 20km from here.
+---
+[from: nina]
+But we still don't know whether he was taken or maybe just walked away on his own.
+---
+[from: nina]
+And honestly, the phone being on doesn't even mean Alex is the one holding it. Someone else could have switched it on.
+---
+[from: nina]
+So here's what we do: we go there together, quietly, and we look around.
+---
+[from: nina]
+Ready?
+
+[buttons]
+Let's go — carefully|go_motel_ep4
+Hold on, Nina|talk_nina

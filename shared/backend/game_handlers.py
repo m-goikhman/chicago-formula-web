@@ -44,7 +44,84 @@ EP3_SCRIPTED_WITNESS_KEYS = {
     "university_ep3": "james",
     "alex_apartment_ep3": "alex",
 }
+EP4_SCRIPTED_LOCATIONS = {"university_ep4", "bar_ep4", "pauline_office_ep4", "motel_ep4"}
+EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"})
+EP4_HUB_MIN_USER_MESSAGES = 3
+EP4_LOCATION_CHARACTERS = {
+    "university_ep4": "susan",
+    "bar_ep4": "ronnie",
+    "pauline_office_ep4": "pauline",
+    "motel_ep4": "alex",
+}
+
+
+def _apply_nina_modal_ui(message: Dict, *, open_chat: bool = False) -> Dict:
+    """Tag a message for the Nina chat modal (same channel as episodes 1–2)."""
+    ui = dict(message.get("ui") or {})
+    ui["ninaModalMessage"] = True
+    if open_chat:
+        ui["openNinaChat"] = True
+    tagged = dict(message)
+    tagged["ui"] = ui
+    return tagged
+
+
+def _tag_nina_messages_for_modal(
+    messages: List[Dict],
+    *,
+    open_chat_on_first: bool = False,
+) -> List[Dict]:
+    """Route Nina scripted lines into the private Nina modal instead of public chat."""
+    tagged: List[Dict] = []
+    opened = False
+    for message in messages:
+        if not isinstance(message, dict):
+            tagged.append(message)
+            continue
+        character_key = str(message.get("character") or "").strip().lower()
+        if character_key != "nina":
+            tagged.append(message)
+            continue
+        should_open = open_chat_on_first and not opened
+        tagged.append(_apply_nina_modal_ui(message, open_chat=should_open))
+        if should_open:
+            opened = True
+    return tagged
+
+
+def ep4_nina_modal_chat_available(state: Dict) -> bool:
+    """True once EP4 Nina briefing is shown and the player can reopen her chat."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return False
+    ep4_state = state.get("ep4_director") or {}
+    return bool(ep4_state.get("nina_split_up_shown"))
 EP3_WITNESS_MODE = "witness_with_nina"
+EP3_WITNESS_OPENING_TRIGGER = (
+    "The detective has arrived with Sergeant Nina Reyes to speak with you. "
+    "Say a short first line to open the conversation in one brief sentence. "
+    "Stay fully in character."
+)
+EP4_LOCATION_OPENING_TRIGGER = ("The detective wants to talk to you. "
+    "Say a short first line to open the conversation. "
+)
+EP4_LOCATION_OPENING_TRIGGERS = {
+    "motel_ep4": (
+        "The detective has found you at the motel and wants to talk to you. "
+        "Say a short first line to open the conversation. "
+    ),
+    "bar_ep4": (
+        "You are in your favourite bar after a long day. The detective who investigated the attack on Alex Martin wants to talk to you. You are not very enthusiatic about it. "
+        "Say a short first line to open the conversation. "
+    ),
+    "university_ep4": (
+        "You are in your office at the university. The detective who investigated the attack on Alex Martin wants to talk to you. He has been here before and he has talked with James Thornton. "
+        "Say a short first line to open the conversation. "
+    ),
+    "pauline_office_ep4": (
+        "You are in your office. The detective who investigated the attack on Alex Martin wants to talk to you about Alex's disappearance. "
+        "Say a short first line to open the conversation. "
+    ),
+}
 EP3_LOCATION_ACTIONS = {
     "go_default_ep3": "default_ep3",
     "go_university_ep3": "university_ep3",
@@ -604,6 +681,25 @@ def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
                 },
             ]
 
+    if stage_number == EP4_STAGE:
+        ep4_state = _get_ep4_director_state(state)
+        if ep4_state.get("nina_split_up_shown") and not ep4_state.get("nina_phone_located_shown"):
+            locations_info: List[Dict] = []
+            for location_key in ("university_ep4", "bar_ep4", "pauline_office_ep4"):
+                location_cfg = locations_cfg.get(location_key, {})
+                locations_info.append(
+                    {
+                        "key": location_key,
+                        "name": location_cfg.get("name", location_key),
+                        "action": location_cfg.get("action"),
+                        "texture_image": location_cfg.get("texture_image"),
+                        "location_image": location_cfg.get("location_image"),
+                        "switcher_visible": True,
+                        "current": location_key == current_location,
+                    }
+                )
+            return locations_info
+
     locations_info: List[Dict] = []
     for location_key, location_cfg in locations_cfg.items():
         locations_info.append(
@@ -724,9 +820,59 @@ def _get_ep4_director_state(state: Dict) -> Dict:
     ep4_state.setdefault("fiona_reassured_done", False)
     ep4_state.setdefault("fiona_left_precinct", False)
     ep4_state.setdefault("nina_split_up_shown", False)
+    ep4_state.setdefault("nina_phone_located_shown", False)
+    ep4_state.setdefault("location_user_message_counts", {})
+    ep4_state.setdefault("location_openers_played", [])
     if ep4_state.get("nina_split_up_shown"):
         ep4_state["fiona_left_precinct"] = True
     return ep4_state
+
+
+def _count_ep4_hub_user_messages_from_history(state: Dict) -> Dict[str, int]:
+    """Count stored public user messages per EP4 hub location."""
+    counts = {location: 0 for location in EP4_HUB_LOCATIONS}
+    for msg in _get_stored_episode_messages(state, EP4_STAGE):
+        if not isinstance(msg, dict):
+            continue
+        if str(msg.get("type") or "").lower() != "user":
+            continue
+        if str(msg.get("chat_scope") or "public").strip().lower() != "public":
+            continue
+        location = msg.get("location")
+        if location in counts:
+            counts[location] += 1
+    return counts
+
+
+def _ensure_ep4_location_user_message_counts(state: Dict) -> Dict[str, int]:
+    """Return per-location public user message counts, backfilling from history once."""
+    ep4_state = _get_ep4_director_state(state)
+    counts = ep4_state.get("location_user_message_counts")
+    if not isinstance(counts, dict) or not counts:
+        counts = _count_ep4_hub_user_messages_from_history(state)
+    else:
+        counts = dict(counts)
+    for location in EP4_HUB_LOCATIONS:
+        counts.setdefault(location, 0)
+    ep4_state["location_user_message_counts"] = counts
+    return counts
+
+
+def _record_ep4_hub_user_message(state: Dict, location: str) -> Dict[str, int]:
+    """Increment the public user-message counter for an EP4 hub location."""
+    counts = _ensure_ep4_location_user_message_counts(state)
+    counts[location] = int(counts.get(location, 0)) + 1
+    state["ep4_director"]["location_user_message_counts"] = counts
+    return counts
+
+
+def _ep4_hub_interviews_complete(ep4_state: Dict) -> bool:
+    """True when the player sent enough public messages in every EP4 hub location."""
+    counts = ep4_state.get("location_user_message_counts") or {}
+    return all(
+        int(counts.get(location, 0)) >= EP4_HUB_MIN_USER_MESSAGES
+        for location in EP4_HUB_LOCATIONS
+    )
 
 
 def _ep4_fiona_has_mentioned_ronnie(reply_text: str) -> bool:
@@ -756,6 +902,8 @@ def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
     location_key = get_stage_location(state, stage_number)
     if stage_number == EP4_STAGE and location_key == "precinct_ep4":
         ep4_state = state.get("ep4_director") or {}
+        if ep4_state.get("nina_split_up_shown"):
+            return []
         if ep4_state.get("fiona_left_precinct"):
             return ["nina"]
         return ["fiona"]
@@ -1270,8 +1418,11 @@ async def _build_ep2_witness_opener_messages(
     current_stage: int,
     location: str,
     witness_key: str,
+    *,
+    opening_trigger: str = EP3_WITNESS_OPENING_TRIGGER,
+    chat_scope: str = "public",
 ) -> List[Dict]:
-    """Return the witness's first line in a Nina-accompanied scene (public scope)."""
+    """Return a character's first line when the detective arrives at a location (public scope)."""
     messages: List[Dict] = []
     char_data = CHARACTER_DATA.get(witness_key, {})
     current_language_level = state.get("current_language_level", "B1")
@@ -1289,14 +1440,10 @@ async def _build_ep2_witness_opener_messages(
             )
             if opener_buttons:
                 opener_message["buttons"] = opener_buttons
-            opener_message["chat_scope"] = "public"
+            opener_message["chat_scope"] = chat_scope
             return [opener_message]
 
-    witness_opening_trigger = (
-        "The detective has arrived with Sergeant Nina Reyes to speak with you. "
-        "Say a short first line to open the conversation in one brief sentence. "
-        "Stay fully in character."
-    )
+    witness_opening_trigger = opening_trigger
     opener_reply = ""
     try:
         opener_reply = await ask_for_dialogue(
@@ -1327,7 +1474,7 @@ async def _build_ep2_witness_opener_messages(
                 "character_image": char_data.get("image"),
                 "content": opener_reply,
                 "message_id": message_id,
-                "chat_scope": "public",
+                "chat_scope": chat_scope,
                 "show_explain": True,
             }
         )
@@ -1345,7 +1492,7 @@ async def _build_ep2_witness_opener_messages(
             "character_image": char_data.get("image"),
             "content": fallback_line,
             "message_id": message_id,
-            "chat_scope": "public",
+            "chat_scope": chat_scope,
             "show_explain": True,
         }
     )
@@ -1374,6 +1521,87 @@ async def _append_ep2_witness_opener_if_needed(
     if opener_messages:
         messages.extend(opener_messages)
         _mark_ep2_witness_opener_played(state, location)
+
+
+def _get_ep4_character_for_location(location: Optional[str]) -> Optional[str]:
+    if not location:
+        return None
+    return EP4_LOCATION_CHARACTERS.get(location)
+
+
+def _normalize_ep4_public_dialogue_mode(state: Dict) -> None:
+    """EP4 single-character locations use public chat (one responder), not private mode."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return
+    location = get_stage_location(state, EP4_STAGE)
+    if location not in EP4_SCRIPTED_LOCATIONS:
+        return
+    state["mode"] = "public"
+    state["current_character"] = None
+
+
+def get_dialogue_mode_metadata(state: Dict) -> Dict[str, Optional[str]]:
+    """Return frontend dialogue mode hints for the active game state."""
+    mode = str(state.get("mode") or "public").strip().lower()
+    character_key = str(state.get("current_character") or "").strip() or None
+    if mode == "private" and character_key:
+        return {"dialogue_mode": "private", "dialogue_character": character_key}
+    if mode == EP3_WITNESS_MODE:
+        return {"dialogue_mode": EP3_WITNESS_MODE, "dialogue_character": None}
+    return {"dialogue_mode": "public", "dialogue_character": None}
+
+
+def _ep4_location_has_character_opener(state: Dict, episode: int, location: str, character_key: str) -> bool:
+    """True when this location already has a stored line from the witness character."""
+    stored = _get_stored_episode_messages(state, episode)
+    default_location = STAGE_CONFIG.get(episode, {}).get("default_location")
+    location_messages = _filter_messages_for_location(stored, location, default_location)
+    normalized_key = character_key.strip().lower()
+    for msg in location_messages:
+        if not isinstance(msg, dict):
+            continue
+        if str(msg.get("type") or "").lower() != "character":
+            continue
+        if str(msg.get("character") or "").strip().lower() == normalized_key:
+            return True
+    return False
+
+
+def _mark_ep4_location_opener_played(state: Dict, location: str) -> None:
+    ep4_state = _get_ep4_director_state(state)
+    played = ep4_state.setdefault("location_openers_played", [])
+    if location not in played:
+        played.append(location)
+
+
+async def _append_ep4_location_opener_if_needed(
+    participant_code: str,
+    state: Dict,
+    messages: List[Dict],
+    *,
+    current_stage: int,
+    location: str,
+) -> None:
+    character_key = _get_ep4_character_for_location(location)
+    if not character_key:
+        return
+    if _ep4_location_has_character_opener(state, current_stage, location, character_key):
+        return
+
+    opener_messages = await _build_ep2_witness_opener_messages(
+        participant_code,
+        state,
+        current_stage,
+        location,
+        character_key,
+        opening_trigger=EP4_LOCATION_OPENING_TRIGGERS.get(
+            location, EP4_LOCATION_OPENING_TRIGGER
+        ),
+    )
+    if opener_messages:
+        messages.extend(opener_messages)
+        _mark_ep4_location_opener_played(state, location)
+        state["last_public_responder"] = character_key
 
 
 async def _handle_ep2_scripted_public_message(
@@ -1839,6 +2067,65 @@ async def _handle_ep4_precinct_fiona_message(
     return messages
 
 
+async def handle_ep4_nina_phone_located(participant_code: str) -> List[Dict]:
+    """EP4 hub finale: Nina calls about Alex's phone and offers the motel trip."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if not ep4_state.get("nina_split_up_shown"):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+    if ep4_state.get("nina_phone_located_shown"):
+        return []
+
+    ep4_state["nina_phone_located_shown"] = True
+    messages: List[Dict] = []
+    if not _append_scripted_game_text_to_messages(
+        participant_code, messages, "nina_phone_located", EP4_STAGE
+    ):
+        ep4_state["nina_phone_located_shown"] = False
+        return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    messages = _tag_nina_messages_for_modal(messages, open_chat_on_first=True)
+
+    state["last_public_responder"] = "nina"
+    _sync_last_public_responder_for_public_mode(state, messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
+async def maybe_trigger_ep4_nina_phone_located(
+    participant_code: str,
+    state: Dict,
+    user_message_text: str,
+) -> List[Dict]:
+    """After enough hub interviews, interrupt with Nina's incoming call in the modal."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return []
+
+    ep4_state = _get_ep4_director_state(state)
+    if not ep4_state.get("nina_split_up_shown") or ep4_state.get("nina_phone_located_shown"):
+        return []
+
+    location = get_stage_location(state, EP4_STAGE)
+    if location not in EP4_HUB_LOCATIONS:
+        return []
+
+    if not str(user_message_text or "").strip():
+        return []
+
+    _record_ep4_hub_user_message(state, location)
+    if not _ep4_hub_interviews_complete(ep4_state):
+        await game_state_manager.save_game_state(participant_code, state)
+        return []
+
+    return await handle_ep4_nina_phone_located(participant_code)
+
+
 async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
     """EP4 precinct: Nina briefs the detective and offers location choices."""
     state = GAME_STATE.get(participant_code)
@@ -1860,6 +2147,8 @@ async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
         participant_code, messages, "nina_split_up", EP4_STAGE
     ):
         return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    messages = _tag_nina_messages_for_modal(messages, open_chat_on_first=True)
 
     state["last_public_responder"] = "nina"
     _sync_last_public_responder_for_public_mode(state, messages)
@@ -2570,6 +2859,7 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
 
     if int(state.get("current_stage", 1)) == EP4_STAGE:
         _get_ep4_director_state(state)
+        _normalize_ep4_public_dialogue_mode(state)
 
     if "last_public_responder" not in state:
         state["last_public_responder"] = None
@@ -3266,13 +3556,14 @@ async def handle_location_transition(participant_code: str, action: str) -> List
             return [{"type": "error", "content": "That isn't available right now."}]
 
     set_stage_location(state, stage_number, target_location)
-    state["current_character"] = None
     state["onboarding_step"] = "investigation_started"
     _clear_public_followup_lock(state)
     if stage_number == EP3_FORMULA_STAGE and target_location in EP3_SCRIPTED_LOCATIONS:
         state["mode"] = EP3_WITNESS_MODE
+        state["current_character"] = None
     else:
         state["mode"] = "public"
+        state["current_character"] = None
 
     location_cfg = locations.get(target_location, {})
     location_name = location_cfg.get("name", target_location)
@@ -3312,6 +3603,17 @@ async def handle_location_transition(participant_code: str, action: str) -> List
                 state,
                 messages,
                 current_stage=EP3_FORMULA_STAGE,
+                location=target_location,
+            )
+        else:
+            messages.extend(await handle_main_menu(participant_code))
+    elif stage_number == EP4_STAGE:
+        if target_location in EP4_SCRIPTED_LOCATIONS:
+            await _append_ep4_location_opener_if_needed(
+                participant_code,
+                state,
+                messages,
+                current_stage=EP4_STAGE,
                 location=target_location,
             )
         else:
@@ -3416,6 +3718,20 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
         return [_closed_dialogs_reply(state)]
 
     current_stage = state.get("current_stage", 1)
+    if character_key == "nina" and ep4_nina_modal_chat_available(state):
+        state["mode"] = "public"
+        state["current_character"] = None
+        _clear_public_followup_lock(state)
+        await game_state_manager.save_game_state(participant_code, state)
+        return [
+            {
+                "type": "system",
+                "content": "",
+                "show_explain": False,
+                "ui": {"openNinaChat": True},
+            }
+        ]
+
     available_characters = set(get_characters_for_stage(state, current_stage))
     if character_key not in available_characters:
         return [{"type": "error", "content": "Character is not available in this location."}]

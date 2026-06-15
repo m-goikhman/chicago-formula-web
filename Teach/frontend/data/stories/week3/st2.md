@@ -1,0 +1,4 @@
+Nina picks up the plastic evidence bag. Inside is a small USB drive shaped like a toy airplane — light and a little silly. But this small object holds all of Alex's work: the formula he spent years on, the same formula Tim attacked him to steal. Tim gave it to the police himself on the night of his arrest.
+
+What is on it? Nina is curious -- almost like a kid who was told not to peek at Christmas presents. 
+But the drive is not a Christmas present, this is serious. She has no reason — and no right — to open it and read Alex's private work. Alex is the victim here, not a suspect. And the case is closed.

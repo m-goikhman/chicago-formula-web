@@ -25,12 +25,22 @@
             .toUpperCase();
     }
 
+    const TEST_MODE_PARTICIPANT_CODES = new Set(['TEST', 'ROBERTA']);
+
     function isDemoSlotCode(code) {
         return /^DEMO\d+$/i.test(normalizeCode(code));
     }
 
+    function isTestMode() {
+        return TEST_MODE_PARTICIPANT_CODES.has(normalizeCode(getParticipantCode()));
+    }
+
     function isDemoMode() {
         return isDemoSlotCode(getParticipantCode());
+    }
+
+    function hasUnrestrictedEpisodeAccess() {
+        return isTestMode() || isDemoMode();
     }
 
     function buildLoginPayload(rawCode) {
@@ -174,7 +184,9 @@
         restoreSession,
         getToken,
         getParticipantCode,
+        isTestMode,
         isDemoMode,
+        hasUnrestrictedEpisodeAccess,
         persistSession,
         logout,
         silentReauthenticate,
