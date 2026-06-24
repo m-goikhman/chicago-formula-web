@@ -47,6 +47,7 @@ EP3_SCRIPTED_WITNESS_KEYS = {
 EP4_SCRIPTED_LOCATIONS = {"university_ep4", "bar_ep4", "pauline_office_ep4", "motel_ep4"}
 EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"})
 EP4_HUB_MIN_USER_MESSAGES = 3
+EP4_FIONA_MIN_USER_MESSAGES = 8
 EP4_LOCATION_CHARACTERS = {
     "university_ep4": "susan",
     "bar_ep4": "ronnie",
@@ -90,11 +91,14 @@ def _tag_nina_messages_for_modal(
 
 
 def ep4_nina_modal_chat_available(state: Dict) -> bool:
-    """True once EP4 Nina briefing is shown and the player can reopen her chat."""
+    """True when EP4 Nina modal chat is available (hub and later scenes, not precinct briefing)."""
     if int(state.get("current_stage", 1)) != EP4_STAGE:
         return False
     ep4_state = state.get("ep4_director") or {}
-    return bool(ep4_state.get("nina_split_up_shown"))
+    if not ep4_state.get("nina_split_up_shown"):
+        return False
+    location = get_stage_location(state, EP4_STAGE)
+    return location != EP4_DEFAULT_LOCATION
 EP3_WITNESS_MODE = "witness_with_nina"
 EP3_WITNESS_OPENING_TRIGGER = (
     "The detective has arrived with Sergeant Nina Reyes to speak with you. "
@@ -181,7 +185,7 @@ ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = "326737977"
 CALENDAR_REMINDER_TITLE = "Teach&Tell: Next episode unlock"
 CALENDAR_REMINDER_DETAILS = (
     "Your next Teach&Tell episode is now unlocked. "
-    "Episodes unlock every week from your game start date. "
+    "Episodes unlock twice a week from your game start date. "
     "Open the game: https://chicago-formula-n.web.app/"
 )
 
@@ -245,8 +249,8 @@ def _build_stage_unlock_schedule_from_start(game_start_at: datetime) -> Dict[int
 
 def _ensure_absolute_stage_unlock_schedule(state: Dict) -> None:
     """
-    Ensure stage unlock dates follow an absolute weekly schedule from game start.
-    This keeps unlock weekday stable even if a player finishes an episode later.
+    Ensure stage unlock dates follow an absolute episode schedule from game start.
+    This keeps unlock timing stable even if a player finishes an episode later.
     """
     participant_code = str(state.get("participant_code", "") or "")
     is_test_mode = is_test_mode_participant(participant_code)
@@ -822,6 +826,7 @@ def _get_ep4_director_state(state: Dict) -> Dict:
     ep4_state.setdefault("nina_split_up_shown", False)
     ep4_state.setdefault("nina_phone_located_shown", False)
     ep4_state.setdefault("location_user_message_counts", {})
+    ep4_state.setdefault("fiona_user_message_count", None)
     ep4_state.setdefault("location_openers_played", [])
     if ep4_state.get("nina_split_up_shown"):
         ep4_state["fiona_left_precinct"] = True
@@ -866,6 +871,39 @@ def _record_ep4_hub_user_message(state: Dict, location: str) -> Dict[str, int]:
     return counts
 
 
+def _count_ep4_fiona_user_messages_from_history(state: Dict) -> int:
+    """Count stored public user messages in the EP4 precinct Fiona scene."""
+    count = 0
+    for msg in _get_stored_episode_messages(state, EP4_STAGE):
+        if not isinstance(msg, dict):
+            continue
+        if str(msg.get("type") or "").lower() != "user":
+            continue
+        if str(msg.get("chat_scope") or "public").strip().lower() != "public":
+            continue
+        location = msg.get("location")
+        if location is None or location == EP4_DEFAULT_LOCATION:
+            count += 1
+    return count
+
+
+def _ensure_ep4_fiona_user_message_count(state: Dict) -> int:
+    """Return Fiona-scene public user message count, backfilling from history once."""
+    ep4_state = _get_ep4_director_state(state)
+    count = ep4_state.get("fiona_user_message_count")
+    if count is None:
+        count = _count_ep4_fiona_user_messages_from_history(state)
+        ep4_state["fiona_user_message_count"] = count
+    return int(count)
+
+
+def _record_ep4_fiona_user_message(state: Dict) -> int:
+    """Increment the public user-message counter for the EP4 Fiona scene."""
+    count = _ensure_ep4_fiona_user_message_count(state) + 1
+    state["ep4_director"]["fiona_user_message_count"] = count
+    return count
+
+
 def _ep4_hub_interviews_complete(ep4_state: Dict) -> bool:
     """True when the player sent enough public messages in every EP4 hub location."""
     counts = ep4_state.get("location_user_message_counts") or {}
@@ -882,11 +920,17 @@ def _ep4_fiona_has_mentioned_ronnie(reply_text: str) -> bool:
 
 
 def _maybe_attach_ep4_fiona_reassurance_button(
-    ep4_state: Dict, reply_text: str, message: Dict
+    ep4_state: Dict,
+    reply_text: str,
+    message: Dict,
+    *,
+    fiona_user_message_count: int = 0,
 ) -> None:
     if ep4_state.get("awaiting_reassurance") or ep4_state.get("fiona_reassured_done"):
         return
-    if not _ep4_fiona_has_mentioned_ronnie(reply_text):
+    ronnie_mentioned = _ep4_fiona_has_mentioned_ronnie(reply_text)
+    enough_messages = fiona_user_message_count >= EP4_FIONA_MIN_USER_MESSAGES
+    if not ronnie_mentioned and not enough_messages:
         return
     ep4_state["awaiting_reassurance"] = True
     message["buttons"] = [EP4_FIONA_REASSURANCE_BUTTON]
@@ -902,9 +946,7 @@ def get_characters_for_stage(state: Dict, stage_number: int) -> List[str]:
     location_key = get_stage_location(state, stage_number)
     if stage_number == EP4_STAGE and location_key == "precinct_ep4":
         ep4_state = state.get("ep4_director") or {}
-        if ep4_state.get("nina_split_up_shown"):
-            return []
-        if ep4_state.get("fiona_left_precinct"):
+        if ep4_state.get("fiona_left_precinct") or ep4_state.get("nina_split_up_shown"):
             return ["nina"]
         return ["fiona"]
 
@@ -1998,9 +2040,10 @@ async def _handle_ep4_precinct_fiona_message(
     message_text: str,
     state: Dict,
 ) -> List[Dict]:
-    """EP4 precinct opening: free public dialogue with Fiona until she mentions Ronnie."""
+    """EP4 precinct opening: free public dialogue with Fiona until she mentions Ronnie or the player sends enough messages."""
     messages: List[Dict] = []
     ep4_state = _get_ep4_director_state(state)
+    fiona_user_message_count = _record_ep4_fiona_user_message(state)
     char_key = "fiona"
     char_data = CHARACTER_DATA[char_key]
     current_language_level = state.get("current_language_level", "B1")
@@ -2049,7 +2092,12 @@ async def _handle_ep4_precinct_fiona_message(
             "message_id": message_id,
             "show_explain": True,
         }
-        _maybe_attach_ep4_fiona_reassurance_button(ep4_state, reply_text, fiona_message)
+        _maybe_attach_ep4_fiona_reassurance_button(
+            ep4_state,
+            reply_text,
+            fiona_message,
+            fiona_user_message_count=fiona_user_message_count,
+        )
         messages.append(fiona_message)
     else:
         messages.append(
@@ -2147,8 +2195,6 @@ async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
         participant_code, messages, "nina_split_up", EP4_STAGE
     ):
         return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
-
-    messages = _tag_nina_messages_for_modal(messages, open_chat_on_first=True)
 
     state["last_public_responder"] = "nina"
     _sync_last_public_responder_for_public_mode(state, messages)
@@ -2928,7 +2974,7 @@ def get_available_stages(participant_code: str) -> List[int]:
                     # Invalid date format, unlock immediately if previous stage is done
                     available.append(stage_num)
             else:
-                # No unlock date set: rebuild absolute weekly schedule from game start.
+                # No unlock date set: rebuild absolute episode schedule from game start.
                 _ensure_absolute_stage_unlock_schedule(state)
                 stage_unlock_dates = state.get("stage_unlock_dates", {})
                 unlock_date_str = stage_unlock_dates.get(stage_num)
@@ -4056,14 +4102,7 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
                 }
             ]
         if ep4_state.get("nina_split_up_shown"):
-            await game_state_manager.save_game_state(participant_code, state)
-            return [
-                {
-                    "type": "system",
-                    "content": "Choose where to go next.",
-                    "show_explain": False,
-                }
-            ]
+            return await handle_nina_message(participant_code, message_text, chat_scope="public")
         if not ep4_state.get("fiona_reassured_done"):
             return await _handle_ep4_precinct_fiona_message(participant_code, message_text, state)
 
@@ -4589,12 +4628,6 @@ def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional
     """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
     from .demo_slots import is_demo_mode_participant
 
-    if is_demo_mode_participant(participant_code):
-        return (
-            "Thanks for playing!\n\n"
-            "You can keep exploring the next episode whenever you like."
-        )
-
     episode = int((state or {}).get("current_stage", 1))
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", episode))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
@@ -4603,7 +4636,17 @@ def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional
         text = text.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, personalized_link)
     else:
         text = text.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalized_link)
-    return text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
+    text = text.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendar_link)
+
+    if is_demo_mode_participant(participant_code):
+        demo_prefix = (
+            "Thanks for playing!\n\n"
+            "You can keep exploring the next episode whenever you like. "
+            "The experiment participant will receive here the following message:"
+        )
+        return f"{demo_prefix}\n\n{text}"
+
+    return text
 
 
 def _ep1_party_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
@@ -4677,7 +4720,7 @@ def _ep2_dialogs_closed_reply() -> Dict:
 def _ep3_dialogs_closed_reply() -> Dict:
     return {
         "type": "system",
-        "content": "Episode 3 is complete for this week. You can read the chat above, but the investigation won't continue until the next episode unlocks.",
+        "content": "Episode 3 is complete. You can read the chat above, but the investigation won't continue until the next episode unlocks.",
         "show_explain": False,
     }
 

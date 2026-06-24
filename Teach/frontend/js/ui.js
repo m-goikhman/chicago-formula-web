@@ -79,9 +79,9 @@ const TeachUI = (() => {
 
     function buildNextEpisodeCalendarLink(weekId = 'week1', firstLoginAtMs = Date.now()) {
         const weekNumber = parseTeachWeekNumber(weekId);
-        const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+        const EPISODE_UNLOCK_INTERVAL_MS = 3.5 * 24 * 60 * 60 * 1000;
         const unlockAt = new Date(Number(firstLoginAtMs) || Date.now());
-        unlockAt.setTime(unlockAt.getTime() + (weekNumber * WEEK_IN_MS));
+        unlockAt.setTime(unlockAt.getTime() + (weekNumber * EPISODE_UNLOCK_INTERVAL_MS));
 
         const formatDay = (date) => {
             const year = date.getFullYear();
@@ -120,19 +120,21 @@ const TeachUI = (() => {
     }
 
     function buildLocalOutroQuestionnaireText(weekId, options = {}) {
-        if (options.isDemoMode === true) {
-            return TEACH_DEMO_OUTRO_TEXT || 'Thanks for playing!';
-        }
         const template = TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE;
-        if (!template) {
-            return 'Thanks for playing! Please complete the weekly questionnaire in Google Forms.';
+        const participantText = template
+            ? personalizeOutroQuestionnaireLink(
+                template,
+                options.participantCode,
+                weekId,
+                options.firstLoginAtMs
+            )
+            : 'Thanks for playing! Please complete the episode questionnaire in Google Forms.';
+
+        if (options.isDemoMode === true) {
+            const demoPrefix = String(TEACH_DEMO_OUTRO_TEXT || '').trim();
+            return demoPrefix ? `${demoPrefix}\n\n${participantText}` : participantText;
         }
-        return personalizeOutroQuestionnaireLink(
-            template,
-            options.participantCode,
-            weekId,
-            options.firstLoginAtMs
-        );
+        return participantText;
     }
 
     function renderMarkdownInto(element, markdownText) {
@@ -317,7 +319,7 @@ const TeachUI = (() => {
         window.TeachWeekSelector?.renderWeekSelector ??
         (() => {});
 
-    function setChatLoading(chatArea, message = 'Loading your weekly materials…') {
+    function setChatLoading(chatArea, message = 'Loading your episode materials…') {
         if (!chatArea) {
             return;
         }

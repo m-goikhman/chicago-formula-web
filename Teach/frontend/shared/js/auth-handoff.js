@@ -8,15 +8,18 @@
 
     const PARAM_TOKEN = 'session_token';
     const PARAM_CODE = 'participant_code';
+    const PARAM_EPISODE = 'episode';
     const RESUME_CLASS = 'auth-resume-pending';
 
     function normalizeCode(code) {
-        return String(code || '')
-            .trim()
-            .toUpperCase();
+        const raw = String(code || '').trim();
+        if (/^[1-9]\d{1,6}$/.test(raw)) {
+            return raw;
+        }
+        return raw.toUpperCase();
     }
 
-    function buildHandoffUrl(destination, token, participantCode) {
+    function buildHandoffUrl(destination, token, participantCode, options = {}) {
         if (!destination || !token || !participantCode) {
             return destination;
         }
@@ -24,6 +27,10 @@
             const url = new URL(destination, global.location.href);
             url.searchParams.set(PARAM_TOKEN, String(token).trim());
             url.searchParams.set(PARAM_CODE, normalizeCode(participantCode));
+            const episode = options.episode ?? global.portalParams?.getStoredEpisode?.();
+            if (episode) {
+                url.searchParams.set(PARAM_EPISODE, String(episode));
+            }
             return url.toString();
         } catch (error) {
             console.warn('[AuthHandoff] Could not build handoff URL:', error);
@@ -53,6 +60,11 @@
 
             global.localStorage.setItem(tokenKey, trimmedToken);
             global.localStorage.setItem(participantCodeKey, normalizedCode);
+
+            const episode = url.searchParams.get(PARAM_EPISODE);
+            if (episode && global.portalParams?.storePortalParams) {
+                global.portalParams.storePortalParams({ episode });
+            }
 
             url.searchParams.delete(PARAM_TOKEN);
             url.searchParams.delete(PARAM_CODE);
@@ -110,6 +122,7 @@
     global.authHandoff = {
         PARAM_TOKEN,
         PARAM_CODE,
+        PARAM_EPISODE,
         RESUME_CLASS,
         buildHandoffUrl,
         consumeHandoffFromLocation,

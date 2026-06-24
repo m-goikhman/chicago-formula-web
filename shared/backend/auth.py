@@ -56,12 +56,21 @@ def validate_session_token(token: str) -> Optional[Dict]:
     return session
 
 
+def is_sona_participant_code(code: str) -> bool:
+    """SONA survey codes: 2–7 digits, no leading zero."""
+    import re
+    normalized = str(code or "").strip()
+    return bool(re.fullmatch(r"[1-9]\d{1,6}", normalized))
+
+
 def is_valid_participant_code(code: str) -> bool:
     import re
     code = code.strip().upper()
     if code in SPECIAL_PARTICIPANT_CODES:
         return True
     if is_demo_slot_code(code):
+        return True
+    if is_sona_participant_code(code):
         return True
     # Participant code format: 2 uppercase letters + 4 digits (e.g. "HE2103")
     return bool(re.fullmatch(r"[A-Z]{2}\d{4}", code))
@@ -81,7 +90,11 @@ def login_participant(
 
     Entering DEMO allocates or resumes a DEMO{n} slot (see demo_slots.py).
     """
-    code = participant_code.strip().upper()
+    raw = participant_code.strip()
+    if is_sona_participant_code(raw):
+        code = raw
+    else:
+        code = raw.upper()
 
     if is_demo_login_code(code):
         resolved = resolve_demo_participant_code(demo_slot)

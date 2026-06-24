@@ -245,6 +245,21 @@
         return 'Checking code…';
     }
 
+    function getPortalEpisode() {
+        return global.portalParams?.getStoredEpisode?.() ?? null;
+    }
+
+    function hasSonaId() {
+        return Boolean(global.portalParams?.getStoredSonaId?.());
+    }
+
+    function normalizeParticipantCode(code) {
+        if (global.portalParams?.normalizeParticipantCode) {
+            return global.portalParams.normalizeParticipantCode(code);
+        }
+        return String(code || '').trim().toUpperCase();
+    }
+
     function setLoading(isLoading) {
         if (isLoading) {
             loginButton.classList.add('loading');
@@ -430,8 +445,13 @@
 
     function showLoginAfterSurvey() {
         hideAllMainSections();
+        const sonaId = global.portalParams?.getStoredSonaId?.();
         if (studyCodeInstructions) {
-            studyCodeInstructions.classList.remove('hidden');
+            if (sonaId) {
+                studyCodeInstructions.classList.add('hidden');
+            } else {
+                studyCodeInstructions.classList.remove('hidden');
+            }
         }
         loginView.classList.remove('hidden');
         const lang = localStorage.getItem('portalLang') || 'en';
@@ -439,6 +459,9 @@
             portalSwitchLang(lang);
         }
         if (participantInput) {
+            if (sonaId) {
+                participantInput.value = sonaId;
+            }
             participantInput.focus();
         }
     }
@@ -606,7 +629,11 @@
             }
             sessionStorage.setItem(SESSION_ONBOARDING_TOKEN, data.onboarding_token);
             localStorage.setItem(STORAGE_STUDY_ARM, data.arm);
-            showLoginAfterSurvey();
+            if (hasSonaId()) {
+                tryAutoLoginFromSona();
+            } else {
+                showLoginAfterSurvey();
+            }
         } catch (err) {
             console.error('[Portal] Onboarding submit failed:', err);
             const lang = localStorage.getItem('portalLang') || 'en';
@@ -639,7 +666,7 @@
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
         if (assignedContinueBtn) {
-            assignedContinueBtn.onclick = () => navigateTo(arm);
+            assignedContinueBtn.onclick = () => navigateTo(arm, { episode: getPortalEpisode() });
         }
         if (options.showStatus) {
             modeStatus.textContent = options.showStatus;
@@ -675,16 +702,54 @@
         }
     }
 
-    async function handleLogin() {
-        const rawCode = participantInput.value.trim();
-        if (!rawCode) {
-            loginError.textContent = t('loginCodeMissing') || 'Please enter the participant code provided to you.';
-            return;
+    async function completeLoginFlow(data, normalizedCode, options = {}) {
+        const token = data?.token;
+        const participantCode = normalizeParticipantCode(data?.participant_code || normalizedCode);
+        const arm = resolveLoginArm(data);
+
+        if (isStudyFlowEnabled() && !arm && !hasPendingOnboarding()) {
+            requireSurveyBeforeCode();
+            return false;
         }
 
-        const normalizedCode = rawCode.toUpperCase();
+        persistSession(token, participantCode);
+        storeStudyArm(arm);
+
+        if (data?.study_arm) {
+            sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
+        } else if (hasPendingOnboarding()) {
+            await attachPendingOnboarding(token);
+        }
+
+        const resolvedArm = localStorage.getItem(STORAGE_STUDY_ARM);
+        if (!resolvedArm) {
+            if (loginError) {
+                loginError.textContent =
+                    t('loginRequiresSurvey') ||
+                    'Please complete the questionnaire first. Every participant code must be linked to a language profile.';
+            }
+            return false;
+        }
+
+        if (options.navigate !== false) {
+            navigateTo(resolvedArm, { episode: options.episode ?? getPortalEpisode() });
+        }
+        return true;
+    }
+
+    async function loginWithCode(rawCode, options = {}) {
+        const normalizedCode = normalizeParticipantCode(rawCode);
+        if (!normalizedCode) {
+            if (loginError) {
+                loginError.textContent = t('loginCodeMissing') || 'Please enter the participant code provided to you.';
+            }
+            return false;
+        }
+
         clearMessages();
-        setLoading(true);
+        if (!options.silent) {
+            setLoading(true);
+        }
 
         try {
             const { response, data } = await apiClient.postJson('/api/auth/login', {
@@ -695,47 +760,44 @@
                 const detail =
                     (data && (data.detail || data.error || data.message)) ||
                     'Login failed. Please check your code.';
-                loginError.textContent = detail;
-                return;
+                if (loginError) {
+                    loginError.textContent = detail;
+                }
+                return false;
             }
 
-            const token = data?.token;
-            const participantCode = (data?.participant_code || normalizedCode).toUpperCase();
-            participantInput.value = '';
-
-            const arm = resolveLoginArm(data);
-
-            if (isStudyFlowEnabled() && !arm && !hasPendingOnboarding()) {
-                requireSurveyBeforeCode();
-                return;
-            }
-
-            persistSession(token, participantCode);
-            storeStudyArm(arm);
-
-            if (data?.study_arm) {
-                sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
-            } else if (hasPendingOnboarding()) {
-                await attachPendingOnboarding(token);
-            }
-
-            const resolvedArm = localStorage.getItem(STORAGE_STUDY_ARM);
-            if (!resolvedArm) {
-                loginError.textContent =
-                    t('loginRequiresSurvey') ||
-                    'Please complete the questionnaire first. Every participant code must be linked to a language profile.';
-                return;
-            }
-
-            navigateTo(resolvedArm);
+            return completeLoginFlow(data, normalizedCode, options);
         } catch (error) {
             console.error('[Portal] Login failed:', error);
-            loginError.textContent =
-                t('loginNetworkError') ||
-                'Could not reach the server. Please check your connection or try again later.';
+            if (loginError) {
+                loginError.textContent =
+                    t('loginNetworkError') ||
+                    'Could not reach the server. Please check your connection or try again later.';
+            }
+            return false;
         } finally {
-            setLoading(false);
+            if (!options.silent) {
+                setLoading(false);
+            }
         }
+    }
+
+    async function tryAutoLoginFromSona(options = {}) {
+        const sonaId = global.portalParams?.getStoredSonaId?.();
+        if (!sonaId) {
+            return false;
+        }
+        return loginWithCode(sonaId, options);
+    }
+
+    async function handleLogin() {
+        const rawCode = participantInput.value.trim();
+        if (!rawCode) {
+            loginError.textContent = t('loginCodeMissing') || 'Please enter the participant code provided to you.';
+            return;
+        }
+
+        await loginWithCode(rawCode);
     }
 
     async function tryRestoreSession() {
@@ -764,6 +826,12 @@
 
             if (!studyArm) {
                 clearStoredSession();
+                if (hasSonaId()) {
+                    const autoLoggedIn = await tryAutoLoginFromSona();
+                    if (autoLoggedIn) {
+                        return true;
+                    }
+                }
                 if (isStudyFlowEnabled()) {
                     showLoginAfterSurvey();
                 } else {
@@ -777,6 +845,13 @@
 
             persistSession(stored.token, participantCode);
             storeStudyArm(studyArm);
+
+            const episode = getPortalEpisode();
+            if (episode) {
+                navigateTo(studyArm, { episode });
+                return true;
+            }
+
             showContinueView(participantCode, studyArm, {
                 showStatus:
                     t('sessionRestoredAssigned') ||
@@ -793,19 +868,25 @@
         }
     }
 
-    function buildHandoffDestination(destination) {
+    function buildHandoffDestination(destination, options = {}) {
         const token = localStorage.getItem('sessionToken');
         const participantCode = localStorage.getItem('participantCode');
         if (!token || !participantCode) {
             return destination;
         }
+        const handoffOptions = {
+            episode: options.episode ?? getPortalEpisode()
+        };
         if (global.authHandoff && typeof global.authHandoff.buildHandoffUrl === 'function') {
-            return global.authHandoff.buildHandoffUrl(destination, token, participantCode);
+            return global.authHandoff.buildHandoffUrl(destination, token, participantCode, handoffOptions);
         }
         try {
             const url = new URL(destination, global.location.href);
             url.searchParams.set('session_token', token);
-            url.searchParams.set('participant_code', participantCode.toUpperCase());
+            url.searchParams.set('participant_code', normalizeParticipantCode(participantCode));
+            if (handoffOptions.episode) {
+                url.searchParams.set('episode', String(handoffOptions.episode));
+            }
             return url.toString();
         } catch (error) {
             console.warn('[Portal] Could not append session handoff params:', error);
@@ -813,13 +894,13 @@
         }
     }
 
-    function navigateTo(mode) {
+    function navigateTo(mode, options = {}) {
         const destination = resolveDestination(mode);
         if (!destination) {
             modeStatus.textContent = `Destination for ${mode} mode is not configured.`;
             return;
         }
-        window.location.assign(buildHandoffDestination(destination));
+        window.location.assign(buildHandoffDestination(destination, options));
     }
 
     function closeExpandable(toggle, expandable) {
@@ -914,6 +995,10 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        if (global.portalParams?.consumePortalParamsFromLocation) {
+            global.portalParams.consumePortalParamsFromLocation();
+        }
+
         const lang = localStorage.getItem('portalLang') || 'en';
         if (typeof portalSwitchLang === 'function') {
             portalSwitchLang(lang);
@@ -922,15 +1007,30 @@
             hideConsentOnly();
             if (!isStudyFlowEnabled()) {
                 showLoginDev();
-                tryRestoreSession().then((restored) => {
-                    if (!restored && participantInput) {
+                tryRestoreSession().then(async (restored) => {
+                    if (restored) {
+                        return;
+                    }
+                    if (hasSonaId()) {
+                        const ok = await tryAutoLoginFromSona();
+                        if (ok) {
+                            return;
+                        }
+                    }
+                    if (participantInput) {
                         participantInput.focus();
                     }
                 });
             } else {
-                tryRestoreSession().then((restored) => {
+                tryRestoreSession().then(async (restored) => {
                     if (restored) {
                         return;
+                    }
+                    if (hasSonaId()) {
+                        const ok = await tryAutoLoginFromSona();
+                        if (ok) {
+                            return;
+                        }
                     }
                     clearMessages();
                     showLoginAfterSurvey();

@@ -29,13 +29,14 @@ const WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = '1690586821';
 const CALENDAR_REMINDER_TITLE = 'Teach&Tell: Next episode unlock';
 const CALENDAR_REMINDER_DETAILS = (
     'Your next Teach&Tell episode is now unlocked. '
-    + 'Episodes unlock every week from your game start date. '
+    + 'Episodes unlock twice a week from your game start date. '
     + 'Open the game: https://chicago-formula-n.web.app/'
 );
 const TEACH_DEMO_OUTRO_TEXT = [
     'Thanks for playing!',
     '',
-    'You can keep exploring the next episode whenever you like.'
+    'You can keep exploring the next episode whenever you like.',
+    'The experiment participant will receive here the following message:'
 ].join('\n');
 const TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE = [
     'Thanks for playing!',
@@ -43,8 +44,8 @@ const TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE = [
     `Please answer this [questionnaire:](${WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK}) (the link will take you to Google Forms).`,
     'It will take about 3-5 minutes of your time.',
     '',
-    'The game will continue next week.',
-    `You can [add a weekly reminder to Google Calendar](${NEXT_EPISODE_CALENDAR_TEMPLATE_LINK}) to get notified when the next episode unlocks.`
+    'The game will continue in a few days.',
+    `You can [add a calendar reminder to Google Calendar](${NEXT_EPISODE_CALENDAR_TEMPLATE_LINK}) to get notified when the next episode unlocks.`
 ].join('\n');
 const TEACH_DEMO_ONBOARDING_INTRO = [
     'This is Demo of control group condition.',

@@ -14,7 +14,7 @@ SUSPECT_KEYS = ["tim", "pauline", "fiona", "ronnie"]
 
 # --- Multi-Stage Game Constants ---
 TOTAL_STAGES = 4
-STAGE_UNLOCK_DELAY_DAYS = 7  # Days between stage unlocks
+STAGE_UNLOCK_DELAY_DAYS = 3.5  # Days between episode unlocks (2 episodes per week)
 
 # Stage configuration
 # intro_files: list of steps for case intro. Each step is a filename (str) or dict with

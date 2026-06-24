@@ -3,6 +3,6 @@ Good work tonight, Detective. You got three nervous people talking, and that's t
 ----
 Someone's at the door now -- but that's a problem for next time. Whoever it is isn't going anywhere, and neither is this case.
 ----
-Go and get some rest. See you in a week. Then we open that door together and find out who's been standing in the snow.
+Go and get some rest. See you in a few days. Then we open that door together and find out who's been standing in the snow.
 [buttons]
 See you!|outro_questionnaire

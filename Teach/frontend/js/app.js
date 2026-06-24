@@ -241,14 +241,60 @@
                 reasons.push('complete at least 75% of the previous episode exercises');
             }
             if (failedConditions.has('time')) {
-                reasons.push('wait until one week has passed since your first login');
+                reasons.push('wait until the next episode unlocks');
             }
             const reasonText = reasons.length ? reasons.join(' and ') : 'meet the unlock requirements';
             window.alert(`This episode is still locked. To unlock it, ${reasonText}.`);
             return;
         }
         TeachState.setCurrentWeek(weekId);
+        if (window.portalParams?.setEpisodeInUrl) {
+            window.portalParams.setEpisodeInUrl(window.portalParams.weekIdToEpisode(weekId));
+        }
         render();
+    }
+
+    function applyEpisodeFromUrl() {
+        const portalParams = window.portalParams;
+        if (!portalParams) {
+            return;
+        }
+
+        portalParams.consumePortalParamsFromLocation?.({ cleanUrl: true });
+        const episode = portalParams.getStoredEpisode();
+        if (!episode) {
+            return;
+        }
+
+        const weekId = portalParams.episodeToWeekId(episode);
+        if (!weekId) {
+            return;
+        }
+
+        const availability = TeachState.getWeekAvailability();
+        const weekAvailability = availability.get(weekId);
+        if (weekAvailability?.locked) {
+            const failedConditions = new Set(weekAvailability.failedConditions || []);
+            const reasons = [];
+            if (failedConditions.has('progress')) {
+                reasons.push('complete at least 75% of the previous episode exercises');
+            }
+            if (failedConditions.has('time')) {
+                reasons.push('wait until the next episode unlocks');
+            }
+            const reasonText = reasons.length ? reasons.join(' and ') : 'meet the unlock requirements';
+            window.alert(`This episode is still locked. To unlock it, ${reasonText}.`);
+            const currentEpisode = portalParams.weekIdToEpisode(TeachState.getCurrentWeekId());
+            if (currentEpisode) {
+                portalParams.setEpisodeInUrl(currentEpisode);
+            }
+            return;
+        }
+
+        if (weekId !== TeachState.getCurrentWeekId()) {
+            TeachState.setCurrentWeek(weekId);
+        }
+        portalParams.setEpisodeInUrl(episode);
     }
 
     function updateOverallChip() {
@@ -280,7 +326,7 @@
         });
 
         if (!currentWeek) {
-            showErrorState('No weeks found. Add markdown content to the Teach folder to get started.');
+            showErrorState('No episodes found. Add markdown content to the Teach folder to get started.');
             updateOverallChip();
             return;
         }
@@ -325,6 +371,7 @@
             const weeks = await loadTeachContent();
             TeachState.initialize(weeks);
             await pullStateFromServer();
+            applyEpisodeFromUrl();
             render();
             scheduleStateSync();
         } catch (error) {
@@ -468,6 +515,10 @@
 
         if (window.authHandoff && typeof window.authHandoff.consumeHandoffFromLocation === 'function') {
             window.authHandoff.consumeHandoffFromLocation();
+        }
+
+        if (window.portalParams?.consumePortalParamsFromLocation) {
+            window.portalParams.consumePortalParamsFromLocation();
         }
 
         if (!TeachAuth) {

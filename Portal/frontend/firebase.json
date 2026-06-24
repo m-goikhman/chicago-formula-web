@@ -13,6 +13,18 @@
         "destination": "/index.html"
       }
     ],
+    "redirects": [
+      {
+        "source": "/portal",
+        "destination": "/portal.html",
+        "type": 301
+      },
+      {
+        "source": "/portal/",
+        "destination": "/portal.html",
+        "type": 301
+      }
+    ],
     "headers": [
       {
         "source": "favicon.ico",

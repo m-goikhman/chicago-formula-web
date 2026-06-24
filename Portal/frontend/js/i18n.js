@@ -17,7 +17,7 @@ var PORTAL_TRANSLATIONS = {
             ' Sarai assegnato a uno di due gruppi: uno lavora con un chatbot AI interattivo,' +
             ' l’altro con attività di lettura e scrittura.' +
             ' Entrambi i gruppi seguono la stessa storia.</p>' +
-            '<p>Un episodio a settimana, 4 settimane, circa 40–60 minuti ciascuno.' +
+            '<p>Due episodi a settimana, 2 settimane, circa 40–60 minuti ciascuno.' +
             ' Tutto online — telefono o computer.</p>',
 
         introWho:
@@ -25,7 +25,7 @@ var PORTAL_TRANSLATIONS = {
             '<p>Adulti (18+) con inglese intermedio (B1–B2).' +
             ' Puoi leggere e scrivere in inglese, anche se non sempre è facile.</p>' +
             '<ul class="intro-highlights">' +
-            '<li>4 settimane, circa 40–60 min/settimana</li>' +
+            '<li>2 settimane, 2 episodi/settimana, circa 40–60 min ciascuno</li>' +
             '<li>Tutto online — telefono o computer</li>' +
             '<li>Crediti SONA per studenti UniTn (5 ore)</li>' +
             '</ul>',
@@ -79,7 +79,7 @@ var PORTAL_TRANSLATIONS = {
             ' You will be assigned to one of two groups: one works with an interactive AI chatbot,' +
             ' the other with reading and writing activities.' +
             ' Both groups follow the same story and the same mystery.</p>' +
-            '<p>One episode per week, 4 weeks, approximately 40–60 minutes each.' +
+            '<p>Two episodes per week, 2 weeks, approximately 40–60 minutes each.' +
             ' All online — phone or computer.</p>',
 
         introWho:
@@ -87,7 +87,7 @@ var PORTAL_TRANSLATIONS = {
             '<p>Adults (18+) with intermediate English (B1–B2).' +
             ' You can read and write in English, even if it is not always easy.</p>' +
             '<ul class="intro-highlights">' +
-            '<li>4 weeks, approx. 40–60 min/week</li>' +
+            '<li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>' +
             '<li>All online — phone or computer</li>' +
             '<li>SONA credits for UniTn students (5 hours)</li>' +
             '</ul>',

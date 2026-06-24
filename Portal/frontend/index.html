@@ -8,8 +8,14 @@
         (function () {
             const params = new URLSearchParams(window.location.search);
             const preview = (params.get('preview') || '').toLowerCase();
-            const destination = preview === 'portal' ? './portal.html' : './placeholder/index.html';
-            window.location.replace(destination);
+            const hasStudyParams = params.has('sona_id')
+                || params.has('episode')
+                || params.has('session_token')
+                || params.has('participant_code');
+            const usePortal = preview === 'portal' || hasStudyParams;
+            const destination = usePortal ? './portal.html' : './placeholder/index.html';
+            const suffix = usePortal ? (window.location.search || '') : '';
+            window.location.replace(destination + suffix);
         })();
     </script>
 </head>

@@ -994,7 +994,7 @@ async def get_teach_final_summary(
     summary = str((summary_data or {}).get("summary") or "").strip()
     if not summary:
         summary = (
-            "Great job completing this week! Keep practicing and your English will continue to improve."
+            "Great job completing this episode! Keep practicing and your English will continue to improve."
         )
 
     return {"summary": summary}

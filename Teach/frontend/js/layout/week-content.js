@@ -29,7 +29,7 @@ window.TeachWeekContent = (() => {
         chatArea.innerHTML = '';
 
         if (!week) {
-            addMessage('system', 'Tutor', 'We could not find any weekly materials yet.');
+            addMessage('system', 'Tutor', 'We could not find any episode materials yet.');
             return {};
         }
 

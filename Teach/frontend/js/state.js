@@ -1,7 +1,7 @@
 const TeachState = (() => {
     const STORAGE_KEY = window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY;
     const EPISODE_COMPLETION_THRESHOLD = Number(window.TEACH_CONFIG?.TEACH_EPISODE_COMPLETION_THRESHOLD || 0.75);
-    const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+    const EPISODE_UNLOCK_INTERVAL_MS = 3.5 * 24 * 60 * 60 * 1000;
     const EXCLUDED_RENDERERS = new Set(window.TEACH_CONFIG?.TEACH_EXERCISE_PROGRESS_EXCLUDED_RENDERERS || []);
     let weeks = [];
     let currentWeekId = null;
@@ -415,7 +415,7 @@ const TeachState = (() => {
             }
             const previousWeek = weeks[index - 1];
             const prevSummary = getWeekExerciseSummary(previousWeek.id);
-            const requiredUnlockAtMs = firstLoginAtMs + (index * WEEK_IN_MS);
+            const requiredUnlockAtMs = firstLoginAtMs + (index * EPISODE_UNLOCK_INTERVAL_MS);
             const timeUnlocked = nowMs >= requiredUnlockAtMs;
             const progressUnlocked = prevSummary.isUnlocked;
             const failedConditions = [];

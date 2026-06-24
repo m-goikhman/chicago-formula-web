@@ -527,8 +527,10 @@ async function login() {
             // Load episode selector
             await loadEpisodeSelector();
             
-            // Load game
-            loadGame();
+            const episodeSwitched = await applyEpisodeFromUrl();
+            if (!episodeSwitched) {
+                loadGame();
+            }
         } else {
             errorDiv.textContent = (payload && payload.detail) || 'Login failed';
             loginBtn.disabled = false;
@@ -863,8 +865,15 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         if (investigationJustStarted && shouldShowNinaFloatingButton()) {
             syncNinaFloatingButtonVisibility();
         }
-        if (normalizedAction === 'nina_split_up') {
+        if (
+            normalizedAction === 'go_university_ep4'
+            || normalizedAction === 'go_bar_ep4'
+            || normalizedAction === 'go_pauline_office_ep4'
+            || normalizedAction === 'go_motel_ep4'
+            || normalizedAction === 'go_phone_ep4'
+        ) {
             window.ep4NinaChatAvailable = true;
+            syncNinaFloatingButtonVisibility();
         }
 
         // Some actions can change available characters inside the same episode.
@@ -1278,8 +1287,10 @@ async function restoreSession() {
             // Load episode selector
             await loadEpisodeSelector();
             
-            // Load game
-            await loadGame();
+            const episodeSwitched = await applyEpisodeFromUrl();
+            if (!episodeSwitched) {
+                await loadGame();
+            }
             syncNinaFloatingButtonVisibility();
             
             return true;
@@ -1560,6 +1571,7 @@ async function loadEpisodeSelector() {
         const stagesInfo = data.stages_info || [];
         const currentStage = data.current_stage || 1;
         const availableStages = data.available_stages || [1];
+        window.availableStages = availableStages;
         window.currentStageNumber = currentStage;
         window.ep1GameCompleted = Boolean(data.game_completed);
         window.ep1UsbDriveUnlocked = Boolean(data.ep1_usb_drive_unlocked);
@@ -1678,6 +1690,39 @@ async function loadEpisodeSelector() {
     }
 }
 
+async function applyEpisodeFromUrl() {
+    const portalParams = window.portalParams;
+    if (!portalParams) {
+        return false;
+    }
+
+    portalParams.consumePortalParamsFromLocation?.({ cleanUrl: true });
+
+    const episode = portalParams.getStoredEpisode();
+    if (!episode) {
+        return false;
+    }
+
+    const currentStage = Number(window.currentStageNumber || 1);
+    if (episode === currentStage) {
+        portalParams.setEpisodeInUrl(episode);
+        return false;
+    }
+
+    const available = Array.isArray(window.availableStages) ? window.availableStages : [];
+    if (!available.includes(episode)) {
+        alert(
+            `Episode ${episode} is not available yet. `
+            + 'Please complete the previous episodes or wait until the next unlock date.'
+        );
+        portalParams.setEpisodeInUrl(currentStage);
+        return false;
+    }
+
+    await switchEpisode(episode);
+    return true;
+}
+
 async function switchEpisode(stageNumber) {
     try {
         const { response, data, authFailureHandled } = await callWithAutoReauth(() => apiClient.postJson('/api/game/stage/switch', {
@@ -1715,6 +1760,10 @@ async function switchEpisode(stageNumber) {
         
         // Reload game to show new episode content (messages for this episode only)
         await loadGame();
+
+        if (window.portalParams?.setEpisodeInUrl) {
+            window.portalParams.setEpisodeInUrl(stageNumber);
+        }
         
     } catch (error) {
         console.error('Error switching episode:', error);
@@ -1736,5 +1785,6 @@ window.sendNinaMessage = sendNinaMessage;
 window.appendNinaModalMessage = appendNinaModalMessage;
 window.loadEpisodeSelector = loadEpisodeSelector;
 window.switchEpisode = switchEpisode;
+window.applyEpisodeFromUrl = applyEpisodeFromUrl;
 window.syncNinaFloatingButtonVisibility = syncNinaFloatingButtonVisibility;
 window.initTellChatScrollPersistence = initTellChatScrollPersistence;

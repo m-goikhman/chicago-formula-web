@@ -33,7 +33,7 @@ Chicago Formula is a research web platform for English writing practice built ar
 | Surface | Role | Production URL (default) |
 |---------|------|---------------------------|
 | **Tell** | Interactive Narrative Version — chat with AI characters, evidence, accusations | https://chicago-formula-n.web.app/ |
-| **Teach** | Traditional Version — weekly reading + writing exercises on the same story | https://chicago-formula-t.web.app/ |
+| **Teach** | Traditional Version — episode-based reading + writing exercises on the same story | https://chicago-formula-t.web.app/ |
 | **Portal** | Consent, onboarding questionnaire, stratified assignment to Tell or Teach | https://chicago-formula.web.app/ |
 
 **Backend:** FastAPI on Google Cloud Run (`teach-tell-backend`), Python 3.11, shared by Tell and Teach.
@@ -75,7 +75,7 @@ These are **not** two skins of the same UI — they are different game experienc
 
 ### Teach — Traditional Version
 
-- **Weekly structure** (4 weeks): story blocks (markdown) + exercises (markdown + interactive renderers).
+- **Episode structure** (4 episodes over 2 weeks): story blocks (markdown) + exercises (markdown + interactive renderers).
 - **No character chat.** Writing tasks, gap-fills, matching, drag-and-drop suspects, etc.
 - Optional **LLM feedback** on open-ended writing via `/api/teach/open-ended-response` and final summary via `/api/teach/final-summary`.
 - Progress stored locally (`teach_mode_progress_v1`) and synced to backend via `/api/teach/state`.
@@ -294,7 +294,7 @@ Button/action routing for scripted Tell content: see [`shared/backend/docs/butto
 
 Core logic: `shared/backend/game_handlers.py`, config: `shared/backend/game_config.py`.
 
-- **Stages 1–4** (“episodes”), unlock schedule `STAGE_UNLOCK_DELAY_DAYS` (7 days) unless test mode.
+- **Stages 1–4** (“episodes”), unlock schedule `STAGE_UNLOCK_DELAY_DAYS` (3.5 days, two episodes per week) unless test mode.
 - **Locations** per stage (e.g. EP1 `part1_ep1` / `part2_ep1` for Pauline arrival).
 - **Modes:** `public` (group chat) vs private `talk_<character>`.
 - **Evidence:** `examine_clue_<n>`; EP1 needs `TOTAL_CLUES` (4) before accusation flow.

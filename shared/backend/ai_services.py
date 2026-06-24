@@ -17,6 +17,8 @@ else:
         print(f"WARNING: Failed to initialise Groq client: {exc}. Features will be disabled.", file=sys.stderr)
         client = None
 
+GROQ_CHAT_MODEL = "openai/gpt-oss-120b"
+
 # Telegram's message length limit
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
@@ -773,7 +775,7 @@ async def ask_for_dialogue(
         return _get_fallback_response(character_key)
 
     try:
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.7)  # Reduced from 0.8 for more stability
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=messages, temperature=0.7)  # Reduced from 0.8 for more stability
         assistant_reply = chat_completion.choices[0].message.content
         
         if not assistant_reply or assistant_reply.strip() == "":
@@ -903,7 +905,7 @@ async def ask_tutor_for_analysis(
     if client is None:
         return {"passed": False, "improvement_needed": False, "feedback": "", "briefly": ""}
     try:
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.5)
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
         
         # Validate response for corruption
@@ -933,7 +935,7 @@ async def ask_teach_corrector(participant_code: str, text_to_analyze: str) -> li
         return []
     try:
         chat_completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_CHAT_MODEL,
             messages=messages,
             temperature=0.2,
         )
@@ -976,7 +978,7 @@ async def ask_teach_deliver_feedback(participant_code: str, errors: list) -> str
         return ""
     try:
         chat_completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_CHAT_MODEL,
             messages=messages,
             temperature=0.5,
         )
@@ -1027,7 +1029,7 @@ async def ask_tutor_for_explanation(participant_code: str, text_to_explain: str,
     if client is None:
         return {}
     try:
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.5)
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
         
         # Validate response for corruption
@@ -1159,7 +1161,7 @@ async def ask_tutor_for_final_summary(
     if client is None:
         return {"summary": "Great job completing the game! You showed curiosity and engagement with English. Keep practicing and you'll continue to improve!"}
     try:
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.7)
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=messages, temperature=0.7)
         response_text = chat_completion.choices[0].message.content
         
         # Validate response for corruption
@@ -1182,7 +1184,7 @@ async def ask_word_spotter(text_to_analyze: str) -> list:
     if client is None:
         return []
     try:
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.2)
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=messages, temperature=0.2)
         response_text = chat_completion.choices[0].message.content
         
         # Validate response for corruption
@@ -1253,7 +1255,7 @@ async def ask_director(participant_code: str, context_text: str, message: str) -
         if client is None:
             raise RuntimeError("Groq client not available")
         print(f"DEBUG: Calling director for participant {participant_code} with context: {context_text[:100]}...")
-        chat_completion = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=director_messages, temperature=0.5)
+        chat_completion = client.chat.completions.create(model=GROQ_CHAT_MODEL, messages=director_messages, temperature=0.5)
         response_text = chat_completion.choices[0].message.content
         print(f"DEBUG: Director raw response for participant {participant_code}: {response_text[:200]}...")
         log_message("director", response_text, participant_code)
