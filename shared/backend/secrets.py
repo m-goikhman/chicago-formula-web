@@ -27,7 +27,6 @@ def get_secret(secret_name: str, default_env: str | None = None) -> str | None:
 
 
 # Optional secrets used by both applications
-TELEGRAM_TOKEN = None  # Included for backwards compatibility with bot version
 GROQ_API_KEY = get_secret("groq-api-key", "GROQ_API_KEY")
 GCS_BUCKET_NAME = get_secret("gcs-bucket-name", "GCS_BUCKET_NAME")
 
@@ -40,7 +39,6 @@ if not GCS_BUCKET_NAME:
 
 __all__ = [
     "get_secret",
-    "TELEGRAM_TOKEN",
     "GROQ_API_KEY",
     "GCS_BUCKET_NAME",
 ]

@@ -8,14 +8,22 @@ import time
 import random
 import os
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Any
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from . import bootstrap  # noqa: F401
 
 from .utils import load_system_prompt, combine_character_prompt, get_prompt_path, get_game_text_path, save_message_to_cache, log_message
-from .game_config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, TOTAL_STAGES, STAGE_UNLOCK_DELAY_DAYS, STAGE_CONFIG, user_histories
+from .game_config import (
+    GAME_STATE,
+    CHARACTER_DATA,
+    TOTAL_CLUES,
+    TOTAL_STAGES,
+    NEXT_EPISODE_UNLOCK_HOURS,
+    STAGE_CONFIG,
+    user_histories,
+)
 from .game_state_manager import game_state_manager
 from .progress_manager import progress_manager, TELL_SOURCE
 from .auth import is_test_mode_participant
@@ -185,7 +193,7 @@ ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = "326737977"
 CALENDAR_REMINDER_TITLE = "Teach&Tell: Next episode unlock"
 CALENDAR_REMINDER_DETAILS = (
     "Your next Teach&Tell episode is now unlocked. "
-    "Episodes unlock twice a week from your game start date. "
+    "Episodes unlock 48 hours after you complete the previous one. "
     "Open the game: https://chicago-formula-n.web.app/"
 )
 
@@ -225,6 +233,35 @@ def _build_onboarding_questionnaire_link(participant_code: str) -> str:
     return f"{ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
 
 
+def _coerce_stage_number_key(key) -> Any:
+    """JSON object keys are strings; stage-indexed dicts use ints in memory."""
+    if isinstance(key, str) and key.isdigit():
+        return int(key)
+    return key
+
+
+def _get_stage_progress_entry(state: Dict, stage_num: int) -> Dict:
+    stage_progress = state.get("stage_progress", {}) or {}
+    return stage_progress.get(stage_num, stage_progress.get(str(stage_num), {})) or {}
+
+
+def _get_stage_unlock_date(state: Dict, stage_num: int) -> Optional[str]:
+    stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
+    return stage_unlock_dates.get(stage_num, stage_unlock_dates.get(str(stage_num)))
+
+
+def _normalize_stage_indexed_dicts(state: Dict) -> None:
+    """Ensure stage_progress / stage_unlock_dates use int keys after JSON round-trips."""
+    for field in ("stage_progress", "stage_unlock_dates"):
+        mapping = state.get(field)
+        if not isinstance(mapping, dict):
+            continue
+        normalized = {}
+        for key, value in mapping.items():
+            normalized[_coerce_stage_number_key(key)] = value
+        state[field] = normalized
+
+
 def _parse_iso_datetime(value: Optional[str], default_tz: Optional[datetime.tzinfo] = None) -> Optional[datetime]:
     """Parse ISO datetime safely and attach timezone when missing."""
     if not value or not isinstance(value, str):
@@ -238,64 +275,65 @@ def _parse_iso_datetime(value: Optional[str], default_tz: Optional[datetime.tzin
     return dt
 
 
-def _build_stage_unlock_schedule_from_start(game_start_at: datetime) -> Dict[int, str]:
-    """Build absolute unlock dates for all stages from a fixed game start timestamp."""
-    schedule: Dict[int, str] = {}
-    for stage_num in range(1, TOTAL_STAGES + 1):
-        unlock_date = game_start_at + timedelta(days=STAGE_UNLOCK_DELAY_DAYS * (stage_num - 1))
-        schedule[stage_num] = unlock_date.isoformat()
-    return schedule
+def _schedule_next_stage_unlock(
+    state: Dict,
+    completed_stage: int,
+    completed_at: Optional[datetime],
+    *,
+    immediate: bool = False,
+) -> None:
+    """Set unlock time for the stage following completed_stage."""
+    if completed_stage >= TOTAL_STAGES:
+        return
+    next_stage = completed_stage + 1
+    cet_tz = pytz.timezone("Europe/Berlin")
+    base = completed_at or datetime.now(cet_tz)
+    unlock_at = base if immediate else base + timedelta(hours=NEXT_EPISODE_UNLOCK_HOURS)
+    stage_unlock_dates = dict(state.get("stage_unlock_dates", {}) or {})
+    stage_unlock_dates[next_stage] = unlock_at.isoformat()
+    state["stage_unlock_dates"] = stage_unlock_dates
 
 
-def _ensure_absolute_stage_unlock_schedule(state: Dict) -> None:
-    """
-    Ensure stage unlock dates follow an absolute episode schedule from game start.
-    This keeps unlock timing stable even if a player finishes an episode later.
-    """
+def _ensure_stage_unlock_dates(state: Dict) -> None:
+    """Ensure stage unlock dates follow completion-based scheduling."""
     participant_code = str(state.get("participant_code", "") or "")
     is_test_mode = is_test_mode_participant(participant_code)
-    cet_tz = pytz.timezone('Europe/Berlin')
+    cet_tz = pytz.timezone("Europe/Berlin")
     now = datetime.now(cet_tz)
 
     if is_test_mode:
-        state["game_start_at"] = now.isoformat()
         state["stage_unlock_dates"] = {stage_num: now.isoformat() for stage_num in range(1, TOTAL_STAGES + 1)}
         return
 
-    start_from_state = _parse_iso_datetime(state.get("game_start_at"), default_tz=cet_tz)
-    stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
-    stage1_unlock = _parse_iso_datetime(stage_unlock_dates.get(1), default_tz=cet_tz)
-    game_start_at = start_from_state or stage1_unlock or now
+    stage_unlock_dates = dict(state.get("stage_unlock_dates", {}) or {})
+    stage_unlock_dates.setdefault(1, now.isoformat())
+    state["stage_unlock_dates"] = stage_unlock_dates
 
-    state["game_start_at"] = game_start_at.isoformat()
-    state["stage_unlock_dates"] = _build_stage_unlock_schedule_from_start(game_start_at)
+    stage_progress = state.get("stage_progress", {}) or {}
+    for stage_num in range(1, TOTAL_STAGES):
+        progress = _get_stage_progress_entry(state, stage_num)
+        status = progress.get("completion_status", "not_started")
+        if status not in ("completed", "skipped"):
+            continue
+        next_stage = stage_num + 1
+        completed_at = _parse_iso_datetime(progress.get("completed_at"), default_tz=cet_tz)
+        stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
+        if next_stage in stage_unlock_dates and completed_at:
+            continue
+        if status == "skipped":
+            _schedule_next_stage_unlock(state, stage_num, completed_at or now, immediate=True)
+        elif completed_at:
+            _schedule_next_stage_unlock(state, stage_num, completed_at)
+        else:
+            # Legacy saves without completion timestamps: don't block further progress.
+            _schedule_next_stage_unlock(state, stage_num, now, immediate=True)
 
 
 def _build_next_episode_calendar_link(state: Optional[Dict]) -> str:
     """Create a Google Calendar template URL for the next unlock reminder."""
     cet_tz = pytz.timezone('Europe/Berlin')
     now = datetime.now(cet_tz)
-
-    current_stage = 1
-    if state:
-        try:
-            current_stage = max(1, min(TOTAL_STAGES, int(state.get("current_stage", 1))))
-        except (TypeError, ValueError):
-            current_stage = 1
-    next_stage = min(TOTAL_STAGES, current_stage + 1)
-
-    next_unlock_dt: Optional[datetime] = None
-    if state and isinstance(state, dict):
-        stage_unlock_dates = state.get("stage_unlock_dates", {}) or {}
-        next_unlock_dt = _parse_iso_datetime(stage_unlock_dates.get(next_stage), default_tz=cet_tz)
-        if next_unlock_dt is None:
-            working_state = dict(state)
-            _ensure_absolute_stage_unlock_schedule(working_state)
-            stage_unlock_dates = working_state.get("stage_unlock_dates", {}) or {}
-            next_unlock_dt = _parse_iso_datetime(stage_unlock_dates.get(next_stage), default_tz=cet_tz)
-
-    if next_unlock_dt is None:
-        next_unlock_dt = now + timedelta(days=STAGE_UNLOCK_DELAY_DAYS)
+    next_unlock_dt = now + timedelta(hours=NEXT_EPISODE_UNLOCK_HOURS)
 
     start_day = next_unlock_dt.strftime("%Y%m%d")
     end_day = (next_unlock_dt + timedelta(days=1)).strftime("%Y%m%d")
@@ -1072,8 +1110,7 @@ def _has_private_history_for_character(state: Dict, character_key: str) -> bool:
 
 def _ep1_stage_completed(state: Dict) -> bool:
     """Return True when episode 1 (pre-Pauline party) is marked completed."""
-    stage_progress = state.get("stage_progress", {}) or {}
-    ep1_progress = stage_progress.get(1, stage_progress.get("1", {})) or {}
+    ep1_progress = _get_stage_progress_entry(state, EP1_PARTY_STAGE)
     return ep1_progress.get("completion_status") in {"completed", "skipped"}
 
 
@@ -2930,7 +2967,8 @@ def migrate_legacy_game_state(state: Dict) -> Dict:
     state.setdefault("ep1_outro_narrator_shown", False)
     state.setdefault("ep1_outro_questionnaire_shown", False)
     state.setdefault("ep1_party_outro_questionnaire_shown", False)
-    _ensure_absolute_stage_unlock_schedule(state)
+    _normalize_stage_indexed_dicts(state)
+    _ensure_stage_unlock_dates(state)
     
     return state
 
@@ -2947,42 +2985,33 @@ def get_available_stages(participant_code: str) -> List[int]:
     
     # Ensure state is migrated
     state = migrate_legacy_game_state(state)
-    _ensure_absolute_stage_unlock_schedule(state)
+    _ensure_stage_unlock_dates(state)
     
     available = [1]  # Stage 1 is always available
     cet_tz = pytz.timezone('Europe/Berlin')
     now = datetime.now(cet_tz)
     
-    stage_unlock_dates = state.get("stage_unlock_dates", {})
-    stages_completed = state.get("stages_completed", set())
-    stage_progress = state.get("stage_progress", {})
-    
     for stage_num in range(2, TOTAL_STAGES + 1):
         # Check if previous stage is completed or skipped
         prev_stage = stage_num - 1
-        prev_status = stage_progress.get(prev_stage, {}).get("completion_status", "not_started")
+        prev_progress = _get_stage_progress_entry(state, prev_stage)
+        prev_status = prev_progress.get("completion_status", "not_started")
         
         if prev_status in ["completed", "skipped"]:
             # Check unlock date
-            unlock_date_str = stage_unlock_dates.get(stage_num)
+            unlock_date_str = _get_stage_unlock_date(state, stage_num)
             if unlock_date_str:
-                try:
-                    unlock_date = datetime.fromisoformat(unlock_date_str)
-                    if now >= unlock_date:
-                        available.append(stage_num)
-                except (ValueError, TypeError):
-                    # Invalid date format, unlock immediately if previous stage is done
+                unlock_date = _parse_iso_datetime(unlock_date_str, default_tz=cet_tz)
+                if unlock_date and now >= unlock_date:
                     available.append(stage_num)
             else:
-                # No unlock date set: rebuild absolute episode schedule from game start.
-                _ensure_absolute_stage_unlock_schedule(state)
-                stage_unlock_dates = state.get("stage_unlock_dates", {})
-                unlock_date_str = stage_unlock_dates.get(stage_num)
+                # No unlock date set yet: derive from completion timestamps.
+                _ensure_stage_unlock_dates(state)
+                unlock_date_str = _get_stage_unlock_date(state, stage_num)
                 unlock_date = _parse_iso_datetime(unlock_date_str, default_tz=cet_tz)
                 if unlock_date and now >= unlock_date:
                     available.append(stage_num)
                 elif prev_status == "skipped":
-                    # If skipped, unlock immediately
                     available.append(stage_num)
     
     return sorted(available)
@@ -2995,6 +3024,8 @@ async def complete_stage(participant_code: str, stage_number: int) -> bool:
         return False
     
     state = migrate_legacy_game_state(state)
+    cet_tz = pytz.timezone("Europe/Berlin")
+    completed_at = datetime.now(cet_tz)
     
     # Update stage progress
     if stage_number not in state["stage_progress"]:
@@ -3002,10 +3033,12 @@ async def complete_stage(participant_code: str, stage_number: int) -> bool:
             "clues_examined": set(),
             "suspects_interrogated": set(),
             "key_information_found": [],
-            "completion_status": "completed"
+            "completion_status": "completed",
+            "completed_at": completed_at.isoformat(),
         }
     else:
         state["stage_progress"][stage_number]["completion_status"] = "completed"
+        state["stage_progress"][stage_number]["completed_at"] = completed_at.isoformat()
     
     # Add to completed stages
     state["stages_completed"].add(stage_number)
@@ -3025,8 +3058,7 @@ async def complete_stage(participant_code: str, stage_number: int) -> bool:
         if knowledge_entry not in state["global_knowledge"]:
             state["global_knowledge"].append(knowledge_entry)
     
-    # Keep unlock schedule anchored to game start (not completion moment).
-    _ensure_absolute_stage_unlock_schedule(state)
+    _schedule_next_stage_unlock(state, stage_number, completed_at)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -3042,6 +3074,8 @@ async def skip_stage(participant_code: str, stage_number: int) -> bool:
         return False
     
     state = migrate_legacy_game_state(state)
+    cet_tz = pytz.timezone("Europe/Berlin")
+    skipped_at = datetime.now(cet_tz)
     
     # Update stage progress
     if stage_number not in state["stage_progress"]:
@@ -3049,10 +3083,12 @@ async def skip_stage(participant_code: str, stage_number: int) -> bool:
             "clues_examined": set(),
             "suspects_interrogated": set(),
             "key_information_found": [],
-            "completion_status": "skipped"
+            "completion_status": "skipped",
+            "completed_at": skipped_at.isoformat(),
         }
     else:
         state["stage_progress"][stage_number]["completion_status"] = "skipped"
+        state["stage_progress"][stage_number]["completed_at"] = skipped_at.isoformat()
     
     # Add key information from stage config as hints
     stage_config = STAGE_CONFIG.get(stage_number, {})
@@ -3069,15 +3105,9 @@ async def skip_stage(participant_code: str, stage_number: int) -> bool:
         if knowledge_entry not in state["global_knowledge"]:
             state["global_knowledge"].append(knowledge_entry)
     
-    # Unlock next stage immediately if it exists
+    # Unlock next stage immediately when skipping.
     if stage_number < TOTAL_STAGES:
-        next_stage = stage_number + 1
-        cet_tz = pytz.timezone('Europe/Berlin')
-        unlock_date = datetime.now(cet_tz)
-        
-        stage_unlock_dates = state.get("stage_unlock_dates", {})
-        stage_unlock_dates[next_stage] = unlock_date.isoformat()
-        state["stage_unlock_dates"] = stage_unlock_dates
+        _schedule_next_stage_unlock(state, stage_number, skipped_at, immediate=True)
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -3125,7 +3155,7 @@ async def switch_stage(participant_code: str, stage_number: int) -> bool:
         state["accuse_unlocked"] = True
 
     # Sync legacy fields with current stage progress
-    stage_progress = state["stage_progress"].get(stage_number, {})
+    stage_progress = _get_stage_progress_entry(state, stage_number)
     state["clues_examined"] = stage_progress.get("clues_examined", set())
     state["suspects_interrogated"] = stage_progress.get("suspects_interrogated", set())
     
@@ -3552,7 +3582,7 @@ def _mark_investigation_started(state: Dict) -> None:
     if not state.get("game_start_at"):
         cet_tz = pytz.timezone('Europe/Berlin')
         state["game_start_at"] = datetime.now(cet_tz).isoformat()
-    _ensure_absolute_stage_unlock_schedule(state)
+    _ensure_stage_unlock_dates(state)
 
 
 def _prepare_ep4_precinct_conversation(state: Dict) -> None:

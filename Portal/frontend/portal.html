@@ -38,7 +38,7 @@
                     <ul class="intro-highlights">
                         <li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>
                         <li>All online — phone or computer</li>
-                        <li>SONA credits for UniTn students (5 hours)</li>
+                        <li>280 SONA Time Credits for UniTn students</li>
                     </ul>
                 </div>
             </div>
@@ -103,7 +103,7 @@
 
                                 <h3 class="consent-section-heading">Possibili rischi e benefici</h3>
                                 <p><strong>Rischi:</strong> Non prevediamo rischi significativi. Alcune persone potrebbero sentirsi leggermente in ansia mentre scrivono in inglese, ma questo fa parte della normale esperienza di apprendimento. Puoi interrompere in qualsiasi momento se ti senti a disagio.</p>
-                                <p><strong>Benefici:</strong> Partecipando, avrai l'opportunità di praticare l'inglese scritto in un contesto nuovo e senza giudizio e provare strumenti educativi innovativi con intelligenza artificiale. Agli studenti UniTn saranno attribuiti crediti SONA per 300 minuti (5 ore).</p>
+                                <p><strong>Benefici:</strong> Partecipando, avrai l'opportunità di praticare l'inglese scritto in un contesto nuovo e senza giudizio e provare strumenti educativi innovativi con intelligenza artificiale. Agli studenti UniTn saranno attribuiti 280 SONA Time Credits.</p>
 
                                 <h3 class="consent-section-heading">Partecipazione volontaria</h3>
                                 <p>La tua partecipazione è completamente volontaria. Hai il diritto di:</p>
@@ -179,7 +179,7 @@
 
                                 <h3 class="consent-section-heading">Possible risks and benefits</h3>
                                 <p><strong>Risks:</strong> We do not anticipate significant risks. Some people may feel slightly anxious when writing in English, but this is part of the normal learning experience. You can stop at any time if you feel uncomfortable.</p>
-                                <p><strong>Benefits:</strong> By participating, you will have the opportunity to practise written English in a new, judgement-free context and try innovative AI-based educational tools. University of Trento students will receive SONA credits for 300 minutes (5 hours).</p>
+                                <p><strong>Benefits:</strong> By participating, you will have the opportunity to practise written English in a new, judgement-free context and try innovative AI-based educational tools. University of Trento students will receive 280 SONA Time Credits.</p>
 
                                 <h3 class="consent-section-heading">Voluntary participation</h3>
                                 <p>Your participation is entirely voluntary. You have the right to:</p>
@@ -344,7 +344,25 @@
                 <button type="button" class="button primary" id="consentContinueButton" data-i18n="continueBtn" disabled>Continue</button>
             </section>
 
-            <!-- Onboarding questionnaire (study flow; hidden in dev / localhost) -->
+            <!-- Participant code (study flow: right after consent; SONA users skip manual entry) -->
+            <section class="card hidden" data-view="login" id="loginView">
+                <div id="studyCodeInstructions" class="study-code-instructions hidden" data-i18n-html="studyCodeInstructions"></div>
+                <h2 data-i18n="loginTitle">Your participant code</h2>
+                <p data-i18n="loginLead">Create your participant code below. You will use the same code throughout the study.</p>
+
+                <div class="input-group">
+                    <label for="participantCode" data-i18n="participantCodeLabel">Participant code</label>
+                    <div class="input-row">
+                        <input type="text" id="participantCode" placeholder="Enter code (e.g., AN0842)" autocomplete="one-time-code">
+                        <button class="button primary" id="loginButton" data-i18n="unlockButton">Continue</button>
+                    </div>
+                </div>
+
+                <div class="status-text error" id="loginError"></div>
+                <div class="status-text" id="loginStatus"></div>
+            </section>
+
+            <!-- Onboarding questionnaire -->
             <section class="card hidden" data-view="survey" id="surveyView" aria-labelledby="surveyTitle">
                 <h2 id="surveyTitle" data-i18n="surveyTitle">Language background</h2>
                 <p class="survey-lead" data-i18n="surveyLead">Please answer all required questions (marked with *). For Reading, Speaking, and Writing there are two statements each: select all that apply to you.</p>
@@ -355,22 +373,19 @@
                 <div class="status-text error" id="surveyError" role="alert"></div>
             </section>
 
-            <!-- Login view -->
-            <section class="card hidden" data-view="login" id="loginView">
-                <div id="studyCodeInstructions" class="study-code-instructions hidden" data-i18n-html="studyCodeInstructions"></div>
-                <h2 data-i18n="loginTitle">Unlock Your Session</h2>
-                <p data-i18n="loginLead">Use the participant code you just created.</p>
-
-                <div class="input-group">
-                    <label for="participantCode" data-i18n="participantCodeLabel">Participant code</label>
-                    <div class="input-row">
-                        <input type="text" id="participantCode" placeholder="Enter code (e.g., AN0842)" autocomplete="one-time-code">
-                        <button class="button primary" id="loginButton" data-i18n="unlockButton">Unlock access</button>
-                    </div>
+            <!-- Yes/No vocabulary test (Meara) -->
+            <section class="card hidden" data-view="meara" id="mearaView" aria-labelledby="mearaTitle">
+                <h2 id="mearaTitle" data-i18n="mearaTitle">Vocabulary check</h2>
+                <p class="meara-lead" data-i18n="mearaLead">You will see English words one at a time. For each word, decide whether you know it or not. There are no right or wrong answers on screen — just answer honestly.</p>
+                <div class="meara-progress" id="mearaProgress" aria-live="polite"></div>
+                <div class="meara-word-wrap">
+                    <p class="meara-word" id="mearaWord" aria-live="polite"></p>
                 </div>
-
-                <div class="status-text error" id="loginError"></div>
-                <div class="status-text" id="loginStatus"></div>
+                <div class="meara-actions">
+                    <button type="button" class="button primary meara-choice" id="mearaKnowBtn" data-i18n="mearaKnowBtn">I know this word</button>
+                    <button type="button" class="button secondary meara-choice" id="mearaDontKnowBtn" data-i18n="mearaDontKnowBtn">I don't know this word</button>
+                </div>
+                <div class="status-text error" id="mearaError" role="alert"></div>
             </section>
 
             <!-- Continue view (restored session) -->

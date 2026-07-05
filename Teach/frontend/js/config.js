@@ -27,9 +27,11 @@ const WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
 const WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = '1171438860';
 const WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = '1690586821';
 const CALENDAR_REMINDER_TITLE = 'Teach&Tell: Next episode unlock';
+const EPISODE_UNLOCK_AFTER_COMPLETION_MS = 3 * 60 * 1000
+//48 * 60 * 60 * 1000;
 const CALENDAR_REMINDER_DETAILS = (
     'Your next Teach&Tell episode is now unlocked. '
-    + 'Episodes unlock twice a week from your game start date. '
+    + 'Episodes unlock 48 hours after you complete the previous one. '
     + 'Open the game: https://chicago-formula-n.web.app/'
 );
 const TEACH_DEMO_OUTRO_TEXT = [
@@ -44,7 +46,7 @@ const TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE = [
     `Please answer this [questionnaire:](${WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK}) (the link will take you to Google Forms).`,
     'It will take about 3-5 minutes of your time.',
     '',
-    'The game will continue in a few days.',
+    'The game will continue in 48 hours.',
     `You can [add a calendar reminder to Google Calendar](${NEXT_EPISODE_CALENDAR_TEMPLATE_LINK}) to get notified when the next episode unlocks.`
 ].join('\n');
 const TEACH_DEMO_ONBOARDING_INTRO = [
@@ -138,6 +140,7 @@ window.TEACH_CONFIG = {
     WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
     CALENDAR_REMINDER_TITLE,
     CALENDAR_REMINDER_DETAILS,
+    EPISODE_UNLOCK_AFTER_COMPLETION_MS,
     TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
     TEACH_DEMO_OUTRO_TEXT,
     TEACH_ONBOARDING_WELCOME_TEMPLATE,

@@ -1,7 +1,9 @@
 """
-Study onboarding: questionnaire validation, CEFR band, stratified arm assignment, token lifecycle.
+Study onboarding: questionnaire validation, CEFR band, stratified arm assignment.
 
 Experimental arm = Tell; control arm = Teach (see research plan).
+
+Flow: participant code (login) → questionnaire → vocabulary test → arm assignment.
 """
 
 from __future__ import annotations
@@ -12,7 +14,6 @@ import json
 import logging
 import os
 import random
-import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,17 +22,14 @@ from google.cloud import storage
 
 from .cefr_self_rating import CEF_SKILL_KEYS, derive_cefr_band
 from .questionnaire_builtin import load_questionnaire
+from .secrets import GCS_BUCKET_NAME
 
 logger = logging.getLogger(__name__)
 
 _GCS_PREFIX = "study_onboarding"
 _PARTICIPANTS_CSV_BLOB = f"{_GCS_PREFIX}/participants.csv"
+_PARTICIPANT_RECORD_PREFIX = f"{_GCS_PREFIX}/participants"
 _CSV_MULTI_SEPARATOR = " | "
-
-
-def _bucket_name() -> str:
-    """Use env only here so importing this module does not pull Secret Manager (slow/offline)."""
-    return (os.environ.get("GCS_BUCKET_NAME") or "").strip()
 
 # Stratification counters (in-memory; resets on process restart — acceptable for pilot).
 _COUNTERS: Dict[str, Dict[str, int]] = {
@@ -39,8 +37,11 @@ _COUNTERS: Dict[str, Dict[str, int]] = {
     "teach": {"B1": 0, "B2": 0},
 }
 
-_ONBOARDING: Dict[str, Dict[str, Any]] = {}
 _BY_PARTICIPANT: Dict[str, Dict[str, Any]] = {}
+
+
+def _bucket_name() -> str:
+    return (GCS_BUCKET_NAME or "").strip()
 
 
 def _validate_answers(raw: Any) -> Dict[str, Any]:
@@ -120,7 +121,7 @@ def _participants_csv_fieldnames() -> List[str]:
         "arm",
         "cefr_band",
         "questionnaire_completed_at",
-        "attached_at",
+        "assigned_at",
     ]
     question_ids = [q["question_id"] for q in load_questionnaire()]
     return meta + question_ids
@@ -132,8 +133,8 @@ def _participant_csv_row(record: Dict[str, Any], participant_code: str) -> Dict[
         "participant_code": participant_code,
         "arm": str(record.get("arm") or ""),
         "cefr_band": str(record.get("cefr_band") or ""),
-        "questionnaire_completed_at": str(record.get("created_at") or ""),
-        "attached_at": str(record.get("attached_at") or ""),
+        "questionnaire_completed_at": str(record.get("questionnaire_completed_at") or ""),
+        "assigned_at": str(record.get("assigned_at") or ""),
     }
     row.update(readable)
     return row
@@ -154,61 +155,62 @@ def _assign_arm_stratified(band: str) -> str:
 
 
 def _gcs_env_ready() -> bool:
-    """Avoid constructing storage.Client() locally without ADC (can hang)."""
     if not _bucket_name():
         return False
     if os.environ.get("SKIP_GCS", "").lower() in ("1", "true", "yes"):
         return False
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
         return True
-    # Cloud Run / GCE metadata
     if os.environ.get("K_SERVICE") or os.environ.get("GCE_METADATA_HOST"):
         return True
     return False
 
 
 def _gcs_bucket():
-    if not _gcs_env_ready():
+    name = _bucket_name()
+    if not name or not _gcs_env_ready():
         return None
     try:
         client = storage.Client()
-        return client.bucket(_bucket_name())
+        return client.bucket(name)
     except Exception as e:
         logger.error("Failed to init GCS for onboarding: %s", e)
         return None
 
 
-def _persist_submission(token: str, payload: Dict[str, Any]) -> None:
+def _participant_record_blob(code: str):
     bucket = _gcs_bucket()
     if not bucket:
-        logger.warning("Skipping onboarding GCS persist (no bucket)")
-        return
-    try:
-        name = f"{_GCS_PREFIX}/submission_{token}.json"
-        blob = bucket.blob(name)
-        blob.upload_from_string(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            content_type="application/json; charset=utf-8",
-        )
-        logger.info("Stored onboarding submission %s", name)
-    except Exception as e:
-        logger.error("Failed to persist onboarding submission: %s", e)
+        return None, None
+    blob_name = f"{_PARTICIPANT_RECORD_PREFIX}/{code.upper()}.json"
+    return bucket, bucket.blob(blob_name)
 
 
-def _persist_attach(token: str, participant_code: str, payload: Dict[str, Any]) -> None:
-    bucket = _gcs_bucket()
-    if not bucket:
+def _persist_participant_record(code: str, record: Dict[str, Any]) -> None:
+    bucket, blob = _participant_record_blob(code)
+    if not bucket or not blob:
+        logger.warning("Skipping participant record GCS persist for %s (no bucket)", code)
         return
     try:
-        name = f"{_GCS_PREFIX}/attach_{token}_{participant_code}.json"
-        blob = bucket.blob(name)
         blob.upload_from_string(
-            json.dumps(payload, ensure_ascii=False, indent=2),
+            json.dumps(record, ensure_ascii=False, indent=2),
             content_type="application/json; charset=utf-8",
         )
-        logger.info("Stored onboarding attach %s", name)
+        logger.info("Stored participant onboarding record %s", blob.name)
     except Exception as e:
-        logger.error("Failed to persist onboarding attach: %s", e)
+        logger.error("Failed to persist participant record for %s: %s", code, e)
+
+
+def _load_participant_record_from_gcs(code: str) -> Optional[Dict[str, Any]]:
+    _, blob = _participant_record_blob(code)
+    if not blob or not blob.exists():
+        return None
+    try:
+        payload = json.loads(blob.download_as_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception as e:
+        logger.error("Failed to load participant record for %s: %s", code, e)
+        return None
 
 
 def _read_participants_csv_rows(blob) -> Tuple[List[str], List[Dict[str, str]]]:
@@ -294,77 +296,87 @@ def _append_participants_csv(record: Dict[str, Any], participant_code: str) -> N
     logger.error("Failed to append participants CSV for %s after retries", code)
 
 
-def submit_onboarding(answers_raw: dict) -> Tuple[str, str, str, Dict[str, Any]]:
-    """
-    Validate answers, compute CEFR band, assign arm, register token.
-
-    Returns (onboarding_token, arm, cefr_band, normalized_answers).
-    """
-    normalized = _validate_answers(answers_raw)
-    cef_slice = {k: normalized[k] for k in CEF_SKILL_KEYS}
-    band = derive_cefr_band(cef_slice)
-    arm = _assign_arm_stratified(band)
-    token = secrets.token_urlsafe(24)
-    record = {
-        "token": token,
-        "arm": arm,
-        "cefr_band": band,
-        "answers": normalized,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "participant_code": None,
-    }
-    _ONBOARDING[token] = record
-    _persist_submission(
-        token,
-        {
-            "arm": arm,
-            "cefr_band": band,
-            "answers": normalized,
-            "created_at": record["created_at"],
-        },
-    )
-    return token, arm, band, normalized
+def _normalize_code(participant_code: str) -> str:
+    code = (participant_code or "").strip().upper()
+    if not code:
+        raise ValueError("participant_code is required")
+    return code
 
 
 def get_participant_study(participant_code: str) -> Optional[Dict[str, Any]]:
-    """Return onboarding record for a participant code after attach, else None."""
+    """Return onboarding record for a participant code, from memory or GCS."""
     code = (participant_code or "").strip().upper()
     if not code:
         return None
-    return _BY_PARTICIPANT.get(code)
+    cached = _BY_PARTICIPANT.get(code)
+    if cached:
+        return cached
+    loaded = _load_participant_record_from_gcs(code)
+    if loaded:
+        _BY_PARTICIPANT[code] = loaded
+    return loaded
 
 
-def attach_onboarding_token(token: str, participant_code: str) -> bool:
-    rec = _ONBOARDING.get(token)
-    if not rec:
-        return False
-    code = participant_code.upper()
-    existing = _BY_PARTICIPANT.get(code)
-    if existing:
-        if existing.get("token") == token:
-            _append_participants_csv(rec, code)
-            return True
-        logger.warning("Participant %s already has onboarding attached", code)
-        return False
-    rec["participant_code"] = code
-    rec["attached_at"] = datetime.now(timezone.utc).isoformat()
-    _BY_PARTICIPANT[code] = {
-        "token": token,
-        "arm": rec.get("arm"),
-        "cefr_band": rec.get("cefr_band"),
-        "attached_at": rec["attached_at"],
+def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str, Dict[str, Any]]:
+    """
+    Validate answers, compute CEFR band, persist with participant code (no arm yet).
+
+    Returns (cefr_band, normalized_answers).
+    """
+    code = _normalize_code(participant_code)
+    normalized = _validate_answers(answers_raw)
+    cef_slice = {k: normalized[k] for k in CEF_SKILL_KEYS}
+    band = derive_cefr_band(cef_slice)
+
+    existing = get_participant_study(code) or {}
+    if existing.get("answers") and existing.get("cefr_band"):
+        return str(existing["cefr_band"]), existing.get("answers") or normalized
+
+    now = datetime.now(timezone.utc).isoformat()
+    record: Dict[str, Any] = {
+        "participant_code": code,
+        "cefr_band": band,
+        "answers": normalized,
+        "arm": existing.get("arm"),
+        "questionnaire_completed_at": now,
+        "assigned_at": existing.get("assigned_at"),
     }
-    _persist_attach(
-        token,
-        code,
-        {
-            "token": token,
-            "participant_code": code,
-            "arm": rec.get("arm"),
-            "cefr_band": rec.get("cefr_band"),
-            "attached_at": rec["attached_at"],
-            "answers_readable": answers_to_readable(rec.get("answers") or {}),
-        },
-    )
-    _append_participants_csv(rec, code)
-    return True
+    _BY_PARTICIPANT[code] = record
+    _persist_participant_record(code, record)
+    return band, normalized
+
+
+def assign_arm(participant_code: str) -> str:
+    """Stratified Tell vs Teach assignment after portal tests are complete."""
+    code = _normalize_code(participant_code)
+    record = get_participant_study(code)
+    if not record or not record.get("answers"):
+        raise ValueError("Questionnaire must be completed before assignment")
+
+    existing_arm = record.get("arm")
+    if existing_arm:
+        return str(existing_arm)
+
+    band = str(record.get("cefr_band") or "")
+    if band not in ("B1", "B2"):
+        raise ValueError("CEFR band is missing or invalid")
+
+    arm = _assign_arm_stratified(band)
+    now = datetime.now(timezone.utc).isoformat()
+    record["arm"] = arm
+    record["assigned_at"] = now
+    _BY_PARTICIPANT[code] = record
+    _persist_participant_record(code, record)
+    _append_participants_csv(record, code)
+    return arm
+
+
+def get_portal_progress(participant_code: str, *, meara_done: bool = False) -> Dict[str, Any]:
+    record = get_participant_study(participant_code)
+    questionnaire_done = bool(record and record.get("answers"))
+    study_arm = record.get("arm") if record else None
+    return {
+        "questionnaire_done": questionnaire_done,
+        "meara_done": meara_done,
+        "study_arm": study_arm,
+    }

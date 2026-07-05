@@ -27,7 +27,7 @@ var PORTAL_TRANSLATIONS = {
             '<ul class="intro-highlights">' +
             '<li>2 settimane, 2 episodi/settimana, circa 40–60 min ciascuno</li>' +
             '<li>Tutto online — telefono o computer</li>' +
-            '<li>Crediti SONA per studenti UniTn (5 ore)</li>' +
+            '<li>280 SONA Time Credits per studenti UniTn</li>' +
             '</ul>',
 
         consentTitle:  'Prima di partecipare',
@@ -46,11 +46,12 @@ var PORTAL_TRANSLATIONS = {
         studyCodeInstructions:
             '<p><strong>Codice partecipante.</strong> Crealo tu: <strong>due lettere</strong> (prime lettere del tuo nome) seguite da <strong>quattro cifre</strong> ' +
             '(giorno di nascita a due cifre + ultime due cifre del tuo numero di telefono).</p>',
-        loginTitle: 'Accedi',
-        loginLead: 'Il codice partecipante è quello che hai appena definito. Lo userai anche nell’applicazione dello studio.',
+        loginTitle: 'Il tuo codice partecipante',
+        loginLead:
+            'Crea il tuo codice partecipante qui sotto. Userai lo stesso codice per tutto lo studio.',
         participantCodeLabel: 'Codice partecipante',
         participantCodePlaceholder: 'es. AN0842',
-        unlockButton: 'Sblocca accesso',
+        unlockButton: 'Continua',
         unlockChecking: 'Verifica codice…',
         loginCodeMissing: 'Inserisci il tuo codice partecipante.',
         loginRequiresSurvey:
@@ -62,6 +63,15 @@ var PORTAL_TRANSLATIONS = {
         surveyLoadError: 'Impossibile caricare il questionario. Controlla la connessione.',
         surveySubmitError: 'Impossibile contattare il server. Riprova tra poco.',
         surveyValidationError: 'Rispondi a tutte le domande obbligatorie.',
+        mearaTitle: 'Verifica del vocabolario',
+        mearaLead:
+            'Vedrai parole in inglese, una alla volta. Per ogni parola indica se la conosci o no. Non ci sono risposte giuste o sbagliate sullo schermo: rispondi con sincerità.',
+        mearaProgress: 'Parola {current} di {total}',
+        mearaKnowBtn: 'Conosco questa parola',
+        mearaDontKnowBtn: 'Non conosco questa parola',
+        mearaLoadError: 'Impossibile caricare il test di vocabolario. Controlla la connessione.',
+        mearaRequiresSurvey: 'Completa prima il questionario iniziale.',
+        mearaRequiresCompletion: 'Completa prima il test di vocabolario.',
         sessionClearedHint: 'Sessione azzerata. Inserisci un nuovo codice partecipante.',
         restoringSession: 'Ripristino sessione…',
         sessionRestoredAssigned: 'Sessione ripristinata. Continua con l’attività assegnata.',
@@ -89,7 +99,7 @@ var PORTAL_TRANSLATIONS = {
             '<ul class="intro-highlights">' +
             '<li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>' +
             '<li>All online — phone or computer</li>' +
-            '<li>SONA credits for UniTn students (5 hours)</li>' +
+            '<li>280 SONA Time Credits for UniTn students</li>' +
             '</ul>',
 
         consentTitle:  'Before you participate',
@@ -108,11 +118,11 @@ var PORTAL_TRANSLATIONS = {
         studyCodeInstructions:
             '<p><strong>Participant code.</strong> Create it yourself: <strong>two letters</strong> (first letters of your first name) followed by <strong>four digits</strong> ' +
             '(two-digit day of birth + last two digits of your phone number).</p>',
-        loginTitle: 'Unlock your session',
-        loginLead: 'Use the participant code you just created.',
+        loginTitle: 'Your participant code',
+        loginLead: 'Create your participant code below. You will use the same code throughout the study.',
         participantCodeLabel: 'Participant code',
         participantCodePlaceholder: 'e.g. AN0842',
-        unlockButton: 'Unlock access',
+        unlockButton: 'Continue',
         unlockChecking: 'Checking code…',
         loginCodeMissing: 'Please enter your participant code.',
         loginRequiresSurvey:
@@ -124,6 +134,15 @@ var PORTAL_TRANSLATIONS = {
         surveyLoadError: 'Could not load the questionnaire. Please check your connection and try again.',
         surveySubmitError: 'Could not reach the server. Please try again later.',
         surveyValidationError: 'Please answer all required questions.',
+        mearaTitle: 'Vocabulary check',
+        mearaLead:
+            'You will see English words one at a time. For each word, decide whether you know it or not. There are no right or wrong answers on screen — just answer honestly.',
+        mearaProgress: 'Word {current} of {total}',
+        mearaKnowBtn: 'I know this word',
+        mearaDontKnowBtn: "I don't know this word",
+        mearaLoadError: 'Could not load the vocabulary test. Please check your connection.',
+        mearaRequiresSurvey: 'Please complete the initial questionnaire first.',
+        mearaRequiresCompletion: 'Please complete the vocabulary check first.',
         sessionClearedHint: 'Session cleared. Enter a new participant code.',
         restoringSession: 'Restoring your previous session…',
         sessionRestoredAssigned: 'Session restored. Continue to your assigned activity.',

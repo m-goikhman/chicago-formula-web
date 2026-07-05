@@ -751,6 +751,16 @@ input[type="text"]:focus {
     gap: 14px;
 }
 
+[data-view="meara"].hidden {
+    display: none;
+}
+
+[data-view="meara"]:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
 .survey-lead {
     margin: 0 0 6px;
     color: #3d5666;
@@ -817,6 +827,54 @@ input[type="text"]:focus {
 
 .survey-actions {
     margin-top: 6px;
+}
+
+.meara-lead {
+    margin: 0 0 20px;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: #334a57;
+}
+
+.meara-progress {
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #5a7482;
+}
+
+.meara-word-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 140px;
+    margin: 8px 0 28px;
+    padding: 24px 16px;
+    border-radius: 16px;
+    background: rgba(0, 151, 178, 0.07);
+    border: 1px solid rgba(0, 151, 178, 0.14);
+}
+
+.meara-word {
+    margin: 0;
+    font-family: 'Crimson Text', Georgia, serif;
+    font-size: clamp(2rem, 6vw, 2.75rem);
+    font-weight: 600;
+    text-align: center;
+    color: #102d3d;
+    word-break: break-word;
+}
+
+.meara-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.meara-choice {
+    width: 100%;
 }
 
 .study-code-instructions {

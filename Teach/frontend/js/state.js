@@ -1,7 +1,9 @@
 const TeachState = (() => {
     const STORAGE_KEY = window.TEACH_CONFIG.TEACH_PROGRESS_STORAGE_KEY;
     const EPISODE_COMPLETION_THRESHOLD = Number(window.TEACH_CONFIG?.TEACH_EPISODE_COMPLETION_THRESHOLD || 0.75);
-    const EPISODE_UNLOCK_INTERVAL_MS = 3.5 * 24 * 60 * 60 * 1000;
+    const EPISODE_UNLOCK_AFTER_COMPLETION_MS = Number(
+        window.TEACH_CONFIG?.EPISODE_UNLOCK_AFTER_COMPLETION_MS
+    ) || (48 * 60 * 60 * 1000);
     const EXCLUDED_RENDERERS = new Set(window.TEACH_CONFIG?.TEACH_EXERCISE_PROGRESS_EXCLUDED_RENDERERS || []);
     let weeks = [];
     let currentWeekId = null;
@@ -12,6 +14,7 @@ const TeachState = (() => {
         exerciseStatusByWeek: {},
         currentWeekId: null,
         firstLoginAt: null,
+        weekCompletedAt: {},
         stepProgressByWeek: {},
         exerciseDraftsByWeek: {},
         updatedAt: 0
@@ -67,6 +70,7 @@ const TeachState = (() => {
                 exerciseStatusByWeek: state.exerciseStatusByWeek,
                 currentWeekId,
                 firstLoginAt: state.firstLoginAt,
+                weekCompletedAt: state.weekCompletedAt,
                 stepProgressByWeek: state.stepProgressByWeek,
                 exerciseDraftsByWeek: state.exerciseDraftsByWeek,
                 updatedAt: Number(state.updatedAt) || Date.now()
@@ -101,6 +105,7 @@ const TeachState = (() => {
             exerciseStatusByWeek: state.exerciseStatusByWeek,
             currentWeekId,
             firstLoginAt: state.firstLoginAt,
+            weekCompletedAt: state.weekCompletedAt,
             stepProgressByWeek: state.stepProgressByWeek,
             exerciseDraftsByWeek: state.exerciseDraftsByWeek,
             updatedAt: Number(state.updatedAt) || Date.now()
@@ -118,10 +123,15 @@ const TeachState = (() => {
             stored?.exerciseDraftsByWeek && typeof stored.exerciseDraftsByWeek === 'object'
                 ? stored.exerciseDraftsByWeek
                 : {};
+        const storedCompletedAt =
+            stored?.weekCompletedAt && typeof stored.weekCompletedAt === 'object'
+                ? stored.weekCompletedAt
+                : {};
         state = {
             notes: stored?.notes ?? {},
             exerciseStatusByWeek: stored?.exerciseStatusByWeek ?? {},
             firstLoginAt: Number(stored?.firstLoginAt) || Date.now(),
+            weekCompletedAt: { ...storedCompletedAt },
             stepProgressByWeek: { ...storedSteps },
             exerciseDraftsByWeek: { ...storedDrafts },
             updatedAt: Number(stored?.updatedAt) || Date.now()
@@ -140,6 +150,10 @@ const TeachState = (() => {
             }
             if (!state.exerciseDraftsByWeek[week.id] || typeof state.exerciseDraftsByWeek[week.id] !== 'object') {
                 state.exerciseDraftsByWeek[week.id] = {};
+            }
+            const summary = getWeekExerciseSummary(week.id);
+            if (summary.isUnlocked && !state.weekCompletedAt[week.id]) {
+                state.weekCompletedAt[week.id] = Date.now() - EPISODE_UNLOCK_AFTER_COMPLETION_MS - 1000;
             }
         });
         const availability = getWeekAvailability();
@@ -237,6 +251,22 @@ const TeachState = (() => {
         };
     }
 
+    function recordWeekCompletionIfNeeded(weekId) {
+        const summary = getWeekExerciseSummary(weekId);
+        if (!summary.isUnlocked) {
+            return;
+        }
+        if (!state.weekCompletedAt || typeof state.weekCompletedAt !== 'object') {
+            state.weekCompletedAt = {};
+        }
+        if (state.weekCompletedAt[weekId]) {
+            return;
+        }
+        state.weekCompletedAt[weekId] = Date.now();
+        touchUpdatedAt();
+        persist();
+    }
+
     function setExerciseEvaluation(weekId, sectionId, evaluation = {}) {
         if (!weekId || !sectionId) {
             return;
@@ -255,6 +285,7 @@ const TeachState = (() => {
         };
         touchUpdatedAt();
         persist();
+        recordWeekCompletionIfNeeded(weekId);
     }
 
     function getExerciseEvaluation(weekId, sectionId) {
@@ -353,11 +384,15 @@ const TeachState = (() => {
         const nextDrafts = (
             remoteSnapshot.exerciseDraftsByWeek && typeof remoteSnapshot.exerciseDraftsByWeek === 'object'
         ) ? remoteSnapshot.exerciseDraftsByWeek : {};
+        const nextCompletedAt = (
+            remoteSnapshot.weekCompletedAt && typeof remoteSnapshot.weekCompletedAt === 'object'
+        ) ? remoteSnapshot.weekCompletedAt : {};
 
         state.notes = { ...nextNotes };
         state.exerciseStatusByWeek = { ...nextStatus };
         state.stepProgressByWeek = { ...nextSteps };
         state.exerciseDraftsByWeek = { ...nextDrafts };
+        state.weekCompletedAt = { ...nextCompletedAt };
         state.firstLoginAt = Number(remoteSnapshot.firstLoginAt) || state.firstLoginAt || Date.now();
         state.updatedAt = remoteUpdatedAt || Date.now();
 
@@ -378,6 +413,10 @@ const TeachState = (() => {
             }
             if (!state.exerciseDraftsByWeek[week.id] || typeof state.exerciseDraftsByWeek[week.id] !== 'object') {
                 state.exerciseDraftsByWeek[week.id] = {};
+            }
+            const summary = getWeekExerciseSummary(week.id);
+            if (summary.isUnlocked && !state.weekCompletedAt[week.id]) {
+                state.weekCompletedAt[week.id] = Date.now() - EPISODE_UNLOCK_AFTER_COMPLETION_MS - 1000;
             }
         });
 
@@ -403,7 +442,6 @@ const TeachState = (() => {
         }
 
         const nowMs = Date.now();
-        const firstLoginAtMs = Number(state.firstLoginAt) || nowMs;
         weeks.forEach((week, index) => {
             if (index === 0) {
                 availability.set(week.id, {
@@ -415,22 +453,28 @@ const TeachState = (() => {
             }
             const previousWeek = weeks[index - 1];
             const prevSummary = getWeekExerciseSummary(previousWeek.id);
-            const requiredUnlockAtMs = firstLoginAtMs + (index * EPISODE_UNLOCK_INTERVAL_MS);
-            const timeUnlocked = nowMs >= requiredUnlockAtMs;
             const progressUnlocked = prevSummary.isUnlocked;
             const failedConditions = [];
             if (!progressUnlocked) {
                 failedConditions.push('progress');
+                availability.set(week.id, {
+                    locked: true,
+                    status: 'locked',
+                    failedConditions
+                });
+                return;
             }
+            const prevCompletedAtMs = Number(state.weekCompletedAt?.[previousWeek.id]);
+            const unlockAtMs = (prevCompletedAtMs > 0 ? prevCompletedAtMs : nowMs) + EPISODE_UNLOCK_AFTER_COMPLETION_MS;
+            const timeUnlocked = nowMs >= unlockAtMs;
             if (!timeUnlocked) {
                 failedConditions.push('time');
             }
-            const locked = failedConditions.length > 0;
             availability.set(week.id, {
-                locked,
-                status: locked ? 'locked' : 'available',
+                locked: failedConditions.length > 0,
+                status: failedConditions.length > 0 ? 'locked' : 'available',
                 failedConditions,
-                unlockAt: new Date(requiredUnlockAtMs).toISOString()
+                unlockAt: new Date(unlockAtMs).toISOString()
             });
         });
         return availability;

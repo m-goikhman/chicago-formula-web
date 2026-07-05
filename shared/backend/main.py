@@ -2,7 +2,7 @@
 FastAPI main application for the web version of Teach or Tell.
 """
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -11,19 +11,18 @@ import logging
 import json
 import uvicorn
 import os
-import time
-import random
 from . import bootstrap  # noqa: F401
 
 from .auth import validate_session_token, login_participant, is_test_mode_participant
 from .demo_slots import is_demo_mode_participant
 from . import study_onboarding
+from . import meara_vocab
 from .progress_manager import (
     progress_manager,
     TELL_SOURCE,
     TEACH_SOURCE,
 )
-from .game_config import GAME_STATE, CHARACTER_DATA, TOTAL_CLUES, GROQ_API_KEY
+from .game_config import GAME_STATE, CHARACTER_DATA
 from .utils import log_message, clear_chat_history_log
 from .game_state_manager import game_state_manager
 
@@ -97,13 +96,34 @@ class OnboardingSubmitRequest(BaseModel):
 
 
 class OnboardingSubmitResponse(BaseModel):
-    onboarding_token: str
-    arm: str
     cefr_band: str
+    success: bool = True
 
 
-class OnboardingAttachRequest(BaseModel):
-    onboarding_token: str
+class OnboardingAssignResponse(BaseModel):
+    arm: str
+    participant_code: str
+
+
+class StudyProgressResponse(BaseModel):
+    questionnaire_done: bool
+    meara_done: bool
+    study_arm: Optional[str] = None
+
+
+class MearaWordsResponse(BaseModel):
+    words: list
+
+
+class MearaResponseItem(BaseModel):
+    word: str
+    knows: bool
+
+
+class MearaSubmitRequest(BaseModel):
+    phase: str
+    word_order: list
+    responses: list[MearaResponseItem]
 
 
 class ResetGameResponse(BaseModel):
@@ -208,17 +228,17 @@ def _build_progress_report_message(logs: dict) -> str:
 
 
 # Dependency to get current user
-async def get_current_user(authorization: str = Header(...)):
+async def get_current_user(authorization: str = Header(..., alias="Authorization")):
     """Get current user from session token."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    
-    token = authorization.replace("Bearer ", "")
+
+    token = authorization.replace("Bearer ", "", 1)
     session = validate_session_token(token)
-    
+
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     return session
 
 
@@ -258,18 +278,9 @@ async def login(request: LoginRequest):
 
 
 @app.get("/api/auth/session", response_model=SessionResponse)
-async def session_status(authorization: str = Header(...)):
+async def session_status(current_user=Depends(get_current_user)):
     """Validate an existing session token."""
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-
-    token = authorization.replace("Bearer ", "", 1)
-    session = validate_session_token(token)
-
-    if not session:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    code = session["participant_code"]
+    code = current_user["participant_code"]
     study = study_onboarding.get_participant_study(code)
     study_arm = study.get("arm") if study else None
 
@@ -287,30 +298,64 @@ async def study_questionnaire():
 
 
 @app.post("/api/study/onboarding", response_model=OnboardingSubmitResponse)
-async def study_onboarding_submit(request: OnboardingSubmitRequest):
-    """Accept onboarding answers, compute CEFR band, stratify Tell vs Teach, return one-time token."""
-    try:
-        token, arm, band, _norm = study_onboarding.submit_onboarding(request.answers)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return OnboardingSubmitResponse(
-        onboarding_token=token,
-        arm=arm,
-        cefr_band=band,
-    )
-
-
-@app.post("/api/study/onboarding/attach")
-async def study_onboarding_attach(
-    request: OnboardingAttachRequest,
+async def study_onboarding_submit(
+    request: OnboardingSubmitRequest,
     current_user=Depends(get_current_user),
 ):
-    """Link an onboarding token to the authenticated participant code (for analysis exports)."""
+    """Save language learner profile for the authenticated participant (no arm assignment yet)."""
     code = current_user["participant_code"]
-    ok = study_onboarding.attach_onboarding_token(request.onboarding_token, code)
-    if not ok:
-        raise HTTPException(status_code=400, detail="Invalid or unknown onboarding token")
-    return {"success": True, "participant_code": code}
+    try:
+        band, _norm = study_onboarding.submit_questionnaire(code, request.answers)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return OnboardingSubmitResponse(cefr_band=band)
+
+
+@app.post("/api/study/onboarding/assign", response_model=OnboardingAssignResponse)
+async def study_onboarding_assign_arm(current_user=Depends(get_current_user)):
+    """Stratified Tell vs Teach assignment after portal onboarding tests."""
+    code = current_user["participant_code"]
+    try:
+        arm = study_onboarding.assign_arm(code)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return OnboardingAssignResponse(arm=arm, participant_code=code)
+
+
+@app.get("/api/study/progress", response_model=StudyProgressResponse)
+async def study_portal_progress(current_user=Depends(get_current_user)):
+    """Which portal steps the participant has already completed."""
+    code = current_user["participant_code"]
+    meara_done = meara_vocab.has_submission(code, "pretest")
+    progress = study_onboarding.get_portal_progress(code, meara_done=meara_done)
+    return StudyProgressResponse(**progress)
+
+
+@app.get("/api/study/meara/words", response_model=MearaWordsResponse)
+async def study_meara_words():
+    """Vocabulary test items (words only; labels are stored server-side)."""
+    return MearaWordsResponse(words=meara_vocab.get_word_list())
+
+
+@app.post("/api/study/meara/submit")
+async def study_meara_submit(
+    request: MearaSubmitRequest,
+    current_user=Depends(get_current_user),
+):
+    """Persist Yes/No vocabulary test responses for a participant."""
+    code = current_user["participant_code"]
+    try:
+        payload = meara_vocab.submit_results(
+            participant_code=code,
+            phase=request.phase,
+            word_order=request.word_order,
+            responses=[item.model_dump() for item in request.responses],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    return {"success": True, "participant_code": code, "phase": payload.get("phase")}
 
 
 @app.get("/api/images/{image_path:path}")
@@ -402,7 +447,6 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_accuse_select_target,
         handle_accuse_explain_cancel,
         handle_accuse_explain_ready,
-        handle_accuse_reason_message,
         handle_reveal_ep1_killer,
         handle_share_usb_with_james,
         handle_language_menu_difficulty,
@@ -418,7 +462,6 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep3_outro_questionnaire,
         handle_ep4_fiona_reassured,
         handle_get_final_summary,
-        get_stage_locations_info,
         append_episode_messages,
         get_messages_for_current_location,
         get_stage_location,
@@ -561,7 +604,6 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
         from .game_handlers import (
             handle_private_message,
             handle_public_message,
-            handle_nina_message,
             handle_accuse_reason_message,
             analyze_and_log_user_text,
             handle_test_chat_command,
@@ -759,11 +801,9 @@ async def handle_explain(request: ExplainRequest, current_user=Depends(get_curre
     logger.info(f"Explain action from {participant_code}: {request.action}")
     learning_source = _resolve_learning_source(request.source)
     
-    from .game_config import message_cache
-    from .utils import save_message_to_cache
     from .ai_services import ask_word_spotter, ask_tutor_for_explanation
     from .game_config import CHARACTER_DATA
-    
+
     messages = []
     tutor_data = CHARACTER_DATA["tutor"]
     
@@ -1077,6 +1117,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         get_stage_locations_info,
         ep4_nina_modal_chat_available,
         get_dialogue_mode_metadata,
+        _get_stage_progress_entry,
     )
     from .game_config import STAGE_CONFIG, TOTAL_STAGES, CHARACTER_DATA
     
@@ -1095,22 +1136,22 @@ async def get_available_stages(current_user=Depends(get_current_user)):
     
     # Build stage info
     stages_info = []
+    game_state = GAME_STATE.get(participant_code, {})
     # For test mode, include all stages; otherwise only available ones
     stages_to_show = list(range(1, TOTAL_STAGES + 1)) if is_test_mode else available_stages
-    
+
     for stage_num in stages_to_show:
         stage_config = STAGE_CONFIG.get(stage_num, {})
-        progress = stage_progress.get(stage_num, {})
+        progress = _get_stage_progress_entry(game_state, stage_num)
         is_available = stage_num in available_stages if not is_test_mode else True
         if stage_num == current_stage:
-            character_keys = get_characters_for_stage(GAME_STATE.get(participant_code, {}), stage_num)
-            current_location = get_stage_location(GAME_STATE.get(participant_code, {}), stage_num)
+            character_keys = get_characters_for_stage(game_state, stage_num)
+            current_location = get_stage_location(game_state, stage_num)
         else:
             default_location = stage_config.get("default_location")
             location_cfg = stage_config.get("locations", {}).get(default_location, {})
             character_keys = location_cfg.get("characters", stage_config.get("characters", []))
             current_location = default_location
-        game_state = GAME_STATE.get(participant_code, {})
         locations_info = get_stage_locations_info(game_state, stage_num)
         characters = [
             {"key": k, "full_name": CHARACTER_DATA[k]["full_name"], "image": CHARACTER_DATA.get(k, {}).get("image")}
@@ -1127,8 +1168,7 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             "characters": characters,
             "locations": locations_info,
         })
-    
-    game_state = GAME_STATE.get(participant_code, {})
+
     return {
         "available_stages": available_stages,
         "current_stage": current_stage,
@@ -1207,34 +1247,6 @@ async def get_knowledge(current_user=Depends(get_current_user)):
         "knowledge": global_knowledge,
         "total_items": len(global_knowledge)
     }
-
-
-@app.websocket("/ws/{participant_code}")
-async def websocket_endpoint(websocket: WebSocket, participant_code: str):
-    """WebSocket endpoint for real-time communication."""
-    await websocket.accept()
-    logger.info(f"WebSocket connection opened for participant: {participant_code}")
-    
-    try:
-        while True:
-            data = await websocket.receive_json()
-            
-            # Handle incoming message
-            if "message" in data:
-                text = data["message"]
-                logger.info(f"WebSocket message from {participant_code}: {text}")
-                
-                # TODO: Process through game handlers
-                response = {
-                    "type": "message",
-                    "content": f"Echo: {text}",
-                    "sender": "bot"
-                }
-                
-                await websocket.send_json(response)
-            
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket connection closed for participant: {participant_code}")
 
 
 if __name__ == "__main__":

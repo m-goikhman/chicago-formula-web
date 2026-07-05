@@ -192,7 +192,7 @@
 
     const CONSENT_STORAGE_KEY = 'portalConsentGiven';
     const STORAGE_STUDY_ARM = 'portalStudyArm';
-    const SESSION_ONBOARDING_TOKEN = 'portalOnboardingToken';
+    const MEARA_PHASE_PRETEST = 'pretest';
 
     function isStudyFlowEnabled() {
         const params = new URLSearchParams(global.location.search || '');
@@ -206,6 +206,12 @@
     const surveyView = document.getElementById('surveyView');
     const surveyForm = document.getElementById('surveyForm');
     const surveyError = document.getElementById('surveyError');
+    const mearaView = document.getElementById('mearaView');
+    const mearaProgress = document.getElementById('mearaProgress');
+    const mearaWordEl = document.getElementById('mearaWord');
+    const mearaError = document.getElementById('mearaError');
+    const mearaKnowBtn = document.getElementById('mearaKnowBtn');
+    const mearaDontKnowBtn = document.getElementById('mearaDontKnowBtn');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
     const assignedContinueBtn = document.getElementById('assignedContinueBtn');
@@ -228,6 +234,9 @@
     const switchCodeButton = document.getElementById('switchCodeButton');
 
     let cachedQuestionnaire = null;
+    let mearaWordOrder = [];
+    let mearaResponses = [];
+    let mearaIndex = 0;
 
     function getUnlockButtonLabel() {
         const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('portalLang')) || 'en';
@@ -309,9 +318,263 @@
         return null;
     }
 
-    function clearPendingOnboarding() {
-        sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
+    function getSessionToken() {
+        return localStorage.getItem('sessionToken');
+    }
+
+    function clearStudyProgress() {
         localStorage.removeItem(STORAGE_STUDY_ARM);
+        mearaWordOrder = [];
+        mearaResponses = [];
+        mearaIndex = 0;
+        resetSurveyForm();
+    }
+
+    function shuffleWords(words) {
+        const copy = words.slice();
+        for (let i = copy.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = copy[i];
+            copy[i] = copy[j];
+            copy[j] = tmp;
+        }
+        return copy;
+    }
+
+    function formatMearaProgress(current, total) {
+        const template = t('mearaProgress') || 'Word {current} of {total}';
+        return template.replace('{current}', String(current)).replace('{total}', String(total));
+    }
+
+    function updateMearaProgressLabel() {
+        if (!mearaProgress) {
+            return;
+        }
+        const total = mearaWordOrder.length;
+        if (!total) {
+            mearaProgress.textContent = '';
+            return;
+        }
+        mearaProgress.textContent = formatMearaProgress(Math.min(mearaIndex + 1, total), total);
+    }
+
+    function renderCurrentMearaWord() {
+        if (!mearaWordEl) {
+            return;
+        }
+        const word = mearaWordOrder[mearaIndex];
+        mearaWordEl.textContent = word || '';
+        updateMearaProgressLabel();
+    }
+
+    function setMearaButtonsDisabled(disabled) {
+        if (mearaKnowBtn) {
+            mearaKnowBtn.disabled = disabled;
+        }
+        if (mearaDontKnowBtn) {
+            mearaDontKnowBtn.disabled = disabled;
+        }
+    }
+
+    async function loadMearaWords() {
+        const { response, data } = await apiClient.get('/api/study/meara/words');
+        if (!response.ok) {
+            throw new Error((data && (data.detail || data.message)) || 'Could not load vocabulary test');
+        }
+        const words = (data && data.words) || [];
+        if (!Array.isArray(words) || words.length === 0) {
+            throw new Error('Vocabulary test is empty');
+        }
+        return words;
+    }
+
+    async function fetchPortalProgress() {
+        const token = getSessionToken();
+        if (!token) {
+            return null;
+        }
+        const { response, data } = await apiClient.get('/api/study/progress', { token });
+        if (!response.ok) {
+            return null;
+        }
+        return data;
+    }
+
+    async function finalizeStudyAndNavigate(options = {}) {
+        const token = getSessionToken();
+        if (!token) {
+            if (mearaError) {
+                mearaError.textContent = t('loginCodeMissing') || 'Please enter your participant code.';
+            }
+            showLoginAfterConsent();
+            return false;
+        }
+        try {
+            const { response, data } = await apiClient.postJson('/api/study/onboarding/assign', {}, { token });
+            if (!response.ok) {
+                const detail =
+                    (data && (data.detail || data.error || data.message)) ||
+                    'Could not assign your study activity.';
+                if (mearaError) {
+                    mearaError.textContent = detail;
+                }
+                if (loginError) {
+                    loginError.textContent = detail;
+                }
+                return false;
+            }
+            const arm = data && data.arm;
+            if (!arm) {
+                return false;
+            }
+            storeStudyArm(arm);
+            if (options.navigate !== false) {
+                navigateTo(arm, { episode: options.episode ?? getPortalEpisode() });
+            }
+            return true;
+        } catch (err) {
+            console.error('[Portal] Arm assignment failed:', err);
+            const msg =
+                t('loginNetworkError') ||
+                'Could not reach the server. Please check your connection or try again later.';
+            if (mearaError) {
+                mearaError.textContent = msg;
+            }
+            return false;
+        }
+    }
+
+    async function resumePortalProgress(options = {}) {
+        if (!isStudyFlowEnabled()) {
+            return false;
+        }
+        const progress = await fetchPortalProgress();
+        if (!progress) {
+            showSurveyView();
+            return true;
+        }
+        if (!progress.questionnaire_done) {
+            showSurveyView();
+            return true;
+        }
+        if (!progress.meara_done) {
+            showMearaView();
+            return true;
+        }
+        if (progress.study_arm) {
+            storeStudyArm(progress.study_arm);
+            if (options.navigate !== false) {
+                const episode = options.episode ?? getPortalEpisode();
+                if (episode) {
+                    navigateTo(progress.study_arm, { episode });
+                } else if (options.showContinueView) {
+                    const code = localStorage.getItem('participantCode');
+                    showContinueView(code, progress.study_arm, options);
+                } else {
+                    navigateTo(progress.study_arm, { episode });
+                }
+            }
+            return true;
+        }
+        return finalizeStudyAndNavigate(options);
+    }
+
+    async function finishMearaTest() {
+        const token = getSessionToken();
+        if (!token) {
+            showLoginAfterConsent();
+            return;
+        }
+        setMearaButtonsDisabled(true);
+        if (mearaError) {
+            mearaError.textContent = '';
+        }
+        try {
+            const { response, data } = await apiClient.postJson(
+                '/api/study/meara/submit',
+                {
+                    phase: MEARA_PHASE_PRETEST,
+                    word_order: mearaWordOrder.slice(),
+                    responses: mearaResponses.slice()
+                },
+                { token }
+            );
+            if (!response.ok) {
+                const detail =
+                    (data && (data.detail || data.error || data.message)) ||
+                    'Could not save vocabulary test results.';
+                if (mearaError) {
+                    mearaError.textContent = detail;
+                }
+                return;
+            }
+            await finalizeStudyAndNavigate();
+        } catch (err) {
+            console.error('[Portal] Meara submit failed:', err);
+            if (mearaError) {
+                mearaError.textContent =
+                    t('loginNetworkError') ||
+                    'Could not reach the server. Please check your connection or try again later.';
+            }
+        } finally {
+            setMearaButtonsDisabled(false);
+        }
+    }
+
+    function handleMearaAnswer(knows) {
+        const word = mearaWordOrder[mearaIndex];
+        if (!word) {
+            return;
+        }
+        mearaResponses.push({ word, knows });
+        mearaIndex += 1;
+        if (mearaIndex >= mearaWordOrder.length) {
+            finishMearaTest();
+            return;
+        }
+        renderCurrentMearaWord();
+    }
+
+    async function startMearaTest() {
+        if (mearaError) {
+            mearaError.textContent = '';
+        }
+        setMearaButtonsDisabled(true);
+        try {
+            const words = await loadMearaWords();
+            mearaWordOrder = shuffleWords(words);
+            mearaResponses = [];
+            mearaIndex = 0;
+            renderCurrentMearaWord();
+            setMearaButtonsDisabled(false);
+        } catch (err) {
+            console.error('[Portal] Meara load failed:', err);
+            if (mearaError) {
+                mearaError.textContent = t('mearaLoadError') || 'Could not load the vocabulary test.';
+            }
+            setMearaButtonsDisabled(true);
+        }
+    }
+
+    function showMearaView() {
+        if (!isStudyFlowEnabled()) {
+            showLoginAfterConsent();
+            return;
+        }
+        if (!getStoredSession()) {
+            showLoginAfterConsent();
+            return;
+        }
+        clearMessages();
+        hideAllMainSections();
+        if (mearaView) {
+            mearaView.classList.remove('hidden');
+        }
+        const lang = getPortalLang();
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
+        startMearaTest();
     }
 
     function resetSurveyForm() {
@@ -321,42 +584,8 @@
         }
     }
 
-    async function attachPendingOnboarding(authToken) {
-        const onboardingToken = sessionStorage.getItem(SESSION_ONBOARDING_TOKEN);
-        if (!onboardingToken) {
-            return;
-        }
-        try {
-            await apiClient.postJson(
-                '/api/study/onboarding/attach',
-                { onboarding_token: onboardingToken },
-                { token: authToken }
-            );
-        } catch (e) {
-            console.warn('[Portal] onboarding attach failed:', e);
-        }
-        sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
-    }
-
     function resolveStudyArm(serverArm) {
         return serverArm || localStorage.getItem(STORAGE_STUDY_ARM) || null;
-    }
-
-    function hasPendingOnboarding() {
-        return Boolean(
-            sessionStorage.getItem(SESSION_ONBOARDING_TOKEN) && localStorage.getItem(STORAGE_STUDY_ARM)
-        );
-    }
-
-    function requireSurveyBeforeCode() {
-        clearStoredSession();
-        clearPendingOnboarding();
-        resetSurveyForm();
-        const lang = getPortalLang();
-        if (loginError) {
-            loginError.textContent = t('loginRequiresSurvey') || 'Please complete the questionnaire before entering a participant code.';
-        }
-        showSurveyView();
     }
 
     function getStoredSession() {
@@ -418,7 +647,7 @@
     }
 
     function hideAllMainSections() {
-        [consentView, surveyView, loginView, modeSelectView].forEach((el) => {
+        [consentView, surveyView, mearaView, loginView, modeSelectView].forEach((el) => {
             if (!el) {
                 return;
             }
@@ -443,7 +672,7 @@
         loginView.classList.remove('hidden');
     }
 
-    function showLoginAfterSurvey() {
+    function showLoginAfterConsent() {
         hideAllMainSections();
         const sonaId = global.portalParams?.getStoredSonaId?.();
         if (studyCodeInstructions) {
@@ -552,6 +781,10 @@
     }
 
     function showSurveyView() {
+        if (isStudyFlowEnabled() && !getStoredSession()) {
+            showLoginAfterConsent();
+            return;
+        }
         clearMessages();
         hideAllMainSections();
         surveyView.classList.remove('hidden');
@@ -619,7 +852,12 @@
             submitBtn.disabled = true;
         }
         try {
-            const { response, data } = await apiClient.postJson('/api/study/onboarding', { answers });
+            const token = getSessionToken();
+            if (!token) {
+                showLoginAfterConsent();
+                return;
+            }
+            const { response, data } = await apiClient.postJson('/api/study/onboarding', { answers }, { token });
             if (!response.ok) {
                 const detail =
                     (data && (data.detail || data.error || data.message)) ||
@@ -627,13 +865,7 @@
                 surveyError.textContent = detail;
                 return;
             }
-            sessionStorage.setItem(SESSION_ONBOARDING_TOKEN, data.onboarding_token);
-            localStorage.setItem(STORAGE_STUDY_ARM, data.arm);
-            if (hasSonaId()) {
-                tryAutoLoginFromSona();
-            } else {
-                showLoginAfterSurvey();
-            }
+            showMearaView();
         } catch (err) {
             console.error('[Portal] Onboarding submit failed:', err);
             const lang = localStorage.getItem('portalLang') || 'en';
@@ -662,6 +894,9 @@
         }
         if (surveyView) {
             surveyView.classList.add('hidden');
+        }
+        if (mearaView) {
+            mearaView.classList.add('hidden');
         }
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
@@ -705,36 +940,34 @@
     async function completeLoginFlow(data, normalizedCode, options = {}) {
         const token = data?.token;
         const participantCode = normalizeParticipantCode(data?.participant_code || normalizedCode);
-        const arm = resolveLoginArm(data);
-
-        if (isStudyFlowEnabled() && !arm && !hasPendingOnboarding()) {
-            requireSurveyBeforeCode();
-            return false;
-        }
-
         persistSession(token, participantCode);
-        storeStudyArm(arm);
 
-        if (data?.study_arm) {
-            sessionStorage.removeItem(SESSION_ONBOARDING_TOKEN);
-        } else if (hasPendingOnboarding()) {
-            await attachPendingOnboarding(token);
-        }
-
-        const resolvedArm = localStorage.getItem(STORAGE_STUDY_ARM);
-        if (!resolvedArm) {
-            if (loginError) {
-                loginError.textContent =
-                    t('loginRequiresSurvey') ||
-                    'Please complete the questionnaire first. Every participant code must be linked to a language profile.';
+        if (!isStudyFlowEnabled()) {
+            const arm = resolveLoginArm(data);
+            if (arm) {
+                storeStudyArm(arm);
             }
-            return false;
+            if (options.navigate !== false && arm) {
+                navigateTo(arm, { episode: options.episode ?? getPortalEpisode() });
+            }
+            return true;
         }
 
-        if (options.navigate !== false) {
-            navigateTo(resolvedArm, { episode: options.episode ?? getPortalEpisode() });
+        const studyArm = resolveLoginArm(data);
+        if (studyArm) {
+            storeStudyArm(studyArm);
+            if (options.navigate !== false) {
+                const episode = options.episode ?? getPortalEpisode();
+                if (episode) {
+                    navigateTo(studyArm, { episode });
+                } else {
+                    navigateTo(studyArm, { episode });
+                }
+            }
+            return true;
         }
-        return true;
+
+        return resumePortalProgress(options);
     }
 
     async function loginWithCode(rawCode, options = {}) {
@@ -824,40 +1057,32 @@
             const participantCode = (data && data.participant_code) || stored.code;
             const studyArm = resolveStudyArm(data && data.study_arm);
 
-            if (!studyArm) {
-                clearStoredSession();
-                if (hasSonaId()) {
-                    const autoLoggedIn = await tryAutoLoginFromSona();
-                    if (autoLoggedIn) {
-                        return true;
-                    }
-                }
-                if (isStudyFlowEnabled()) {
-                    showLoginAfterSurvey();
-                } else {
-                    showLoginView();
-                }
-                loginStatus.textContent =
-                    t('sessionExpired') ||
-                    'Your previous session expired. Please enter your participant code again.';
-                return false;
-            }
-
             persistSession(stored.token, participantCode);
-            storeStudyArm(studyArm);
 
-            const episode = getPortalEpisode();
-            if (episode) {
-                navigateTo(studyArm, { episode });
+            if (studyArm) {
+                storeStudyArm(studyArm);
+                const episode = getPortalEpisode();
+                if (episode) {
+                    navigateTo(studyArm, { episode });
+                    return true;
+                }
+                showContinueView(participantCode, studyArm, {
+                    showStatus:
+                        t('sessionRestoredAssigned') ||
+                        'Session restored. Continue to your assigned activity.'
+                });
                 return true;
             }
 
-            showContinueView(participantCode, studyArm, {
-                showStatus:
-                    t('sessionRestoredAssigned') ||
-                    'Session restored. Continue to your assigned activity.'
-            });
-            return true;
+            if (isStudyFlowEnabled()) {
+                return resumePortalProgress({
+                    navigate: false,
+                    showContinueView: false
+                });
+            }
+
+            showLoginView();
+            return false;
         } catch (error) {
             console.warn('[Portal] Stored session is no longer valid:', error);
             clearStoredSession();
@@ -952,7 +1177,15 @@
         setConsentGiven();
         hideConsentOnly();
         if (isStudyFlowEnabled()) {
-            showSurveyView();
+            if (hasSonaId()) {
+                tryAutoLoginFromSona({ navigate: false }).then((ok) => {
+                    if (!ok) {
+                        showLoginAfterConsent();
+                    }
+                });
+            } else {
+                showLoginAfterConsent();
+            }
         } else {
             showLoginDev();
             if (participantInput) {
@@ -973,6 +1206,13 @@
         surveyForm.addEventListener('submit', handleSurveySubmit);
     }
 
+    if (mearaKnowBtn) {
+        mearaKnowBtn.addEventListener('click', () => handleMearaAnswer(true));
+    }
+    if (mearaDontKnowBtn) {
+        mearaDontKnowBtn.addEventListener('click', () => handleMearaAnswer(false));
+    }
+
     participantInput.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
             handleLogin();
@@ -981,8 +1221,7 @@
 
     switchCodeButton.addEventListener('click', () => {
         clearStoredSession();
-        clearPendingOnboarding();
-        resetSurveyForm();
+        clearStudyProgress();
         if (isStudyFlowEnabled()) {
             clearConsentGiven();
             showConsentView();
@@ -1027,13 +1266,13 @@
                         return;
                     }
                     if (hasSonaId()) {
-                        const ok = await tryAutoLoginFromSona();
+                        const ok = await tryAutoLoginFromSona({ navigate: false });
                         if (ok) {
                             return;
                         }
                     }
                     clearMessages();
-                    showLoginAfterSurvey();
+                    showLoginAfterConsent();
                 });
             }
         }

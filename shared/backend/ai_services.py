@@ -23,9 +23,9 @@ GROQ_CHAT_MODEL = "openai/gpt-oss-120b"
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
 
 TUTOR_PROMPT_PATHS = {
-    "analysis": "prompts/language_learning/tutor_feedback_tell.md",
+    # "analysis" prompts live in TUTOR_ANALYSIS_PROMPT_PATHS (source-specific),
+    # final summary prompts in TUTOR_FINAL_SUMMARY_PROMPT_PATHS.
     "explanation": "prompts/language_learning/tutor_explain.md",
-    "final_summary": "prompts/language_learning/tutor_final_summary.md",
 }
 
 TUTOR_ANALYSIS_PROMPT_PATHS = {

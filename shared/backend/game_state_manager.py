@@ -8,6 +8,14 @@ import pytz
 
 logger = logging.getLogger(__name__)
 
+
+def _coerce_stage_number_key(key: Any) -> Any:
+    """JSON object keys are strings; stage-indexed dicts use ints in memory."""
+    if isinstance(key, str) and key.isdigit():
+        return int(key)
+    return key
+
+
 class GameStateManager:
     """Manages persistent storage and retrieval of game state for users."""
     
@@ -171,17 +179,23 @@ class GameStateManager:
                 # Handle stage_progress with nested sets
                 stage_progress = {}
                 for stage_num, stage_data in value.items():
+                    stage_key = _coerce_stage_number_key(stage_num)
                     if isinstance(stage_data, dict):
                         restored_stage = {}
-                        for stage_key, stage_value in stage_data.items():
-                            if stage_key in ["clues_examined", "suspects_interrogated"] and isinstance(stage_value, list):
-                                restored_stage[stage_key] = set(stage_value)
+                        for stage_field, stage_value in stage_data.items():
+                            if stage_field in ["clues_examined", "suspects_interrogated"] and isinstance(stage_value, list):
+                                restored_stage[stage_field] = set(stage_value)
                             else:
-                                restored_stage[stage_key] = stage_value
-                        stage_progress[stage_num] = restored_stage
+                                restored_stage[stage_field] = stage_value
+                        stage_progress[stage_key] = restored_stage
                     else:
-                        stage_progress[stage_num] = stage_data
+                        stage_progress[stage_key] = stage_data
                 restored[key] = stage_progress
+            elif key == "stage_unlock_dates" and isinstance(value, dict):
+                restored[key] = {
+                    _coerce_stage_number_key(stage_num): unlock_at
+                    for stage_num, unlock_at in value.items()
+                }
             else:
                 restored[key] = value
         return restored

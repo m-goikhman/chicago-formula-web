@@ -19,6 +19,7 @@ const TeachUI = (() => {
         WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
         CALENDAR_REMINDER_TITLE,
         CALENDAR_REMINDER_DETAILS,
+        EPISODE_UNLOCK_AFTER_COMPLETION_MS,
         TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
         TEACH_DEMO_OUTRO_TEXT
     } = window.TEACH_CONFIG || {};
@@ -77,11 +78,9 @@ const TeachUI = (() => {
         return `${WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL}?${params.toString()}`;
     }
 
-    function buildNextEpisodeCalendarLink(weekId = 'week1', firstLoginAtMs = Date.now()) {
-        const weekNumber = parseTeachWeekNumber(weekId);
-        const EPISODE_UNLOCK_INTERVAL_MS = 3.5 * 24 * 60 * 60 * 1000;
-        const unlockAt = new Date(Number(firstLoginAtMs) || Date.now());
-        unlockAt.setTime(unlockAt.getTime() + (weekNumber * EPISODE_UNLOCK_INTERVAL_MS));
+    function buildNextEpisodeCalendarLink() {
+        const unlockAfterMs = Number(EPISODE_UNLOCK_AFTER_COMPLETION_MS) || (48 * 60 * 60 * 1000);
+        const unlockAt = new Date(Date.now() + unlockAfterMs);
 
         const formatDay = (date) => {
             const year = date.getFullYear();
@@ -107,7 +106,7 @@ const TeachUI = (() => {
             return text;
         }
         const questionnaireLink = buildWeeklyQuestionnaireLink(participantCode, weekId);
-        const calendarLink = buildNextEpisodeCalendarLink(weekId, firstLoginAtMs);
+        const calendarLink = buildNextEpisodeCalendarLink();
         let result = String(text);
         result = result.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, questionnaireLink);
         result = result.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, questionnaireLink);
