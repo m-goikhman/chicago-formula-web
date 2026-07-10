@@ -1,0 +1,8 @@
+[sender: narrator]
+Alex doesn't move at first. Looks like he was ready to be arrested. Being free almost seems to scare him.
+---
+[sender: typewriter]
+In truth, there was nothing to arrest Alex for. He invented a formula that does nothing — and inventing nonsense is not a crime. He stole nothing and hurt no one; he was the one who was attacked. The money was real, but Pauline earned it with her own trades. He borrowed from Ronnie, and he paid it all back.
+
+[buttons]
+What became of them?|outro_release_2

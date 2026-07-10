@@ -865,6 +865,10 @@ def _get_ep4_director_state(state: Dict) -> Dict:
     ep4_state.setdefault("nina_phone_located_shown", False)
     ep4_state.setdefault("location_user_message_counts", {})
     ep4_state.setdefault("fiona_user_message_count", None)
+    ep4_state.setdefault("alex_asks_fate_shown", False)
+    ep4_state.setdefault("awaiting_alex_fate_choice", False)
+    ep4_state.setdefault("ep4_outro_shown", False)
+    ep4_state.setdefault("ep4_outro_questionnaire_shown", False)
     ep4_state.setdefault("location_openers_played", [])
     if ep4_state.get("nina_split_up_shown"):
         ep4_state["fiona_left_precinct"] = True
@@ -872,8 +876,9 @@ def _get_ep4_director_state(state: Dict) -> Dict:
 
 
 def _count_ep4_hub_user_messages_from_history(state: Dict) -> Dict[str, int]:
-    """Count stored public user messages per EP4 hub location."""
+    """Count stored public user messages per tracked EP4 location."""
     counts = {location: 0 for location in EP4_HUB_LOCATIONS}
+    counts["motel_ep4"] = 0
     for msg in _get_stored_episode_messages(state, EP4_STAGE):
         if not isinstance(msg, dict):
             continue
@@ -897,6 +902,7 @@ def _ensure_ep4_location_user_message_counts(state: Dict) -> Dict[str, int]:
         counts = dict(counts)
     for location in EP4_HUB_LOCATIONS:
         counts.setdefault(location, 0)
+    counts.setdefault("motel_ep4", 0)
     ep4_state["location_user_message_counts"] = counts
     return counts
 
@@ -2012,7 +2018,24 @@ def resolve_action_text_from_game_texts(
 def _build_character_message_for_sender(participant_code: str, text: str, sender_key: str) -> Dict:
     """Create a character message from sender metadata and log it."""
     message_id = generate_message_id()
-    resolved_sender = sender_key if sender_key in CHARACTER_DATA or sender_key == "narrator" else "narrator"
+    normalized_sender = str(sender_key or "").strip().lower()
+
+    if normalized_sender == "typewriter":
+        log_message("system", text, participant_code)
+        save_message_to_cache(message_id, text)
+        return {
+            "type": "system",
+            "content": text,
+            "message_id": message_id,
+            "show_explain": True,
+            "typewriter_style": True,
+        }
+
+    resolved_sender = (
+        sender_key
+        if sender_key in CHARACTER_DATA or normalized_sender == "narrator"
+        else "narrator"
+    )
     log_role = "narrator" if resolved_sender == "narrator" else f"character_{resolved_sender}"
     log_message(log_role, text, participant_code)
 
@@ -2211,6 +2234,66 @@ async def maybe_trigger_ep4_nina_phone_located(
     return await handle_ep4_nina_phone_located(participant_code)
 
 
+async def handle_ep4_alex_asks_fate(participant_code: str) -> List[Dict]:
+    """EP4 motel finale: Alex asks whether he will be arrested."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if get_stage_location(state, EP4_STAGE) != "motel_ep4":
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if ep4_state.get("alex_asks_fate_shown"):
+        return []
+
+    ep4_state["alex_asks_fate_shown"] = True
+    ep4_state["awaiting_alex_fate_choice"] = True
+    messages: List[Dict] = []
+    if not _append_scripted_game_text_to_messages(
+        participant_code, messages, "alex_asks_fate", EP4_STAGE
+    ):
+        ep4_state["alex_asks_fate_shown"] = False
+        ep4_state["awaiting_alex_fate_choice"] = False
+        return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    state["last_public_responder"] = "alex"
+    _sync_last_public_responder_for_public_mode(state, messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
+async def maybe_trigger_ep4_alex_asks_fate(
+    participant_code: str,
+    state: Dict,
+    user_message_text: str,
+) -> List[Dict]:
+    """After enough motel dialogue, append Alex's scripted fate question."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return []
+
+    ep4_state = _get_ep4_director_state(state)
+    if ep4_state.get("alex_asks_fate_shown"):
+        return []
+
+    location = get_stage_location(state, EP4_STAGE)
+    if location != "motel_ep4":
+        return []
+
+    if not str(user_message_text or "").strip():
+        return []
+
+    counts = _record_ep4_hub_user_message(state, location)
+    if int(counts.get(location, 0)) < EP4_HUB_MIN_USER_MESSAGES:
+        await game_state_manager.save_game_state(participant_code, state)
+        return []
+
+    return await handle_ep4_alex_asks_fate(participant_code)
+
+
 async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
     """EP4 precinct: Nina briefs the detective and offers location choices."""
     state = GAME_STATE.get(participant_code)
@@ -2247,14 +2330,29 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
 
     normalized_action = (action or "").strip().replace("\\", "/").lower()
     episode = state.get("current_stage", 1)
+    resolved_action = action
     if episode == EP4_STAGE and normalized_action == "nina_split_up":
         return await handle_ep4_nina_split_up(participant_code)
+
+    if episode == EP4_STAGE and normalized_action in {"ep4_arrest_alex", "ep4_release_alex"}:
+        ep4_state = _get_ep4_director_state(state)
+        if get_stage_location(state, EP4_STAGE) != "motel_ep4":
+            return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+        if ep4_state.get("ep4_outro_shown") or not ep4_state.get("awaiting_alex_fate_choice"):
+            return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+        ep4_state["awaiting_alex_fate_choice"] = False
+        ep4_state["ep4_outro_shown"] = True
+        resolved_action = "outro_arrest" if normalized_action == "ep4_arrest_alex" else "outro_release"
 
     if episode == EP4_STAGE and normalized_action == "fiona_to_nina":
         _get_ep4_director_state(state)["fiona_left_precinct"] = True
 
-    payload = resolve_action_text_from_game_texts(action, episode)
+    payload = resolve_action_text_from_game_texts(resolved_action, episode)
     if not payload:
+        if episode == EP4_STAGE and normalized_action in {"ep4_arrest_alex", "ep4_release_alex"}:
+            ep4_state = _get_ep4_director_state(state)
+            ep4_state["awaiting_alex_fate_choice"] = True
+            ep4_state["ep4_outro_shown"] = False
         return []
 
     message_blocks, buttons, sender_key = payload
@@ -2583,6 +2681,30 @@ async def handle_ep3_outro_questionnaire(participant_code: str) -> List[Dict]:
     await complete_stage(participant_code, EP3_FORMULA_STAGE)
 
     outro = _ep3_outro_questionnaire_message(participant_code, state)
+    await game_state_manager.save_game_state(participant_code, state)
+    return [outro]
+
+
+async def handle_ep4_outro_questionnaire(participant_code: str) -> List[Dict]:
+    """Episode 4 weekly questionnaire after the motel outro."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if not ep4_state.get("ep4_outro_shown", False):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if ep4_state.get("ep4_outro_questionnaire_shown", False):
+        return []
+
+    ep4_state["ep4_outro_questionnaire_shown"] = True
+    await complete_stage(participant_code, EP4_STAGE)
+
+    outro = _ep4_outro_questionnaire_message(participant_code, state)
     await game_state_manager.save_game_state(participant_code, state)
     return [outro]
 
@@ -4136,6 +4258,18 @@ async def handle_public_message(participant_code: str, message_text: str) -> Lis
         if not ep4_state.get("fiona_reassured_done"):
             return await _handle_ep4_precinct_fiona_message(participant_code, message_text, state)
 
+    if current_stage == EP4_STAGE and current_location == "motel_ep4":
+        ep4_state = _get_ep4_director_state(state)
+        if ep4_state.get("awaiting_alex_fate_choice") or ep4_state.get("ep4_outro_shown"):
+            await game_state_manager.save_game_state(participant_code, state)
+            return [
+                {
+                    "type": "system",
+                    "content": "Use the button above to continue.",
+                    "show_explain": False,
+                }
+            ]
+
     if current_stage == EP3_FORMULA_STAGE and current_location in EP3_SCRIPTED_LOCATIONS:
         return await _handle_ep2_scripted_public_message(
             participant_code,
@@ -4651,6 +4785,9 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     if current_stage == EP3_FORMULA_STAGE:
         ep2_state = state.get("ep2_director", {})
         return bool(ep2_state.get("ep3_outro_nina_shown", False))
+    if current_stage == EP4_STAGE:
+        ep4_state = state.get("ep4_director", {})
+        return bool(ep4_state.get("ep4_outro_shown", False))
     return False
 
 
@@ -4725,6 +4862,22 @@ def _ep3_outro_questionnaire_message(participant_code: str, state: Optional[Dict
             "episodeComplete": True,
             "completedStage": EP3_FORMULA_STAGE,
             "ep3GameCompleted": True,
+        },
+    }
+
+
+def _ep4_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+    text = build_weekly_outro_questionnaire_text(participant_code, state)
+    return {
+        "type": "system",
+        "content": text,
+        "message_style": "tutor",
+        "show_explain": False,
+        "ui": {
+            "caseMaterialsAccusationAvailable": False,
+            "episodeComplete": True,
+            "completedStage": EP4_STAGE,
+            "ep4GameCompleted": True,
         },
     }
 

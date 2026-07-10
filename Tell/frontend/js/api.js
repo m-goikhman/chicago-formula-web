@@ -29,6 +29,7 @@ const EP4_HUB_LOCATION_FALLBACK = {
     bar_ep4: {
         name: 'Bar',
         action: 'go_bar_ep4',
+        location_image: 'ep4/bar.png',
     },
     pauline_office_ep4: {
         name: "Pauline's office",
@@ -411,7 +412,12 @@ function syncDialogueModeUI() {
 
 function shouldPersistButtonRowAfterClick(action) {
     const normalizedAction = String(action || '').trim().toLowerCase();
-    return normalizedAction === 'menu_talk' || normalizedAction === 'menu_evidence';
+    // talk_nina is a side conversation; location choices in the same row must stay visible.
+    return (
+        normalizedAction === 'menu_talk'
+        || normalizedAction === 'menu_evidence'
+        || normalizedAction === 'talk_nina'
+    );
 }
 
 function isCurrentStageCaseClosed() {

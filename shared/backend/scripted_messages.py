@@ -7,6 +7,9 @@ from typing import Dict, List, Optional, Tuple
 
 from .game_config import CHARACTER_DATA
 
+TYPEWRITER_SENDER = "typewriter"
+SCRIPTED_SENDER_ALIASES = frozenset({"narrator", TYPEWRITER_SENDER})
+
 
 def resolve_character_sender_key(raw_sender: str) -> Optional[str]:
     """Resolve sender key from metadata (key or full character name)."""
@@ -17,8 +20,8 @@ def resolve_character_sender_key(raw_sender: str) -> Optional[str]:
     if not normalized:
         return None
 
-    if normalized == "narrator":
-        return "narrator"
+    if normalized in SCRIPTED_SENDER_ALIASES:
+        return normalized
 
     if normalized in CHARACTER_DATA:
         return normalized
@@ -38,6 +41,7 @@ def extract_sender_from_text(content: str) -> Tuple[Optional[str], str]:
     - [from: james]
     - [character: James Clark]
     - [sender: narrator]
+    - [sender: typewriter]
     """
     lines = content.splitlines()
     first_nonempty_index = None

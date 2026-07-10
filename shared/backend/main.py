@@ -461,6 +461,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_ep3_head_out,
         handle_ep3_outro_questionnaire,
         handle_ep4_fiona_reassured,
+        handle_ep4_outro_questionnaire,
         handle_get_final_summary,
         append_episode_messages,
         get_messages_for_current_location,
@@ -518,6 +519,8 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep3_outro_questionnaire(participant_code)
     elif request.action == "ep4_fiona_reassured":
         messages = await handle_ep4_fiona_reassured(participant_code)
+    elif request.action == "ep4_outro_questionnaire":
+        messages = await handle_ep4_outro_questionnaire(participant_code)
     elif request.action == "get_final_summary":
         messages = await handle_get_final_summary(participant_code)
     elif request.action.startswith("examine_ep3_clue_") or request.action.startswith("examine_ep2_clue_"):
@@ -612,6 +615,7 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             get_stage_location,
             episode_has_locations,
             maybe_trigger_ep4_nina_phone_located,
+            maybe_trigger_ep4_alex_asks_fate,
             _normalize_ep4_public_dialogue_mode,
         )
 
@@ -730,6 +734,12 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             )
             if phone_located_messages:
                 messages = (messages or []) + phone_located_messages
+
+            alex_fate_messages = await maybe_trigger_ep4_alex_asks_fate(
+                participant_code, state, request.text
+            )
+            if alex_fate_messages:
+                messages = (messages or []) + alex_fate_messages
 
             episode = state.get("current_stage", 1)
             request_text = str(request.text or "").strip()

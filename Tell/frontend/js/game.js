@@ -41,7 +41,12 @@ function checkAndShowInputArea(messageContent, msgObj) {
 function shouldPersistButtonRowAfterClick(action) {
     const normalizedAction = String(action || '').trim().toLowerCase();
     // Keep intro game-menu shortcuts available after click.
-    return normalizedAction === 'menu_talk' || normalizedAction === 'menu_evidence';
+    // talk_nina is a side conversation; location choices in the same row must stay visible.
+    return (
+        normalizedAction === 'menu_talk'
+        || normalizedAction === 'menu_evidence'
+        || normalizedAction === 'talk_nina'
+    );
 }
 
 function displayMessage(msg) {

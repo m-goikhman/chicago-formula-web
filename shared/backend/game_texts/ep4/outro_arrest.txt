@@ -1,0 +1,20 @@
+[sender: narrator]
+You read Alex his rights. He doesn't argue. He holds out his hands almost with relief, as if the handcuffs weigh less than the last days have.
+---
+[sender: narrator]
+But back at the precinct, the case falls apart in your hands.
+---
+[sender: narrator]
+What is the crime? Alex invented a formula that does nothing — and inventing nonsense is not against the law. He stole nothing and hurt no one; he is the one who was attacked. The money was real, and Pauline earned it herself, with her own trades. She could report the lie — but going to the police because a friend fooled her would feel small. He borrowed from Ronnie, and he paid back every dollar.
+---
+[sender: narrator]
+You can arrest a man for many things. You cannot arrest him for being afraid, for lying to the people who loved him, for running away from his own life.
+---
+[sender: narrator]
+Within a few hours, Alex Martin walks out of the precinct a free man — free, and with no one left on his side.
+---
+[sender: tutor]
+So the great formula was never real, and the man behind it broke no law at all. What Alex does now, and what Fiona and Pauline say when the whole truth reaches them — that is a story for another day.
+
+[buttons]
+The end of Episode 4|ep4_outro_questionnaire

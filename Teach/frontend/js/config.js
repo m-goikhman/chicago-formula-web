@@ -27,8 +27,7 @@ const WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
 const WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = '1171438860';
 const WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = '1690586821';
 const CALENDAR_REMINDER_TITLE = 'Teach&Tell: Next episode unlock';
-const EPISODE_UNLOCK_AFTER_COMPLETION_MS = 3 * 60 * 1000
-//48 * 60 * 60 * 1000;
+const EPISODE_UNLOCK_AFTER_COMPLETION_MS = 48 * 60 * 60 * 1000;
 const CALENDAR_REMINDER_DETAILS = (
     'Your next Teach&Tell episode is now unlocked. '
     + 'Episodes unlock 48 hours after you complete the previous one. '

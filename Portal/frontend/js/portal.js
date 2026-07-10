@@ -449,19 +449,9 @@
             return false;
         }
         const progress = await fetchPortalProgress();
-        if (!progress) {
-            showSurveyView();
-            return true;
-        }
-        if (!progress.questionnaire_done) {
-            showSurveyView();
-            return true;
-        }
-        if (!progress.meara_done) {
-            showMearaView();
-            return true;
-        }
-        if (progress.study_arm) {
+        // Participants with an assigned arm go straight to their game:
+        // onboarding steps (questionnaire, vocabulary test) are for new participants only.
+        if (progress && progress.study_arm) {
             storeStudyArm(progress.study_arm);
             if (options.navigate !== false) {
                 const episode = options.episode ?? getPortalEpisode();
@@ -474,6 +464,18 @@
                     navigateTo(progress.study_arm, { episode });
                 }
             }
+            return true;
+        }
+        if (!progress) {
+            showSurveyView();
+            return true;
+        }
+        if (!progress.questionnaire_done) {
+            showSurveyView();
+            return true;
+        }
+        if (!progress.meara_done) {
+            showMearaView();
             return true;
         }
         return finalizeStudyAndNavigate(options);

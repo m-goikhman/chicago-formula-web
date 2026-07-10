@@ -13,7 +13,7 @@ SUSPECT_KEYS = ["tim", "pauline", "fiona", "ronnie"]
 
 # --- Multi-Stage Game Constants ---
 TOTAL_STAGES = 4
-NEXT_EPISODE_UNLOCK_HOURS = 0.05  #48  # Hours after completing an episode before the next unlocks
+NEXT_EPISODE_UNLOCK_HOURS = 48  # Hours after completing an episode before the next unlocks
 
 # Stage configuration
 # intro_files: list of steps for case intro. Each step is a filename (str) or dict with
@@ -121,6 +121,7 @@ STAGE_CONFIG = {
                 "name": "Bar",
                 "characters": ["ronnie"],
                 "action": "go_bar_ep4",
+                "location_image": "ep4/bar.png",
             },
             "pauline_office_ep4": {
                 "name": "Pauline's office",

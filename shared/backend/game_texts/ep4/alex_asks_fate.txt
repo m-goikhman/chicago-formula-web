@@ -1,0 +1,12 @@
+[from: alex]
+I'm tired, Detective. I've been tired for a very long time.
+---
+[from: alex]
+I'm not going to run anymore. That was just stupid.
+---
+[from: alex]
+So what happens to me now? Are you here to arrest me?
+
+[buttons]
+Alex Martin, you're under arrest|ep4_arrest_alex
+No, Alex. You can go|ep4_release_alex
