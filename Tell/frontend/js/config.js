@@ -16,6 +16,37 @@ if (typeof window !== 'undefined') {
 
 console.log('API URL:', API_URL, '(Localhost:', String(isLocalhost) + ')');
 
+const PORTAL_PRODUCTION_URL = 'https://chicago-formula.web.app/';
+const PORTAL_LOCAL_URL = '../../Portal/frontend/portal.html';
+
+function getPortalBaseUrl() {
+    return isLocalhost ? PORTAL_LOCAL_URL : PORTAL_PRODUCTION_URL;
+}
+
+function buildPortalPosttestUrl() {
+    const token = sessionToken || localStorage.getItem('sessionToken') || '';
+    const code = participantCode || localStorage.getItem('participantCode') || '';
+    let destination = getPortalBaseUrl();
+    try {
+        const url = new URL(destination, window.location.href);
+        url.searchParams.set('phase', 'posttest');
+        destination = url.toString();
+    } catch (error) {
+        console.warn('[Tell] Could not build portal posttest URL:', error);
+    }
+    if (window.authHandoff && typeof window.authHandoff.buildHandoffUrl === 'function' && token && code) {
+        return window.authHandoff.buildHandoffUrl(destination, token, code);
+    }
+    return destination;
+}
+
+function navigateToPortalPosttest() {
+    window.location.assign(buildPortalPosttestUrl());
+}
+
+window.buildPortalPosttestUrl = buildPortalPosttestUrl;
+window.navigateToPortalPosttest = navigateToPortalPosttest;
+
 // List of all characters (excluding "Everyone") — images in ep1/
 const allCharacters = [
     { name: 'Tim Kane', image: 'ep1/tim.png' },

@@ -11,6 +11,7 @@ const API_URL = sharedTeachConfig.resolveApiBase({
 
 const TEACH_PROGRESS_STORAGE_KEY = 'teach_mode_progress_v1';
 const ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK = '{{ONBOARDING_QUESTIONNAIRE_LINK}}';
+const FINAL_QUESTIONNAIRE_TEMPLATE_LINK = '{{FINAL_QUESTIONNAIRE_LINK}}';
 const ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK = 'https://forms.gle/hghifvApKXPU1TjK6';
 const ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
     'https://docs.google.com/forms/d/e/'
@@ -26,12 +27,20 @@ const WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
 );
 const WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = '1171438860';
 const WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = '1690586821';
-const CALENDAR_REMINDER_TITLE = 'Teach&Tell: Next episode unlock';
+const CALENDAR_REMINDER_TITLE = 'Chicago Formula: Next episode unlock';
+// Unlock early (buffer). Calendar reminders use CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE.
 const EPISODE_UNLOCK_AFTER_COMPLETION_MS = 48 * 60 * 60 * 1000;
-const CALENDAR_REMINDER_DETAILS = (
-    'Your next Teach&Tell episode is now unlocked. '
-    + 'Episodes unlock 48 hours after you complete the previous one. '
-    + 'Open the game: https://chicago-formula-n.web.app/'
+const CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE = {
+    1: 70, // ~3 days
+    2: 94, // ~4 days
+    3: 70  // ~3 days
+};
+const PORTAL_URL = 'https://chicago-formula.web.app/';
+const PORTAL_LOCAL_URL = '../../Portal/frontend/portal.html';
+const CALENDAR_REMINDER_DETAILS_TEMPLATE = (
+    'Your next Chicago Formula episode is now unlocked. '
+    + 'Episodes unlock {{DAYS}} days after you complete the previous one. '
+    + `Open the game: ${PORTAL_URL}`
 );
 const TEACH_DEMO_OUTRO_TEXT = [
     'Thanks for playing!',
@@ -39,15 +48,24 @@ const TEACH_DEMO_OUTRO_TEXT = [
     'You can keep exploring the next episode whenever you like.',
     'The experiment participant will receive here the following message:'
 ].join('\n');
+// Offline/API-fallback only — primary Teach outro comes from shared game_texts via backend.
 const TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE = [
     'Thanks for playing!',
     '',
     `Please answer this [questionnaire:](${WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK}) (the link will take you to Google Forms).`,
     'It will take about 3-5 minutes of your time.',
     '',
-    'The game will continue in 48 hours.',
+    'The game will continue in {{CONTINUE_DAYS}} days.',
     `You can [add a calendar reminder to Google Calendar](${NEXT_EPISODE_CALENDAR_TEMPLATE_LINK}) to get notified when the next episode unlocks.`
 ].join('\n');
+const TEACH_EP4_OUTRO_QUESTIONNAIRE_TEMPLATE = [
+    'Thanks for playing!',
+    '',
+    "You're almost done. Next, continue to the participant portal for a short vocabulary check and the final questionnaires.",
+    '',
+    'Thank you for taking part in this study!'
+].join('\n');
+const TEACH_PORTAL_POSTTEST_CTA_LABEL = 'Continue to final checks';
 const TEACH_DEMO_ONBOARDING_INTRO = [
     'This is Demo of control group condition.',
     '',
@@ -138,9 +156,15 @@ window.TEACH_CONFIG = {
     WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY,
     WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
     CALENDAR_REMINDER_TITLE,
-    CALENDAR_REMINDER_DETAILS,
+    CALENDAR_REMINDER_DETAILS_TEMPLATE,
+    CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE,
+    PORTAL_URL,
+    PORTAL_LOCAL_URL,
     EPISODE_UNLOCK_AFTER_COMPLETION_MS,
     TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
+    TEACH_EP4_OUTRO_QUESTIONNAIRE_TEMPLATE,
+    TEACH_PORTAL_POSTTEST_CTA_LABEL,
+    FINAL_QUESTIONNAIRE_TEMPLATE_LINK,
     TEACH_DEMO_OUTRO_TEXT,
     TEACH_ONBOARDING_WELCOME_TEMPLATE,
     TEACH_DEMO_ONBOARDING_INTRO,

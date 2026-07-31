@@ -301,6 +301,9 @@ function shouldShowLocationHeader() {
         return Boolean(getEp2ScriptedWitnessKey()) && (switchableLocations.length > 1 || hasExitAction);
     }
     if (stage === 4) {
+        if (Boolean(window.ep4GameCompleted)) {
+            return false;
+        }
         if (!isEp4HubNavigationActive()) {
             return false;
         }
@@ -486,7 +489,8 @@ function populateCharactersDrawer() {
     const ep1PartyClosed = stageNum === 1 && Boolean(window.ep1PartyCompleted);
     const ep2CaseClosed = stageNum === 2 && Boolean(window.ep1GameCompleted);
     const ep3CaseClosed = stageNum === 3 && Boolean(window.ep3GameCompleted);
-    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed || ep3CaseClosed;
+    const ep4CaseClosed = stageNum === 4 && Boolean(window.ep4GameCompleted);
+    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed || ep3CaseClosed || ep4CaseClosed;
 
     charactersList.innerHTML = '';
     list.forEach(char => {
@@ -696,7 +700,8 @@ function updatePrivateModeControls() {
     const ep1PartyClosed = currentStage === 1 && Boolean(window.ep1PartyCompleted);
     const ep2CaseClosed = currentStage === 2 && Boolean(window.ep1GameCompleted);
     const ep3CaseClosed = currentStage === 3 && Boolean(window.ep3GameCompleted);
-    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed || ep3CaseClosed;
+    const ep4CaseClosed = currentStage === 4 && Boolean(window.ep4GameCompleted);
+    const ep1CaseClosed = ep1PartyClosed || ep2CaseClosed || ep3CaseClosed || ep4CaseClosed;
     const publicModeLabel = ep2Witness
         ? 'Together with Nina Reyes'
         : 'Public chat (Everyone)';

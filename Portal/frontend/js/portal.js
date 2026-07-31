@@ -192,7 +192,9 @@
 
     const CONSENT_STORAGE_KEY = 'portalConsentGiven';
     const STORAGE_STUDY_ARM = 'portalStudyArm';
+    const STORAGE_POSTTEST_PHASE = 'portalMearaPosttest';
     const MEARA_PHASE_PRETEST = 'pretest';
+    const MEARA_PHASE_POSTTEST = 'posttest';
 
     function isStudyFlowEnabled() {
         const params = new URLSearchParams(global.location.search || '');
@@ -212,6 +214,10 @@
     const mearaError = document.getElementById('mearaError');
     const mearaKnowBtn = document.getElementById('mearaKnowBtn');
     const mearaDontKnowBtn = document.getElementById('mearaDontKnowBtn');
+    const finalFormsView = document.getElementById('finalFormsView');
+    const finalFormsWeeklyLink = document.getElementById('finalFormsWeeklyLink');
+    const finalFormsFinalLink = document.getElementById('finalFormsFinalLink');
+    const finalFormsError = document.getElementById('finalFormsError');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
     const assignedContinueBtn = document.getElementById('assignedContinueBtn');
@@ -237,6 +243,8 @@
     let mearaWordOrder = [];
     let mearaResponses = [];
     let mearaIndex = 0;
+    let mearaActivePhase = MEARA_PHASE_PRETEST;
+    let cachedFinalFormLinks = null;
 
     function getUnlockButtonLabel() {
         const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('portalLang')) || 'en';
@@ -324,10 +332,84 @@
 
     function clearStudyProgress() {
         localStorage.removeItem(STORAGE_STUDY_ARM);
+        clearPosttestIntent();
+        cachedFinalFormLinks = null;
         mearaWordOrder = [];
         mearaResponses = [];
         mearaIndex = 0;
+        mearaActivePhase = MEARA_PHASE_PRETEST;
         resetSurveyForm();
+    }
+
+    function setPosttestIntent() {
+        try {
+            sessionStorage.setItem(STORAGE_POSTTEST_PHASE, '1');
+        } catch (error) {
+            console.warn('[Portal] Could not store posttest intent:', error);
+        }
+    }
+
+    function clearPosttestIntent() {
+        try {
+            sessionStorage.removeItem(STORAGE_POSTTEST_PHASE);
+        } catch (error) {
+            // ignore
+        }
+    }
+
+    function wantsPosttestFunnel() {
+        try {
+            return sessionStorage.getItem(STORAGE_POSTTEST_PHASE) === '1';
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function consumePosttestPhaseFromLocation(options = {}) {
+        try {
+            const url = new URL(global.location.href);
+            const phase = String(url.searchParams.get('phase') || '').trim().toLowerCase();
+            if (phase === MEARA_PHASE_POSTTEST) {
+                setPosttestIntent();
+                if (options.cleanUrl !== false) {
+                    url.searchParams.delete('phase');
+                    const cleaned = `${url.pathname}${url.search}${url.hash}`;
+                    global.history.replaceState({}, '', cleaned || url.pathname);
+                }
+                return true;
+            }
+        } catch (error) {
+            console.warn('[Portal] Could not consume posttest phase:', error);
+        }
+        return false;
+    }
+
+    function isMearaPretestDone(progress) {
+        if (!progress) {
+            return false;
+        }
+        if (typeof progress.meara_pretest_done === 'boolean') {
+            return progress.meara_pretest_done;
+        }
+        return Boolean(progress.meara_done);
+    }
+
+    function isMearaPosttestDone(progress) {
+        return Boolean(progress && progress.meara_posttest_done);
+    }
+
+    function cacheFormLinksFromProgress(progress) {
+        if (!progress) {
+            return;
+        }
+        const weekly = progress.weekly_questionnaire_link;
+        const finalLink = progress.final_questionnaire_link;
+        if (weekly || finalLink) {
+            cachedFinalFormLinks = {
+                weekly: weekly || null,
+                final: finalLink || null
+            };
+        }
     }
 
     function shuffleWords(words) {
@@ -397,7 +479,21 @@
         if (!response.ok) {
             return null;
         }
+        cacheFormLinksFromProgress(data);
         return data;
+    }
+
+    async function enterExitFunnelIfNeeded(progress, options = {}) {
+        if (!wantsPosttestFunnel()) {
+            return false;
+        }
+        cacheFormLinksFromProgress(progress);
+        if (!isMearaPosttestDone(progress)) {
+            showMearaView(MEARA_PHASE_POSTTEST);
+            return true;
+        }
+        await showFinalFormsView(progress);
+        return true;
     }
 
     async function finalizeStudyAndNavigate(options = {}) {
@@ -445,10 +541,16 @@
     }
 
     async function resumePortalProgress(options = {}) {
+        const progress = await fetchPortalProgress();
+
+        if (await enterExitFunnelIfNeeded(progress, options)) {
+            return true;
+        }
+
         if (!isStudyFlowEnabled()) {
             return false;
         }
-        const progress = await fetchPortalProgress();
+
         // Participants with an assigned arm go straight to their game:
         // onboarding steps (questionnaire, vocabulary test) are for new participants only.
         if (progress && progress.study_arm) {
@@ -474,8 +576,8 @@
             showSurveyView();
             return true;
         }
-        if (!progress.meara_done) {
-            showMearaView();
+        if (!isMearaPretestDone(progress)) {
+            showMearaView(MEARA_PHASE_PRETEST);
             return true;
         }
         return finalizeStudyAndNavigate(options);
@@ -491,11 +593,12 @@
         if (mearaError) {
             mearaError.textContent = '';
         }
+        const phase = mearaActivePhase || MEARA_PHASE_PRETEST;
         try {
             const { response, data } = await apiClient.postJson(
                 '/api/study/meara/submit',
                 {
-                    phase: MEARA_PHASE_PRETEST,
+                    phase,
                     word_order: mearaWordOrder.slice(),
                     responses: mearaResponses.slice()
                 },
@@ -508,6 +611,10 @@
                 if (mearaError) {
                     mearaError.textContent = detail;
                 }
+                return;
+            }
+            if (phase === MEARA_PHASE_POSTTEST) {
+                await showFinalFormsView();
                 return;
             }
             await finalizeStudyAndNavigate();
@@ -558,14 +665,39 @@
         }
     }
 
-    function showMearaView() {
-        if (!isStudyFlowEnabled()) {
+    function applyMearaPhaseCopy(phase) {
+        const titleEl = document.getElementById('mearaTitle');
+        const leadEl = mearaView ? mearaView.querySelector('.meara-lead') : null;
+        if (phase === MEARA_PHASE_POSTTEST) {
+            if (titleEl) {
+                titleEl.textContent = t('mearaPosttestTitle') || t('mearaTitle') || titleEl.textContent;
+            }
+            if (leadEl) {
+                leadEl.textContent = t('mearaPosttestLead') || t('mearaLead') || leadEl.textContent;
+            }
+            return;
+        }
+        if (titleEl) {
+            titleEl.textContent = t('mearaTitle') || titleEl.textContent;
+        }
+        if (leadEl) {
+            leadEl.textContent = t('mearaLead') || leadEl.textContent;
+        }
+    }
+
+    function showMearaView(phase = MEARA_PHASE_PRETEST) {
+        const isPosttest = phase === MEARA_PHASE_POSTTEST;
+        if (!isStudyFlowEnabled() && !isPosttest) {
             showLoginAfterConsent();
             return;
         }
         if (!getStoredSession()) {
             showLoginAfterConsent();
             return;
+        }
+        mearaActivePhase = isPosttest ? MEARA_PHASE_POSTTEST : MEARA_PHASE_PRETEST;
+        if (mearaActivePhase === MEARA_PHASE_POSTTEST) {
+            setPosttestIntent();
         }
         clearMessages();
         hideAllMainSections();
@@ -576,7 +708,77 @@
         if (typeof portalSwitchLang === 'function') {
             portalSwitchLang(lang);
         }
+        applyMearaPhaseCopy(mearaActivePhase);
         startMearaTest();
+    }
+
+    async function showFinalFormsView(progress = null) {
+        if (!getStoredSession()) {
+            showLoginAfterConsent();
+            return;
+        }
+        clearMessages();
+        hideAllMainSections();
+        if (finalFormsError) {
+            finalFormsError.textContent = '';
+        }
+
+        let links = cachedFinalFormLinks;
+        if ((!links || !links.weekly || !links.final) && progress) {
+            cacheFormLinksFromProgress(progress);
+            links = cachedFinalFormLinks;
+        }
+        if (!links || !links.weekly || !links.final) {
+            const fresh = await fetchPortalProgress();
+            links = cachedFinalFormLinks;
+            if (!links && fresh) {
+                cacheFormLinksFromProgress(fresh);
+                links = cachedFinalFormLinks;
+            }
+        }
+
+        if (finalFormsWeeklyLink) {
+            const weeklyItem = finalFormsWeeklyLink.closest('li');
+            if (links && links.weekly) {
+                finalFormsWeeklyLink.href = links.weekly;
+                if (weeklyItem) {
+                    weeklyItem.hidden = false;
+                }
+            } else {
+                finalFormsWeeklyLink.removeAttribute('href');
+                if (weeklyItem) {
+                    weeklyItem.hidden = true;
+                }
+            }
+        }
+        if (finalFormsFinalLink) {
+            const finalItem = finalFormsFinalLink.closest('li');
+            if (links && links.final) {
+                finalFormsFinalLink.href = links.final;
+                if (finalItem) {
+                    finalItem.hidden = false;
+                }
+            } else {
+                finalFormsFinalLink.removeAttribute('href');
+                if (finalItem) {
+                    finalItem.hidden = true;
+                }
+            }
+        }
+        if ((!links || !links.weekly || !links.final) && finalFormsError) {
+            finalFormsError.textContent =
+                t('finalFormsLoadError') || 'Could not load the questionnaire links.';
+        }
+
+        if (finalFormsView) {
+            finalFormsView.classList.remove('hidden');
+        }
+        const lang = getPortalLang();
+        if (typeof portalSwitchLang === 'function') {
+            portalSwitchLang(lang);
+        }
+        // Keep intent so a refresh stays on the exit funnel (forms) instead of bouncing to the game.
+        setPosttestIntent();
     }
 
     function resetSurveyForm() {
@@ -649,7 +851,7 @@
     }
 
     function hideAllMainSections() {
-        [consentView, surveyView, mearaView, loginView, modeSelectView].forEach((el) => {
+        [consentView, surveyView, mearaView, finalFormsView, loginView, modeSelectView].forEach((el) => {
             if (!el) {
                 return;
             }
@@ -867,7 +1069,7 @@
                 surveyError.textContent = detail;
                 return;
             }
-            showMearaView();
+            showMearaView(MEARA_PHASE_PRETEST);
         } catch (err) {
             console.error('[Portal] Onboarding submit failed:', err);
             const lang = localStorage.getItem('portalLang') || 'en';
@@ -899,6 +1101,9 @@
         }
         if (mearaView) {
             mearaView.classList.add('hidden');
+        }
+        if (finalFormsView) {
+            finalFormsView.classList.add('hidden');
         }
         loginView.classList.add('hidden');
         modeSelectView.classList.add('active');
@@ -944,6 +1149,10 @@
         const participantCode = normalizeParticipantCode(data?.participant_code || normalizedCode);
         persistSession(token, participantCode);
 
+        if (wantsPosttestFunnel()) {
+            return resumePortalProgress({ ...options, navigate: false });
+        }
+
         if (!isStudyFlowEnabled()) {
             const arm = resolveLoginArm(data);
             if (arm) {
@@ -987,8 +1196,12 @@
         }
 
         try {
+            const sonaId = global.portalParams?.getStoredSonaId?.();
+            const loginSource = options.loginSource
+                || (sonaId && sonaId === normalizedCode ? 'sona' : 'manual');
             const { response, data } = await apiClient.postJson('/api/auth/login', {
-                participant_code: normalizedCode
+                participant_code: normalizedCode,
+                login_source: loginSource
             });
 
             if (!response.ok) {
@@ -1022,7 +1235,7 @@
         if (!sonaId) {
             return false;
         }
-        return loginWithCode(sonaId, options);
+        return loginWithCode(sonaId, { ...options, loginSource: 'sona' });
     }
 
     async function handleLogin() {
@@ -1060,6 +1273,13 @@
             const studyArm = resolveStudyArm(data && data.study_arm);
 
             persistSession(stored.token, participantCode);
+
+            if (wantsPosttestFunnel()) {
+                return resumePortalProgress({
+                    navigate: false,
+                    showContinueView: false
+                });
+            }
 
             if (studyArm) {
                 storeStudyArm(studyArm);
@@ -1236,9 +1456,13 @@
     });
 
     document.addEventListener('DOMContentLoaded', () => {
+        if (global.authHandoff && typeof global.authHandoff.consumeHandoffFromLocation === 'function') {
+            global.authHandoff.consumeHandoffFromLocation();
+        }
         if (global.portalParams?.consumePortalParamsFromLocation) {
             global.portalParams.consumePortalParamsFromLocation();
         }
+        consumePosttestPhaseFromLocation();
 
         const lang = localStorage.getItem('portalLang') || 'en';
         if (typeof portalSwitchLang === 'function') {

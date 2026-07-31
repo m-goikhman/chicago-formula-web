@@ -13,7 +13,15 @@ SUSPECT_KEYS = ["tim", "pauline", "fiona", "ronnie"]
 
 # --- Multi-Stage Game Constants ---
 TOTAL_STAGES = 4
+# Actual unlock is early (buffer). Calendar reminders match the promised wait in outro copy.
 NEXT_EPISODE_UNLOCK_HOURS = 48  # Hours after completing an episode before the next unlocks
+# Reminder offset after completing episode N (before the next one). Ep2 wait is longer.
+CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE = {
+    1: 70,  # ~3 days
+    2: 94,  # ~4 days
+    3: 70,  # ~3 days
+}
+PORTAL_URL = "https://chicago-formula.web.app/"
 
 # Stage configuration
 # intro_files: list of steps for case intro. Each step is a filename (str) or dict with

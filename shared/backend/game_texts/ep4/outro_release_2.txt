@@ -1,14 +1,11 @@
 ---
 [sender: typewriter]
-Alex went back to the city and, for the first time in years, stopped pretending. He admitted the dismissal, the fake formula, all of it. It cost him almost everything — but a man who is no longer hiding can finally sleep at night.
----
-[sender: typewriter]
+Alex went back home. He admitted the dismissal, the fake formula, all of it. 
+
 Fiona was hurt more by the lies than by the danger she had imagined. She had sat in a precinct, certain he was kidnapped, while he was hiding in a motel twenty kilometres away. She did not forgive that quickly. Whether she forgave it at all, only time would tell.
----
-[sender: typewriter]
+
 And Pauline — when she understood the formula was a fake, something in her went quiet, and then hard. Two years of winning trades had been hers all along. She had never needed Alex, and now she knew it. She kept trading. She did just fine.
----
-[sender: typewriter]
+
 The formula was never real — but the people were.
 
 [buttons]

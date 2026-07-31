@@ -21,6 +21,8 @@ from .game_config import (
     TOTAL_CLUES,
     TOTAL_STAGES,
     NEXT_EPISODE_UNLOCK_HOURS,
+    CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE,
+    PORTAL_URL,
     STAGE_CONFIG,
     user_histories,
 )
@@ -146,11 +148,6 @@ EP3_LOCATION_ACTIONS = {
 EP3_USB_SHARE_ACTION = "share_usb_with_james"
 EP3_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
 EP3_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
-EP3_JAMES_USB_HANDOVER_TRIGGER = "The detective silently handed you the USB drive."
-EP3_JAMES_USB_FORMULA_TRIGGER = (
-    "You accepted the USB drive. Connect it to your computer, open the formula file, "
-    "and give your brief expert verdict."
-)
 EP3_USB_EXPLANATION_FALLBACK = "I think Dr. Thornton needs more information."
 EP3_UNIVERSITY_FINAL_AFTER_DOUBT_IMAGE = "usb_collection.png"
 EP3_HEAD_OUT_ACTION = "ep3_head_out"
@@ -184,18 +181,38 @@ WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL = (
 WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY = "1171438860"
 WEEKLY_QUESTIONNAIRE_WEEK_ENTRY = "1690586821"
 ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK = "{{ONBOARDING_QUESTIONNAIRE_LINK}}"
+FINAL_QUESTIONNAIRE_TEMPLATE_LINK = "{{FINAL_QUESTIONNAIRE_LINK}}"
 ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK = "https://forms.gle/hghifvApKXPU1TjK6"
 ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL = (
     "https://docs.google.com/forms/d/e/"
     "1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g/viewform"
 )
 ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY = "326737977"
-CALENDAR_REMINDER_TITLE = "Teach&Tell: Next episode unlock"
-CALENDAR_REMINDER_DETAILS = (
-    "Your next Teach&Tell episode is now unlocked. "
-    "Episodes unlock 48 hours after you complete the previous one. "
-    "Open the game: https://chicago-formula-n.web.app/"
-)
+CALENDAR_REMINDER_TITLE = "Chicago Formula: Next episode unlock"
+
+
+def _calendar_reminder_hours_for_completed_episode(completed_episode: int) -> int:
+    """Hours until the calendar reminder after completing episode N."""
+    try:
+        episode = int(completed_episode)
+    except (TypeError, ValueError):
+        episode = 1
+    return int(CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE.get(episode, 70))
+
+
+def _build_calendar_reminder_details(completed_episode: int) -> str:
+    """Event body for the next-episode Google Calendar reminder."""
+    try:
+        episode = int(completed_episode)
+    except (TypeError, ValueError):
+        episode = 1
+    # Keep copy aligned with outro texts (ep2 → 4 days, otherwise 3 days).
+    days = 4 if episode == 2 else 3
+    return (
+        "Your next Chicago Formula episode is now unlocked. "
+        f"Episodes unlock {days} days after you complete the previous one. "
+        f"Open the game: {PORTAL_URL}"
+    )
 
 
 def _word_count_whitespace(text: str) -> int:
@@ -231,6 +248,20 @@ def _build_onboarding_questionnaire_link(participant_code: str) -> str:
         f"entry.{ONBOARDING_QUESTIONNAIRE_PARTICIPANT_ENTRY}": participant_code,
     }
     return f"{ONBOARDING_QUESTIONNAIRE_FORM_VIEW_URL}?{urlencode(params)}"
+
+
+def _build_final_questionnaire_link(participant_code: str) -> str:
+    """Personalized link to the post-study final questionnaire."""
+    return _build_onboarding_questionnaire_link(participant_code)
+
+
+def get_final_study_form_links(participant_code: str) -> Dict[str, str]:
+    """Personalized week-4 + final Google Forms links for the portal exit funnel."""
+    ep4_state = {"questionnaire_week": EP4_STAGE, "current_stage": EP4_STAGE}
+    return {
+        "weekly_questionnaire_link": _build_weekly_questionnaire_link(participant_code, ep4_state),
+        "final_questionnaire_link": _build_final_questionnaire_link(participant_code),
+    }
 
 
 def _coerce_stage_number_key(key) -> Any:
@@ -330,18 +361,25 @@ def _ensure_stage_unlock_dates(state: Dict) -> None:
 
 
 def _build_next_episode_calendar_link(state: Optional[Dict]) -> str:
-    """Create a Google Calendar template URL for the next unlock reminder."""
+    """Create a Google Calendar template URL for the next-episode reminder.
+
+    Timing follows CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE (not the earlier
+    unlock buffer NEXT_EPISODE_UNLOCK_HOURS).
+    """
+    completed_episode = _resolve_questionnaire_week_number(state)
+    reminder_hours = _calendar_reminder_hours_for_completed_episode(completed_episode)
+
     cet_tz = pytz.timezone('Europe/Berlin')
     now = datetime.now(cet_tz)
-    next_unlock_dt = now + timedelta(hours=NEXT_EPISODE_UNLOCK_HOURS)
+    reminder_dt = now + timedelta(hours=reminder_hours)
 
-    start_day = next_unlock_dt.strftime("%Y%m%d")
-    end_day = (next_unlock_dt + timedelta(days=1)).strftime("%Y%m%d")
+    start_day = reminder_dt.strftime("%Y%m%d")
+    end_day = (reminder_dt + timedelta(days=1)).strftime("%Y%m%d")
     params = {
         "action": "TEMPLATE",
         "text": CALENDAR_REMINDER_TITLE,
         "dates": f"{start_day}/{end_day}",
-        "details": CALENDAR_REMINDER_DETAILS,
+        "details": _build_calendar_reminder_details(completed_episode),
     }
     return f"https://calendar.google.com/calendar/render?{urlencode(params)}"
 
@@ -353,11 +391,13 @@ def _personalize_questionnaire_links_in_text(
         return text
 
     onboarding_link = _build_onboarding_questionnaire_link(participant_code)
+    final_link = _build_final_questionnaire_link(participant_code)
     weekly_link = _build_weekly_questionnaire_link(participant_code, state)
     result = text
 
     # Preferred template tokens
     result = result.replace(ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK, onboarding_link)
+    result = result.replace(FINAL_QUESTIONNAIRE_TEMPLATE_LINK, final_link)
     result = result.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, weekly_link)
 
     # Backward compatibility for older static links
@@ -1328,105 +1368,17 @@ def _is_english_usb_explanation(text: str) -> bool:
     return True
 
 
-def _james_handover_needs_explanation(reply: str) -> bool:
-    """Heuristic: James asked for context → wait for the player's explanation."""
-    text = (reply or "").strip()
-    if not text or text == "[Character is thinking...]":
-        return True
-    if "?" in text:
-        return True
-    lowered = text.lower()
-    asking_phrases = (
-        "what is",
-        "what's",
-        "what are",
-        "what do you",
-        "what does",
-        "could you explain",
-        "tell me about",
-        "can you explain",
-    )
-    return any(phrase in lowered for phrase in asking_phrases)
-
-
-def _build_james_character_message(participant_code: str, reply_text: str) -> Dict:
-    james_data = CHARACTER_DATA.get("james", {"full_name": "James"})
-    message_id = generate_message_id()
-    save_message_to_cache(message_id, reply_text, "james")
-    log_message("character_james", reply_text, participant_code)
-    return {
-        "type": "character",
-        "character": "james",
-        "character_name": james_data["full_name"],
-        "character_image": james_data.get("image"),
-        "content": reply_text,
-        "message_id": message_id,
-        "show_explain": bool(reply_text and reply_text != "[Character is thinking...]"),
-    }
-
-
-async def _ask_james_at_university(
-    participant_code: str,
-    state: Dict,
-    trigger: str,
-    *,
-    debug_mode_enabled: bool = False,
-    messages_for_debug: Optional[List[Dict]] = None,
-) -> str:
-    current_language_level = state.get("current_language_level", "B1")
-    current_location = get_stage_location(state, EP3_FORMULA_STAGE)
-    system_prompt = combine_character_prompt(
-        "james", current_language_level, EP3_FORMULA_STAGE, current_location, state=state
-    )
-    try:
-        if debug_mode_enabled and messages_for_debug is not None:
-            debug_snapshot = _build_public_input_debug_snapshot(
-                participant_code=participant_code,
-                state=state,
-                char_key="james",
-                system_prompt=system_prompt,
-                user_input=trigger,
-            )
-            _append_debug_message(messages_for_debug, debug_snapshot)
-        reply = await ask_for_dialogue(
-            participant_code,
-            trigger,
-            system_prompt,
-            "james",
-            participant_code,
-        )
-        if debug_mode_enabled and messages_for_debug is not None:
-            _append_contradiction_guard_debug_message(messages_for_debug, state)
-    except Exception as exc:
-        logger.error(
-            "Failed to get EP2 James reply for participant %s: %s",
-            participant_code,
-            exc,
-        )
-        reply = None
-    if reply and reply.strip():
-        return reply.strip()
-    return "[Character is thinking...]"
-
-
-async def _append_james_usb_formula_verdict(
+def _append_james_usb_formula_verdict(
     participant_code: str,
     state: Dict,
     messages: List[Dict],
-    trigger: str,
-    *,
-    debug_mode_enabled: bool = False,
 ) -> None:
+    """Append the scripted USB formula verdict and mark university analysis done."""
     ep2_state = _get_ep2_director_state(state)
     ep2_state["usb_context_explained"] = True
-    formula_reply = await _ask_james_at_university(
-        participant_code,
-        state,
-        trigger,
-        debug_mode_enabled=debug_mode_enabled,
-        messages_for_debug=messages,
+    _append_scripted_game_text_to_messages(
+        participant_code, messages, "james_formula_verdict", EP3_FORMULA_STAGE
     )
-    messages.append(_build_james_character_message(participant_code, formula_reply))
     ep2_state["university_analysis_done"] = True
 
 
@@ -1707,7 +1659,6 @@ async def _handle_ep2_scripted_public_message(
         visited_locations.append(current_location)
         ep2_state["visited_locations"] = visited_locations
 
-    force_usb_analysis_prompt = False
     if (
         current_location in {"university_ep3", "university_ep2"}
         and ep2_state.get("usb_handover_requested", False)
@@ -1736,8 +1687,10 @@ async def _handle_ep2_scripted_public_message(
             _sync_last_public_responder_from_messages(state, messages)
             return messages
 
-        ep2_state["usb_context_explained"] = True
-        force_usb_analysis_prompt = True
+        log_message("user", message_text, participant_code)
+        _append_james_usb_formula_verdict(participant_code, state, messages)
+        _sync_last_public_responder_from_messages(state, messages)
+        return messages
 
     # Default speaker in these scenes: non-Nina character.
     non_nina_candidates = [char for char in stage_characters if char != "nina" and char in CHARACTER_DATA]
@@ -1750,16 +1703,9 @@ async def _handle_ep2_scripted_public_message(
     system_prompt = combine_character_prompt(
         active_character_key, current_language_level, current_stage, current_location, state=state
     )
-    if force_usb_analysis_prompt and active_character_key == "james":
-        trigger = (
-            f"The detective just explained the USB contents: '{message_text}'. "
-            "Connect the drive, open the formula file, and give your brief expert verdict."
-        )
-    else:
-        trigger = (
-            f"The detective asks in a public exchange: '{message_text}'. "
-            "Respond naturally as your character and move the investigation forward."
-        )
+    # Pass the player's words only. Meta wrappers ("The detective asks…") push the
+    # model into narrator mode; USB verdict guidance lives in the system-prompt inject.
+    trigger = message_text
 
     try:
         if debug_mode_enabled:
@@ -1809,12 +1755,7 @@ async def _handle_ep2_scripted_public_message(
     )
     analysis_done = ep2_state.get("university_analysis_done", False)
 
-    if current_location in {"university_ep3", "university_ep2"}:
-        if force_usb_analysis_prompt:
-            ep2_state["university_analysis_done"] = True
-            analysis_done = True
-
-    elif current_location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
+    if current_location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
         ep2_state["alex_apartment_turns"] = int(ep2_state.get("alex_apartment_turns", 0)) + 1
 
         if not analysis_done:
@@ -4791,11 +4732,39 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     return False
 
 
+def build_ep4_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
+    """Build EP4 outro text directing participants to the portal exit funnel."""
+    from .demo_slots import is_demo_mode_participant
+
+    text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", EP4_STAGE))
+    # Older cached templates may still contain Form placeholders; keep replacements harmless.
+    weekly_link = _build_weekly_questionnaire_link(participant_code, state)
+    final_link = _build_final_questionnaire_link(participant_code)
+    if WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK in text:
+        text = text.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, weekly_link)
+    else:
+        text = text.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, weekly_link)
+    text = text.replace(FINAL_QUESTIONNAIRE_TEMPLATE_LINK, final_link)
+    text = text.replace(ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK, final_link)
+
+    if is_demo_mode_participant(participant_code):
+        demo_prefix = (
+            "Thanks for playing!\n\n"
+            "The experiment participant will receive here the following message:"
+        )
+        return f"{demo_prefix}\n\n{text}"
+
+    return text
+
+
 def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
     """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
     from .demo_slots import is_demo_mode_participant
 
     episode = int((state or {}).get("current_stage", 1))
+    if episode == EP4_STAGE:
+        return build_ep4_outro_questionnaire_text(participant_code, state)
+
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", episode))
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
     calendar_link = _build_next_episode_calendar_link(state)
@@ -4867,17 +4836,21 @@ def _ep3_outro_questionnaire_message(participant_code: str, state: Optional[Dict
 
 
 def _ep4_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
-    text = build_weekly_outro_questionnaire_text(participant_code, state)
+    text = build_ep4_outro_questionnaire_text(participant_code, state)
     return {
         "type": "system",
         "content": text,
         "message_style": "tutor",
         "show_explain": False,
+        "buttons": [
+            {"text": "Continue to final checks", "action": "portal_posttest"},
+        ],
         "ui": {
             "caseMaterialsAccusationAvailable": False,
             "episodeComplete": True,
             "completedStage": EP4_STAGE,
             "ep4GameCompleted": True,
+            "portalPosttestCta": True,
         },
     }
 
@@ -5516,7 +5489,7 @@ async def handle_language_menu_back(participant_code: str) -> List[Dict]:
 
 
 async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
-    """Start USB handover flow in EP2 university and require player explanation when needed."""
+    """USB handover: narrator line, then scripted James question; wait for player explanation."""
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
@@ -5530,7 +5503,7 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
 
     ep2_state = _get_ep2_director_state(state)
     ep2_state["usb_handover_requested"] = True
-    ep2_state["usb_handover_reacted"] = False
+    ep2_state["usb_handover_reacted"] = True
     ep2_state["usb_context_explained"] = False
     ep2_state["university_analysis_done"] = False
 
@@ -5543,20 +5516,9 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
             participant_code, EP3_USB_HANDOVER_NARRATOR, "narrator"
         )
     ]
-
-    handover_reply = await _ask_james_at_university(
-        participant_code, state, EP3_JAMES_USB_HANDOVER_TRIGGER
+    _append_scripted_game_text_to_messages(
+        participant_code, messages, "james_usb_question", EP3_FORMULA_STAGE
     )
-    ep2_state["usb_handover_reacted"] = True
-    messages.append(_build_james_character_message(participant_code, handover_reply))
-
-    if not _james_handover_needs_explanation(handover_reply):
-        await _append_james_usb_formula_verdict(
-            participant_code,
-            state,
-            messages,
-            EP3_JAMES_USB_FORMULA_TRIGGER,
-        )
 
     _sync_last_public_responder_for_public_mode(state, messages)
     await game_state_manager.save_game_state(participant_code, state)

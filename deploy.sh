@@ -111,6 +111,7 @@ sync_shared_frontend() {
     local shared_source="$SCRIPT_DIR/shared/frontend"
     local teach_target="$SCRIPT_DIR/Teach/frontend/shared"
     local tell_target="$SCRIPT_DIR/Tell/frontend/shared"
+    local portal_target="$SCRIPT_DIR/Portal/frontend/shared"
 
     if [ ! -d "$shared_source" ]; then
         warning "Shared frontend source not found: $shared_source"
@@ -181,6 +182,11 @@ sync_shared_frontend() {
     # Sync to Tell frontend
     if [ -d "$SCRIPT_DIR/Tell/frontend" ]; then
         sync_directory_safe "$shared_source" "$tell_target" "Tell/frontend/shared"
+    fi
+
+    # Sync to Portal frontend (Firebase hosting cannot serve ../../shared/frontend)
+    if [ -d "$SCRIPT_DIR/Portal/frontend" ]; then
+        sync_directory_safe "$shared_source" "$portal_target" "Portal/frontend/shared"
     fi
 }
 

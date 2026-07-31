@@ -145,7 +145,10 @@ async function silentReauthenticate() {
     try {
         const loginPayload = window.tellDemoMode?.buildLoginPayload
             ? window.tellDemoMode.buildLoginPayload(code)
-            : { participant_code: String(code || '').trim().toUpperCase() };
+            : {
+                participant_code: String(code || '').trim().toUpperCase(),
+                login_source: 'direct_app'
+            };
         const { response, data } = await apiClient.postJson('/api/auth/login', loginPayload);
 
         if (!response.ok || !data || !data.token) {
@@ -425,7 +428,8 @@ function isCurrentStageCaseClosed() {
     const ep1PartyClosed = stage === 1 && Boolean(window.ep1PartyCompleted);
     const ep2CaseClosed = stage === 2 && Boolean(window.ep1GameCompleted);
     const ep3CaseClosed = stage === 3 && Boolean(window.ep3GameCompleted);
-    return ep1PartyClosed || ep2CaseClosed || ep3CaseClosed;
+    const ep4CaseClosed = stage === 4 && Boolean(window.ep4GameCompleted);
+    return ep1PartyClosed || ep2CaseClosed || ep3CaseClosed || ep4CaseClosed;
 }
 
 function shouldRestoreInputFromLoadedMessages(messages) {
@@ -488,7 +492,10 @@ async function login() {
     try {
         const loginPayload = window.tellDemoMode?.buildLoginPayload
             ? window.tellDemoMode.buildLoginPayload(code)
-            : { participant_code: String(code || '').trim().toUpperCase() };
+            : {
+                participant_code: String(code || '').trim().toUpperCase(),
+                login_source: 'direct_app'
+            };
         const { response, data } = await apiClient.postJson('/api/auth/login', loginPayload);
 
         const payload = data || {};
@@ -625,6 +632,13 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
     let normalizedAction = String(action || '').trim().toLowerCase();
     const normalizedSelectedOptionText = String(selectedOptionText || '').trim();
 
+    if (normalizedAction === 'portal_posttest') {
+        if (typeof window.navigateToPortalPosttest === 'function') {
+            window.navigateToPortalPosttest();
+        }
+        return;
+    }
+
     // Frontend-only: show the button label as the player's line; no API or other side effects.
     // Optional follow-up: say_as_user>action_key runs the server action after posting the line.
     if (normalizedAction === 'say_as_user' || normalizedAction.startsWith('say_as_user>')) {
@@ -654,6 +668,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             normalizedAction === 'ep1_outro_narrator'
             || normalizedAction === 'outro_questionnaire'
             || normalizedAction === 'ep3_outro_questionnaire'
+            || normalizedAction === 'ep4_outro_questionnaire'
         )
         && normalizedSelectedOptionText
     ) {
@@ -891,6 +906,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
                 || normalizedAction === 'pauline_entrance_doorway.txt'
                 || normalizedAction === 'ep3_head_out'
                 || normalizedAction === 'ep3_outro_questionnaire'
+                || normalizedAction === 'ep4_outro_questionnaire'
                 || normalizedAction === 'fiona_to_nina'
                 || normalizedAction === 'nina_split_up'
             )
@@ -1585,6 +1601,8 @@ async function loadEpisodeSelector() {
         window.ep1PartyCompleted = ep1StageInfo?.status === 'completed' || ep1StageInfo?.completed === true;
         const ep3StageInfo = stagesInfo.find((s) => s.stage === 3);
         window.ep3GameCompleted = ep3StageInfo?.status === 'completed' || ep3StageInfo?.completed === true;
+        const ep4StageInfo = stagesInfo.find((s) => s.stage === 4);
+        window.ep4GameCompleted = ep4StageInfo?.status === 'completed' || ep4StageInfo?.completed === true;
         window.ep4NinaChatAvailable = Boolean(data.ep4_nina_chat_available);
         
         // Set current episode's characters for drawer and typing indicator (before any early return)

@@ -388,6 +388,22 @@
                 <div class="status-text error" id="mearaError" role="alert"></div>
             </section>
 
+            <!-- Post-study questionnaires (Google Forms) after MeARA posttest -->
+            <section class="card hidden" data-view="final-forms" id="finalFormsView" aria-labelledby="finalFormsTitle">
+                <h2 id="finalFormsTitle" data-i18n="finalFormsTitle">Final questionnaires</h2>
+                <p class="final-forms-lead" data-i18n="finalFormsLead">Please complete both questionnaires below. They open in Google Forms.</p>
+                <ul class="final-forms-list">
+                    <li>
+                        <a class="button primary final-forms-link" id="finalFormsWeeklyLink" href="#" target="_blank" rel="noopener noreferrer" data-i18n="finalFormsWeeklyBtn">Weekly questionnaire (3–5 min)</a>
+                    </li>
+                    <li>
+                        <a class="button primary final-forms-link" id="finalFormsFinalLink" href="#" target="_blank" rel="noopener noreferrer" data-i18n="finalFormsFinalBtn">Final questionnaire (about 10 min)</a>
+                    </li>
+                </ul>
+                <p class="final-forms-thanks" data-i18n="finalFormsThanks">Thank you for taking part in this study!</p>
+                <div class="status-text error" id="finalFormsError" role="alert"></div>
+            </section>
+
             <!-- Continue view (restored session) -->
             <section class="card" data-view="mode-select" id="modeSelectView">
                 <div class="session-chip">
@@ -430,8 +446,8 @@
         teachLocal: '../../Teach/frontend/index.html'
     });
 </script>
-<script src="../../shared/frontend/js/portal-params.js"></script>
-<script src="../../shared/frontend/js/auth-handoff.js"></script>
+<script src="shared/js/portal-params.js"></script>
+<script src="shared/js/auth-handoff.js"></script>
 <script src="js/dev-local.js"></script>
 <script src="js/portal.js"></script>
 </body>

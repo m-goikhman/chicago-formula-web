@@ -13,6 +13,8 @@ window.TeachWeekContent = (() => {
         const requestTutorFinalSummary = deps.requestTutorFinalSummary || null;
         const requestTeachOutroQuestionnaire = deps.requestTeachOutroQuestionnaire || null;
         const buildLocalOutroQuestionnaireText = deps.buildLocalOutroQuestionnaireText || null;
+        const appendPortalPosttestCta = deps.appendPortalPosttestCta || null;
+        const TEACH_PORTAL_POSTTEST_CTA_LABEL = deps.TEACH_PORTAL_POSTTEST_CTA_LABEL || 'Continue to final checks';
         const getWeekExerciseSummary = deps.getWeekExerciseSummary || (() => null);
         const getWeekStepProgress = deps.getWeekStepProgress || (() => 1);
         const setWeekStepProgress = deps.setWeekStepProgress || (() => {});
@@ -245,16 +247,24 @@ window.TeachWeekContent = (() => {
                     const fallbackOutroText = typeof buildLocalOutroQuestionnaireText === 'function'
                         ? buildLocalOutroQuestionnaireText(week.id, outroOptions)
                         : '';
+                    const attachPortalCta = () => {
+                        if (week.id === 'week4' && typeof appendPortalPosttestCta === 'function') {
+                            appendPortalPosttestCta(outroMessage, TEACH_PORTAL_POSTTEST_CTA_LABEL);
+                        }
+                    };
 
                     renderOutroText(fallbackOutroText);
+                    attachPortalCta();
 
                     if (messageText && typeof requestTeachOutroQuestionnaire === 'function') {
                         requestTeachOutroQuestionnaire(week.id, outroOptions)
                             .then((outroText) => {
                                 renderOutroText(outroText || fallbackOutroText);
+                                attachPortalCta();
                             })
                             .catch(() => {
                                 renderOutroText(fallbackOutroText);
+                                attachPortalCta();
                             });
                     }
 

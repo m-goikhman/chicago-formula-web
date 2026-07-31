@@ -40,6 +40,8 @@ META_FIELDS = {
     "questionnaire_completed_at",
     "assigned_at",
     "attached_at",
+    "login_source",
+    "login_recorded_at",
 }
 
 DEFAULT_SKIP_CODES = {"TEST", "ROBERTA", "DEMO"}

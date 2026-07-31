@@ -160,25 +160,7 @@ def get_game_text_path(basename: str, episode: int) -> str:
     return f"game_texts/ep{episode}/{basename}"
 
 
-EP3_JAMES_USB_HANDOVER_INJECT_PATH = "prompts/ep3/university_ep3/james_usb_handover_inject.md"
 EP3_JAMES_USB_FORMULA_PROMPT_PATH = "prompts/ep3/university_ep3/prompt_james_formula_ep2.md"
-
-
-def _append_ep2_james_usb_handover_inject(character_prompt: str, state: Optional[Dict]) -> str:
-    if not state:
-        return character_prompt
-    ep2_state = state.get("ep2_director") or {}
-    if not ep2_state.get("usb_handover_requested", False):
-        return character_prompt
-    if ep2_state.get("usb_handover_reacted", False):
-        return character_prompt
-    handover_path = EP3_JAMES_USB_HANDOVER_INJECT_PATH
-    if not os.path.exists(os.path.join(_BASE_DIR, handover_path)):
-        return character_prompt
-    handover_prompt = load_system_prompt(handover_path)
-    if not handover_prompt:
-        return character_prompt
-    return f"{character_prompt}\n\n{handover_prompt}"
 
 
 def _append_ep2_james_usb_formula_prompt(character_prompt: str, state: Optional[Dict]) -> str:
@@ -226,7 +208,6 @@ def combine_character_prompt(
         character_prompt_path = get_prompt_path(character_name, episode, location)
         character_prompt = load_system_prompt(character_prompt_path)
         if character_name == "james" and episode == 3 and location in {"university_ep3", "university_ep2"}:
-            character_prompt = _append_ep2_james_usb_handover_inject(character_prompt, state)
             character_prompt = _append_ep2_james_usb_formula_prompt(character_prompt, state)
 
         # Only combine with language requirements for game characters and narrator

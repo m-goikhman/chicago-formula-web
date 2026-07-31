@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./dev-local.sh              # sync shared assets, start everything
-#   ./dev-local.sh --no-sync    # skip shared/frontend → Teach|Tell copy
+#   ./dev-local.sh --no-sync    # skip shared/frontend → Teach|Tell|Portal copy
 #   ./dev-local.sh stop         # stop background processes
 #   ./dev-local.sh status       # show running dev servers
 #
@@ -86,17 +86,19 @@ sync_shared_frontend() {
     local source="${SCRIPT_DIR}/shared/frontend"
     local teach_target="${SCRIPT_DIR}/Teach/frontend/shared"
     local tell_target="${SCRIPT_DIR}/Tell/frontend/shared"
+    local portal_target="${SCRIPT_DIR}/Portal/frontend/shared"
 
     if [ ! -d "$source" ]; then
         warning "Missing shared frontend source: ${source}"
         return 0
     fi
 
-    info "Syncing shared/frontend → Teach|Tell copies"
-    mkdir -p "$(dirname "$teach_target")" "$(dirname "$tell_target")"
-    rm -rf "$teach_target" "$tell_target"
+    info "Syncing shared/frontend → Teach|Tell|Portal copies"
+    mkdir -p "$(dirname "$teach_target")" "$(dirname "$tell_target")" "$(dirname "$portal_target")"
+    rm -rf "$teach_target" "$tell_target" "$portal_target"
     cp -R "$source" "$teach_target"
     cp -R "$source" "$tell_target"
+    cp -R "$source" "$portal_target"
     success "Shared frontend synced"
 }
 

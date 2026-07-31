@@ -3,5 +3,5 @@ Thanks for playing!
 Please answer this [questionnaire:]({{QUESTIONNAIRE_LINK}}) (the link will take you to Google Forms).
 It will take about 3-5 minutes of your time.
 
-The game will continue in 48 hours.
+The game will continue in 3 days.
 You can [add a calendar reminder to Google Calendar]({{NEXT_EPISODE_CALENDAR_LINK}}) to get notified when the next episode unlocks.

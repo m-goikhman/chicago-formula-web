@@ -72,6 +72,7 @@ app.add_middleware(
 class LoginRequest(BaseModel):
     participant_code: str
     demo_slot: Optional[str] = None
+    login_source: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
@@ -108,7 +109,11 @@ class OnboardingAssignResponse(BaseModel):
 class StudyProgressResponse(BaseModel):
     questionnaire_done: bool
     meara_done: bool
+    meara_pretest_done: bool = False
+    meara_posttest_done: bool = False
     study_arm: Optional[str] = None
+    weekly_questionnaire_link: Optional[str] = None
+    final_questionnaire_link: Optional[str] = None
 
 
 class MearaWordsResponse(BaseModel):
@@ -266,6 +271,7 @@ async def login(request: LoginRequest):
     token, demo_mode = login_result
     session = validate_session_token(token)
     code = (session or {}).get("participant_code") or request.participant_code.upper()
+    study_onboarding.record_login_source(code, request.login_source)
     study = study_onboarding.get_participant_study(code)
     study_arm = study.get("arm") if study else None
 
@@ -326,8 +332,19 @@ async def study_onboarding_assign_arm(current_user=Depends(get_current_user)):
 async def study_portal_progress(current_user=Depends(get_current_user)):
     """Which portal steps the participant has already completed."""
     code = current_user["participant_code"]
-    meara_done = meara_vocab.has_submission(code, "pretest")
-    progress = study_onboarding.get_portal_progress(code, meara_done=meara_done)
+    meara_pretest_done = meara_vocab.has_submission(code, "pretest")
+    meara_posttest_done = meara_vocab.has_submission(code, "posttest")
+    from .game_handlers import get_final_study_form_links
+
+    form_links = get_final_study_form_links(code)
+    progress = study_onboarding.get_portal_progress(
+        code,
+        meara_done=meara_pretest_done,
+        meara_pretest_done=meara_pretest_done,
+        meara_posttest_done=meara_posttest_done,
+        weekly_questionnaire_link=form_links["weekly_questionnaire_link"],
+        final_questionnaire_link=form_links["final_questionnaire_link"],
+    )
     return StudyProgressResponse(**progress)
 
 

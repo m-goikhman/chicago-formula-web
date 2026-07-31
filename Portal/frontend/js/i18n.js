@@ -72,6 +72,16 @@ var PORTAL_TRANSLATIONS = {
         mearaLoadError: 'Impossibile caricare il test di vocabolario. Controlla la connessione.',
         mearaRequiresSurvey: 'Completa prima il questionario iniziale.',
         mearaRequiresCompletion: 'Completa prima il test di vocabolario.',
+        mearaPosttestTitle: 'Verifica finale del vocabolario',
+        mearaPosttestLead:
+            'Come all’inizio dello studio, vedrai parole in inglese una alla volta. Indica se le conosci o no — rispondi con sincerità.',
+        finalFormsTitle: 'Questionari finali',
+        finalFormsLead:
+            'Completa entrambi i questionari qui sotto. Si aprono in Google Forms.',
+        finalFormsWeeklyBtn: 'Questionario settimanale (3–5 min)',
+        finalFormsFinalBtn: 'Questionario finale (circa 10 min)',
+        finalFormsThanks: 'Grazie per aver partecipato a questo studio!',
+        finalFormsLoadError: 'Impossibile caricare i link dei questionari. Controlla la connessione.',
         sessionClearedHint: 'Sessione azzerata. Inserisci un nuovo codice partecipante.',
         restoringSession: 'Ripristino sessione…',
         sessionRestoredAssigned: 'Sessione ripristinata. Continua con l’attività assegnata.',
@@ -143,6 +153,16 @@ var PORTAL_TRANSLATIONS = {
         mearaLoadError: 'Could not load the vocabulary test. Please check your connection.',
         mearaRequiresSurvey: 'Please complete the initial questionnaire first.',
         mearaRequiresCompletion: 'Please complete the vocabulary check first.',
+        mearaPosttestTitle: 'Final vocabulary check',
+        mearaPosttestLead:
+            'Just like at the start of the study, you will see English words one at a time. Decide whether you know each one — answer honestly.',
+        finalFormsTitle: 'Final questionnaires',
+        finalFormsLead:
+            'Please complete both questionnaires below. They open in Google Forms.',
+        finalFormsWeeklyBtn: 'Weekly questionnaire (3–5 min)',
+        finalFormsFinalBtn: 'Final questionnaire (about 10 min)',
+        finalFormsThanks: 'Thank you for taking part in this study!',
+        finalFormsLoadError: 'Could not load the questionnaire links. Please check your connection.',
         sessionClearedHint: 'Session cleared. Enter a new participant code.',
         restoringSession: 'Restoring your previous session…',
         sessionRestoredAssigned: 'Session restored. Continue to your assigned activity.',

@@ -45,7 +45,10 @@
 
     function buildLoginPayload(rawCode) {
         const participantCode = normalizeCode(rawCode);
-        const payload = { participant_code: participantCode };
+        const payload = {
+            participant_code: participantCode,
+            login_source: 'direct_app'
+        };
         if (participantCode === 'DEMO') {
             const stored = getParticipantCode();
             if (isDemoSlotCode(stored)) {

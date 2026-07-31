@@ -18,11 +18,100 @@ const TeachUI = (() => {
         WEEKLY_QUESTIONNAIRE_PARTICIPANT_ENTRY,
         WEEKLY_QUESTIONNAIRE_WEEK_ENTRY,
         CALENDAR_REMINDER_TITLE,
-        CALENDAR_REMINDER_DETAILS,
-        EPISODE_UNLOCK_AFTER_COMPLETION_MS,
+        CALENDAR_REMINDER_DETAILS_TEMPLATE,
+        CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE,
         TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE,
-        TEACH_DEMO_OUTRO_TEXT
+        TEACH_EP4_OUTRO_QUESTIONNAIRE_TEMPLATE,
+        TEACH_PORTAL_POSTTEST_CTA_LABEL,
+        FINAL_QUESTIONNAIRE_TEMPLATE_LINK,
+        TEACH_DEMO_OUTRO_TEXT,
+        PORTAL_URL,
+        PORTAL_LOCAL_URL,
+        teachIsLocalhost
     } = window.TEACH_CONFIG || {};
+
+    function getPortalBaseUrl() {
+        if (teachIsLocalhost || window.sharedConfig?.isLocalhost) {
+            return PORTAL_LOCAL_URL || '../../Portal/frontend/portal.html';
+        }
+        return PORTAL_URL || 'https://chicago-formula.web.app/';
+    }
+
+    function buildPortalPosttestUrl() {
+        const token = localStorage.getItem('sessionToken') || '';
+        const code = localStorage.getItem('participantCode') || '';
+        let destination = getPortalBaseUrl();
+        try {
+            const url = new URL(destination, window.location.href);
+            url.searchParams.set('phase', 'posttest');
+            destination = url.toString();
+        } catch (error) {
+            console.warn('[Teach] Could not build portal posttest URL:', error);
+        }
+        if (window.authHandoff && typeof window.authHandoff.buildHandoffUrl === 'function' && token && code) {
+            return window.authHandoff.buildHandoffUrl(destination, token, code);
+        }
+        return destination;
+    }
+
+    function navigateToPortalPosttest() {
+        window.location.assign(buildPortalPosttestUrl());
+    }
+
+    function appendPortalPosttestCta(messageEl, label) {
+        if (!messageEl) {
+            return;
+        }
+        const content = messageEl.querySelector('.message-content') || messageEl;
+        if (!content || content.querySelector('.teach-portal-posttest-cta')) {
+            return;
+        }
+        const actions = document.createElement('div');
+        actions.className = 'button-row teach-portal-posttest-cta';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label || TEACH_PORTAL_POSTTEST_CTA_LABEL || 'Continue to final checks';
+        button.addEventListener('click', () => {
+            navigateToPortalPosttest();
+        });
+        actions.appendChild(button);
+        content.appendChild(actions);
+    }
+
+    function parseTeachWeekNumber(weekId = 'week1') {
+        const normalized = String(weekId || '').trim().toLowerCase();
+        if (normalized.startsWith('week')) {
+            const parsed = Number.parseInt(normalized.slice(4), 10);
+            if (Number.isFinite(parsed)) {
+                return Math.max(1, Math.min(4, parsed));
+            }
+        }
+        const match = normalized.match(/(\d+)/);
+        const week = match ? Number.parseInt(match[1], 10) : 1;
+        return Number.isFinite(week) ? Math.max(1, Math.min(4, week)) : 1;
+    }
+
+    function calendarReminderHoursForCompletedEpisode(completedEpisode) {
+        const map = CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE || {};
+        const episode = Number(completedEpisode) || 1;
+        const hours = Number(map[episode]);
+        return Number.isFinite(hours) && hours > 0 ? hours : 70;
+    }
+
+    function continueDaysForCompletedEpisode(completedEpisode) {
+        return Number(completedEpisode) === 2 ? 4 : 3;
+    }
+
+    function buildCalendarReminderDetails(completedEpisode) {
+        const days = continueDaysForCompletedEpisode(completedEpisode);
+        const template = CALENDAR_REMINDER_DETAILS_TEMPLATE
+            || (
+                'Your next Chicago Formula episode is now unlocked. '
+                + 'Episodes unlock {{DAYS}} days after you complete the previous one. '
+                + 'Open the game: https://chicago-formula.web.app/'
+            );
+        return String(template).replace('{{DAYS}}', String(days));
+    }
 
     function buildOnboardingQuestionnaireLink(participantCode = '') {
         const normalizedCode = String(participantCode || '').trim().toUpperCase();
@@ -44,23 +133,13 @@ const TeachUI = (() => {
         const personalizedLink = buildOnboardingQuestionnaireLink(participantCode);
         let result = String(text);
         result = result.replace(ONBOARDING_QUESTIONNAIRE_TEMPLATE_LINK, personalizedLink);
+        result = result.replace(FINAL_QUESTIONNAIRE_TEMPLATE_LINK, personalizedLink);
         result = result.replace(ONBOARDING_QUESTIONNAIRE_FALLBACK_STATIC_LINK, personalizedLink);
         result = result.replace(
             /https:\/\/docs\.google\.com\/forms\/d\/e\/1FAIpQLSdE5BiT1SLKPhP2dH1L-kus0oey4857psewaZz6rA8o_c469g\/viewform(?:\?[^\s)]*)?/g,
             personalizedLink
         );
         return result;
-    }
-
-    function parseTeachWeekNumber(weekId = '') {
-        const normalized = String(weekId || '').trim().toLowerCase();
-        if (normalized.startsWith('week')) {
-            const parsed = Number.parseInt(normalized.slice(4), 10);
-            if (Number.isFinite(parsed)) {
-                return Math.max(1, Math.min(4, parsed));
-            }
-        }
-        return 1;
     }
 
     function buildWeeklyQuestionnaireLink(participantCode = '', weekId = 'week1') {
@@ -78,9 +157,10 @@ const TeachUI = (() => {
         return `${WEEKLY_QUESTIONNAIRE_FORM_VIEW_URL}?${params.toString()}`;
     }
 
-    function buildNextEpisodeCalendarLink() {
-        const unlockAfterMs = Number(EPISODE_UNLOCK_AFTER_COMPLETION_MS) || (48 * 60 * 60 * 1000);
-        const unlockAt = new Date(Date.now() + unlockAfterMs);
+    function buildNextEpisodeCalendarLink(weekId = 'week1') {
+        const completedEpisode = parseTeachWeekNumber(weekId);
+        const reminderAfterMs = calendarReminderHoursForCompletedEpisode(completedEpisode) * 60 * 60 * 1000;
+        const reminderAt = new Date(Date.now() + reminderAfterMs);
 
         const formatDay = (date) => {
             const year = date.getFullYear();
@@ -89,14 +169,14 @@ const TeachUI = (() => {
             return `${year}${month}${day}`;
         };
 
-        const startDay = formatDay(unlockAt);
-        const endDate = new Date(unlockAt);
+        const startDay = formatDay(reminderAt);
+        const endDate = new Date(reminderAt);
         endDate.setDate(endDate.getDate() + 1);
         const params = new URLSearchParams({
             action: 'TEMPLATE',
-            text: CALENDAR_REMINDER_TITLE || 'Teach&Tell: Next episode unlock',
+            text: CALENDAR_REMINDER_TITLE || 'Chicago Formula: Next episode unlock',
             dates: `${startDay}/${formatDay(endDate)}`,
-            details: CALENDAR_REMINDER_DETAILS || ''
+            details: buildCalendarReminderDetails(completedEpisode)
         });
         return `https://calendar.google.com/calendar/render?${params.toString()}`;
     }
@@ -105,9 +185,11 @@ const TeachUI = (() => {
         if (!text) {
             return text;
         }
+        const completedEpisode = parseTeachWeekNumber(weekId);
         const questionnaireLink = buildWeeklyQuestionnaireLink(participantCode, weekId);
-        const calendarLink = buildNextEpisodeCalendarLink();
+        const calendarLink = buildNextEpisodeCalendarLink(weekId);
         let result = String(text);
+        result = result.replace('{{CONTINUE_DAYS}}', String(continueDaysForCompletedEpisode(completedEpisode)));
         result = result.replace(WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK, questionnaireLink);
         result = result.replace(WEEKLY_QUESTIONNAIRE_FALLBACK_STATIC_LINK, questionnaireLink);
         result = result.replace(NEXT_EPISODE_CALENDAR_TEMPLATE_LINK, calendarLink);
@@ -118,15 +200,28 @@ const TeachUI = (() => {
         return result;
     }
 
+    function personalizeEp4OutroQuestionnaireLink(text, participantCode = '', weekId = 'week4') {
+        if (!text) {
+            return text;
+        }
+        const withWeeklyLink = personalizeOutroQuestionnaireLink(text, participantCode, weekId);
+        return personalizeOnboardingQuestionnaireLink(withWeeklyLink, participantCode);
+    }
+
     function buildLocalOutroQuestionnaireText(weekId, options = {}) {
-        const template = TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE;
+        const isWeek4 = parseTeachWeekNumber(weekId) === 4;
+        const template = isWeek4
+            ? (TEACH_EP4_OUTRO_QUESTIONNAIRE_TEMPLATE || TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE)
+            : TEACH_OUTRO_QUESTIONNAIRE_TEMPLATE;
         const participantText = template
-            ? personalizeOutroQuestionnaireLink(
-                template,
-                options.participantCode,
-                weekId,
-                options.firstLoginAtMs
-            )
+            ? (isWeek4
+                ? personalizeEp4OutroQuestionnaireLink(template, options.participantCode, weekId)
+                : personalizeOutroQuestionnaireLink(
+                    template,
+                    options.participantCode,
+                    weekId,
+                    options.firstLoginAtMs
+                ))
             : 'Thanks for playing! Please complete the episode questionnaire in Google Forms.';
 
         if (options.isDemoMode === true) {
@@ -598,12 +693,14 @@ const TeachUI = (() => {
                 requestTutorFinalSummary,
                 requestTeachOutroQuestionnaire,
                 buildLocalOutroQuestionnaireText,
+                appendPortalPosttestCta,
                 getWeekExerciseSummary: TeachState?.getWeekExerciseSummary || (() => null),
                 getWeekStepProgress: TeachState?.getWeekStepProgress || (() => 1),
                 setWeekStepProgress: TeachState?.setWeekStepProgress || (() => {}),
                 TEACH_ONBOARDING_WELCOME_TEMPLATE,
                 TEACH_DEMO_ONBOARDING_INTRO: window.TEACH_CONFIG?.TEACH_DEMO_ONBOARDING_INTRO,
                 TEACH_DEMO_SURVEY_FOLD_LABEL: window.TEACH_CONFIG?.TEACH_DEMO_SURVEY_FOLD_LABEL,
+                TEACH_PORTAL_POSTTEST_CTA_LABEL: window.TEACH_CONFIG?.TEACH_PORTAL_POSTTEST_CTA_LABEL,
                 renderMarkdownInto
             }
         });
@@ -611,12 +708,17 @@ const TeachUI = (() => {
 
     window.openImageModal = openImageModal;
     window.closeImageModal = closeImageModal;
+    window.navigateToPortalPosttest = navigateToPortalPosttest;
+    window.buildPortalPosttestUrl = buildPortalPosttestUrl;
 
     return {
         renderWeekSelector,
         renderWeekContent,
         setChatLoading,
         closeMenu,
-        toggleMenu
+        toggleMenu,
+        appendPortalPosttestCta,
+        navigateToPortalPosttest,
+        buildPortalPosttestUrl
     };
 })();

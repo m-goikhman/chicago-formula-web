@@ -761,6 +761,45 @@ input[type="text"]:focus {
     gap: 14px;
 }
 
+[data-view="final-forms"].hidden {
+    display: none;
+}
+
+[data-view="final-forms"]:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.final-forms-lead {
+    margin: 0 0 8px;
+    color: #3d5666;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+.final-forms-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.final-forms-link {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+}
+
+.final-forms-thanks {
+    margin: 12px 0 0;
+    color: #1a3340;
+    line-height: 1.5;
+    font-weight: 600;
+}
+
 .survey-lead {
     margin: 0 0 6px;
     color: #3d5666;

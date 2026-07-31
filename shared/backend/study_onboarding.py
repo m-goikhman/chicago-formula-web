@@ -3,7 +3,8 @@ Study onboarding: questionnaire validation, CEFR band, stratified arm assignment
 
 Experimental arm = Tell; control arm = Teach (see research plan).
 
-Flow: participant code (login) → questionnaire → vocabulary test → arm assignment.
+Flow: participant code (login) → questionnaire → vocabulary pretest → arm assignment.
+Post-study: game ep4 complete → portal MeARA posttest → final Google Forms.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ _GCS_PREFIX = "study_onboarding"
 _PARTICIPANTS_CSV_BLOB = f"{_GCS_PREFIX}/participants.csv"
 _PARTICIPANT_RECORD_PREFIX = f"{_GCS_PREFIX}/participants"
 _CSV_MULTI_SEPARATOR = " | "
+_VALID_LOGIN_SOURCES = frozenset({"sona", "manual", "direct_app"})
 
 # Stratification counters (in-memory; resets on process restart — acceptable for pilot).
 _COUNTERS: Dict[str, Dict[str, int]] = {
@@ -115,6 +117,13 @@ def answers_to_readable(normalized: Dict[str, Any]) -> Dict[str, str]:
     return readable
 
 
+def _normalize_login_source(raw: Any) -> Optional[str]:
+    normalized = str(raw or "").strip().lower()
+    if normalized in _VALID_LOGIN_SOURCES:
+        return normalized
+    return None
+
+
 def _participants_csv_fieldnames() -> List[str]:
     meta = [
         "participant_code",
@@ -122,6 +131,8 @@ def _participants_csv_fieldnames() -> List[str]:
         "cefr_band",
         "questionnaire_completed_at",
         "assigned_at",
+        "login_source",
+        "login_recorded_at",
     ]
     question_ids = [q["question_id"] for q in load_questionnaire()]
     return meta + question_ids
@@ -135,6 +146,8 @@ def _participant_csv_row(record: Dict[str, Any], participant_code: str) -> Dict[
         "cefr_band": str(record.get("cefr_band") or ""),
         "questionnaire_completed_at": str(record.get("questionnaire_completed_at") or ""),
         "assigned_at": str(record.get("assigned_at") or ""),
+        "login_source": str(record.get("login_source") or ""),
+        "login_recorded_at": str(record.get("login_recorded_at") or ""),
     }
     row.update(readable)
     return row
@@ -317,6 +330,26 @@ def get_participant_study(participant_code: str) -> Optional[Dict[str, Any]]:
     return loaded
 
 
+def record_login_source(participant_code: str, login_source: Optional[str]) -> None:
+    """Persist how the participant first authenticated (set once, never overwritten)."""
+    source = _normalize_login_source(login_source)
+    if not source:
+        return
+
+    code = _normalize_code(participant_code)
+    existing = get_participant_study(code) or {}
+    if existing.get("login_source"):
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    record = dict(existing)
+    record["participant_code"] = code
+    record["login_source"] = source
+    record["login_recorded_at"] = now
+    _BY_PARTICIPANT[code] = record
+    _persist_participant_record(code, record)
+
+
 def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str, Dict[str, Any]]:
     """
     Validate answers, compute CEFR band, persist with participant code (no arm yet).
@@ -340,6 +373,8 @@ def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str,
         "arm": existing.get("arm"),
         "questionnaire_completed_at": now,
         "assigned_at": existing.get("assigned_at"),
+        "login_source": existing.get("login_source"),
+        "login_recorded_at": existing.get("login_recorded_at"),
     }
     _BY_PARTICIPANT[code] = record
     _persist_participant_record(code, record)
@@ -371,12 +406,29 @@ def assign_arm(participant_code: str) -> str:
     return arm
 
 
-def get_portal_progress(participant_code: str, *, meara_done: bool = False) -> Dict[str, Any]:
+def get_portal_progress(
+    participant_code: str,
+    *,
+    meara_done: bool = False,
+    meara_pretest_done: Optional[bool] = None,
+    meara_posttest_done: bool = False,
+    weekly_questionnaire_link: Optional[str] = None,
+    final_questionnaire_link: Optional[str] = None,
+) -> Dict[str, Any]:
     record = get_participant_study(participant_code)
     questionnaire_done = bool(record and record.get("answers"))
     study_arm = record.get("arm") if record else None
-    return {
+    pretest_done = meara_done if meara_pretest_done is None else bool(meara_pretest_done)
+    progress: Dict[str, Any] = {
         "questionnaire_done": questionnaire_done,
-        "meara_done": meara_done,
+        # Backward-compatible alias for pretest completion.
+        "meara_done": pretest_done,
+        "meara_pretest_done": pretest_done,
+        "meara_posttest_done": bool(meara_posttest_done),
         "study_arm": study_arm,
     }
+    if weekly_questionnaire_link:
+        progress["weekly_questionnaire_link"] = weekly_questionnaire_link
+    if final_questionnaire_link:
+        progress["final_questionnaire_link"] = final_questionnaire_link
+    return progress

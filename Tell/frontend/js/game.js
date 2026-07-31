@@ -174,6 +174,12 @@ function displayMessage(msg) {
             window.applyEp1CaseClosedUi();
         }
     }
+    if (msg.ui && msg.ui.episodeComplete === true && msg.ui.completedStage === 4) {
+        window.ep4GameCompleted = true;
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
+        }
+    }
     if (msg.ui && msg.ui.ep1GameCompleted === true) {
         window.ep1GameCompleted = true;
         window.ninaPublicDialogueStarted = true;
@@ -189,6 +195,19 @@ function displayMessage(msg) {
     }
     if (msg.ui && msg.ui.ep3GameCompleted === true) {
         window.ep3GameCompleted = true;
+        window.ninaPublicDialogueStarted = true;
+        if (typeof currentCharacter !== 'undefined') {
+            currentCharacter = null;
+        }
+        if (typeof window.setActiveCharacterDrawerItem === 'function') {
+            window.setActiveCharacterDrawerItem(null);
+        }
+        if (typeof window.applyEp1CaseClosedUi === 'function') {
+            window.applyEp1CaseClosedUi();
+        }
+    }
+    if (msg.ui && msg.ui.ep4GameCompleted === true) {
+        window.ep4GameCompleted = true;
         window.ninaPublicDialogueStarted = true;
         if (typeof currentCharacter !== 'undefined') {
             currentCharacter = null;
