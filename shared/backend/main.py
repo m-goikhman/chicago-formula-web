@@ -23,7 +23,7 @@ from .progress_manager import (
     TEACH_SOURCE,
 )
 from .game_config import GAME_STATE, CHARACTER_DATA
-from .utils import log_message, clear_chat_history_log
+from .utils import log_message
 from .game_state_manager import game_state_manager
 
 # Configure logging
@@ -406,7 +406,7 @@ async def start_game(current_user=Depends(get_current_user)):
 
 @app.post("/api/game/reset", response_model=ResetGameResponse)
 async def reset_game(current_user=Depends(get_current_user)):
-    """Reset all game/chat history for test-mode participant."""
+    """Reset test-mode progress to Episode 1 right after case intro."""
     participant_code = current_user["participant_code"]
 
     if not is_test_mode_participant(participant_code):
@@ -414,19 +414,16 @@ async def reset_game(current_user=Depends(get_current_user)):
 
     logger.info("Reset requested for TEST/ROBERTA participant")
 
-    # Clear in-memory state
-    GAME_STATE.pop(participant_code, None)
+    from .game_handlers import reset_to_ep1_post_intro
 
-    # Clear persisted game state and progress
-    await game_state_manager.delete_game_state(participant_code)
-    progress_manager.clear_participant_progress(participant_code, source=TELL_SOURCE)
-
-    # Clear persisted chat history log
-    clear_chat_history_log(participant_code)
+    await reset_to_ep1_post_intro(participant_code)
 
     return ResetGameResponse(
         success=True,
-        message="All message history and progress were cleared. You can start from the beginning."
+        message=(
+            "History and progress were reset to Episode 1 after the case intro "
+            "(case_intro_5_arrest_order.txt)."
+        ),
     )
 
 
@@ -456,6 +453,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         handle_mode_public,
         handle_menu_evidence,
         handle_clue_examination,
+        handle_ep4_material_examination,
         handle_accuse_offer_declined,
         handle_accuse_offer_accepted,
         handle_accuse_open_menu,
@@ -540,6 +538,9 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_ep4_outro_questionnaire(participant_code)
     elif request.action == "get_final_summary":
         messages = await handle_get_final_summary(participant_code)
+    elif request.action.startswith("examine_ep4_material_"):
+        material_id = request.action[len("examine_ep4_material_"):]
+        messages = await handle_ep4_material_examination(participant_code, material_id)
     elif request.action.startswith("examine_ep3_clue_") or request.action.startswith("examine_ep2_clue_"):
         clue_id = request.action.split("_", 3)[3]
         messages = await handle_clue_examination(participant_code, clue_id, forced_stage=3)

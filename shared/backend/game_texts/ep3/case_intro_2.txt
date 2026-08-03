@@ -1,4 +1,5 @@
 [from: narrator]
+[image: ep2/clue1.png]
 You open the file from the drive. Pages of equations, symbols, Greek letters — dense and technical. You don't understand a word of it.
 ---
 [from: nina]

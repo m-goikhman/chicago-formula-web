@@ -13,4 +13,5 @@ You now have the same special tools as TEST.
 
 3) Reset all history
 - Open the top menu and choose "Reset All History".
-- This clears all chat history and progress across all episodes, then restarts from the beginning.
+- This clears all chat history and progress across all episodes, then restores Episode 1
+  right after the case intro (after Nina's arrest-order message).

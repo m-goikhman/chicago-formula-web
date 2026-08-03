@@ -1,0 +1,7 @@
+[image: ep4/table.png]
+Alex's desk looks empty. The monitor is off. 
+A small plant in a painted pot. Two pens and a pencil. A few sheets of paper, all blank.
+The plastic box you searched two days ago is still here: a train, a crocodile, a banana, a guitar. Every usb-drive in it is shaped like something.
+Old coffee rings on the wood. Nothing else.
+[buttons]
+Try to turn on the computer|narrator_login

@@ -822,18 +822,25 @@ function populateCaseMaterialsDrawer() {
         return base;
     };
     const showAccusationButton = currentStage === 1 || currentStage === 2;
-    const materials = currentStage === 3
-        ? [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep3_clue_1' }]
-        : currentStage === 2
-            ? partyClueMaterials(Boolean(window.ep1UsbDriveUnlocked))
-            : currentStage === 1
-                ? partyClueMaterials(false)
-                : [
-                    { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-                    { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-                    { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' },
-                    { emoji: '🔍', name: 'The Apartment', action: 'examine_clue_4' }
-                ];
+    let materials;
+    if (currentStage === 3) {
+        materials = [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep3_clue_1' }];
+    } else if (currentStage === 2) {
+        materials = partyClueMaterials(Boolean(window.ep1UsbDriveUnlocked));
+    } else if (currentStage === 1) {
+        materials = partyClueMaterials(false);
+    } else if (currentStage === 4) {
+        const caseMaterials = getCurrentStageLocation()?.case_materials || [];
+        materials = caseMaterials
+            .filter((item) => item?.id && item?.name)
+            .map((item) => ({
+                emoji: '🔍',
+                name: item.name,
+                action: `examine_ep4_material_${item.id}`,
+            }));
+    } else {
+        materials = [];
+    }
 
     const ep1AccusationClosed = currentStage === 1 && Boolean(window.ep1PartyCompleted);
     const ep2AccusationClosed = currentStage === 2 && Boolean(window.ep1GameCompleted);
@@ -855,7 +862,8 @@ function populateCaseMaterialsDrawer() {
             </div>
         `;
         material.onclick = () => {
-            handleAction(item.action, false); // Don't close drawers
+            // Close the list; first view lands in chat, re-examine reopens the detail drawer.
+            handleAction(item.action, true);
         };
         materialsList.appendChild(material);
     });

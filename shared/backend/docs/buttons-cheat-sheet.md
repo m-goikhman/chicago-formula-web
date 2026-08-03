@@ -21,7 +21,22 @@ Second button|another_action
 |----------|-------------------|
 | Multiple messages | Blocks are separated by a line with `---` (or longer). |
 | Sender | `[from: key]` / `[character: Name]` / `[sender: narrator]` — at the start of the file and/or at the start of each block after `---`. |
+| Image | `[image: ep1/suspects.png]` — attach a picture to that message block (path under `images/`). Optional `[imageFirst]` puts the image above the text. |
 | Inline without a file | `inline::text` or `inline::key>>text` (`text` can contain `\n` for line breaks). |
+
+Example:
+
+```text
+[from: nina]
+[image: ep1/suspects.png]
+Three people are in the apartment...
+---
+Also, text me if you're stuck.
+[buttons]
+Thanks!|case_intro_next
+```
+
+File-level `[image: ...]` (before the first block) applies to the **first** message. Per-block `[image: ...]` after `---` applies only to that block.
 
 Detailed parsing logic: `scripted_messages.py`.
 

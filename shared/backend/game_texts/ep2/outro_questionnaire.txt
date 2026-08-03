@@ -1,3 +1,5 @@
+[image: ep1/Ep1-final.png]
+[imageFirst]
 Thanks for playing!
 
 Please answer this [questionnaire:]({{QUESTIONNAIRE_LINK}}) (the link will take you to Google Forms).

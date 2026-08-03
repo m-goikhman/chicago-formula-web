@@ -1,0 +1,10 @@
+[image: ep4/fiona_login.png]
+[from: typewriter]
+You move the mouse and the monitor wakes up.
+A login screen asks for password. The username above it should be Alex's, but it isn't. You read the name on the screen: fiona.mcallister.
+---
+[from: narrator]
+Susan comes over from her desk and looks at the screen.
+---
+[from: susan]
+Oh, so that's how Alex kept using the university computer -- someone shared their account with him. Do you know who this Fiona is? She's not from our department.

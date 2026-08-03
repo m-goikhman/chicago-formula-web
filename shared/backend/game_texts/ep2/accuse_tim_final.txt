@@ -10,6 +10,7 @@ I wasn't trying to kill him. I just needed the drive.
 ------
 And then I couldn't even get into my own car. The keys were inside. I was standing there in the snow like an idiot when Ronnie showed up.
 -----
+[image: ep1/plane-drive.png]
 I have the drive. Here. Take it.
 [buttons]
 Take the drive|ep1_usb_received

@@ -25,8 +25,9 @@ PORTAL_URL = "https://chicago-formula.web.app/"
 
 # Stage configuration
 # intro_files: list of steps for case intro. Each step is a filename (str) or dict with
-#   "file", "type" ("system"|"character"), "image", "character".
-# Buttons should be defined in the corresponding game_texts file via [buttons].
+#   "file", "type" ("system"|"character"), "character".
+# Buttons / images should be defined in the corresponding game_texts file via
+# [buttons] and [image: path] (optional [imageFirst]).
 # Episodes 2+ can have any length (0, 1, …); missing files are skipped without error.
 STAGE_CONFIG = {
     1: {
@@ -41,8 +42,8 @@ STAGE_CONFIG = {
         "intro_files": [
             {"file": "case_intro_1_call.txt", "type": "character", "character": "nina"},
             {"file": "case_intro_2_situation.txt", "type": "character", "character": "nina"},
-            {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina", "image": "ep1/suspects.png"},
-            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina", "image": "ep1/detective_guide.png"},
+            {"file": "case_intro_3_suspects.txt", "type": "character", "character": "nina"},
+            {"file": "case_intro_4_nina_guidance.txt", "type": "character", "character": "nina"},
             {"file": "case_intro_5_arrest_order.txt", "type": "character", "character": "nina"}
         ],
         "key_information": [
@@ -102,13 +103,13 @@ STAGE_CONFIG = {
         },
         "intro_files": [
             {"file": "case_intro_1.txt", "type": "character", "character": "nina"},
-            {"file": "case_intro_2.txt", "type": "character", "character": "nina", "image": "ep2/clue1.png"}
+            {"file": "case_intro_2.txt", "type": "character", "character": "nina"}
         ],
         "key_information": []
     },
     4: {
         "name": "Someone Missing",
-        "clues_count": 0,  # To be configured when content is created
+        "clues_count": 0,  # Per-location case_materials instead of global clues
         "characters": ["fiona", "susan", "ronnie", "pauline", "alex", "nina"],
         "default_location": "precinct_ep4",
         "locations": {
@@ -124,6 +125,13 @@ STAGE_CONFIG = {
                 "action": "go_university_ep4",
                 "texture_image": "ep2/university_texture.png",
                 "location_image": "ep2/university.png",
+                "case_materials": [
+                    {
+                        "id": "alex_table",
+                        "name": "Alex's table",
+                        "text_file": "alex_table.txt",
+                    }
+                ],
             },
             "bar_ep4": {
                 "name": "Bar",

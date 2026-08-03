@@ -721,7 +721,7 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
 
     if (action === 'reset_all_history') {
         const confirmed = window.confirm(
-            'This will delete all message history and progress across all episodes for TEST/ROBERTA. Continue?'
+            'This will clear all progress and reset TEST/ROBERTA to Episode 1 right after the case intro. Continue?'
         );
         if (!confirmed) {
             return;
@@ -752,6 +752,10 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
             if (inputArea) {
                 inputArea.style.display = 'none';
             }
+            // Match fresh post-intro UI: drawers unlock again from case_intro_5 buttons.
+            setNavigationUnlocked(false);
+            updateNavigationBarVisibility();
+            currentCharacter = null;
             syncDialogueModeUI();
 
             await loadEpisodeSelector();

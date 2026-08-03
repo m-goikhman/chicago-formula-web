@@ -483,7 +483,7 @@ Implemented in `auth.py`, `game_handlers.py`, `Tell/frontend/js/api.js`, `main.p
 
 - All **4 episodes unlocked** immediately.
 - **Debug mode on** by default (extra system/debug messages in chat).
-- Menu item **Reset All History** → `POST /api/game/reset` (clears `GAME_STATE`, GCS game state, Tell progress, chat log).
+- Menu item **Reset All History** → `POST /api/game/reset` (clears progress/chat, then restores Episode 1 right after `case_intro_5_arrest_order.txt`).
 
 ### Hidden chat commands (Tell main chat)
 

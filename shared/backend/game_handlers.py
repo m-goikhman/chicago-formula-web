@@ -31,11 +31,13 @@ from .progress_manager import progress_manager, TELL_SOURCE
 from .auth import is_test_mode_participant
 from .ai_services import ask_for_dialogue
 from .scripted_messages import (
+    ScriptedBlock,
     extract_buttons_from_text as _sm_extract_buttons_from_text,
     split_text_messages as _sm_split_text_messages,
     extract_scripted_message_blocks as _sm_extract_scripted_message_blocks,
     resolve_character_sender_key as _sm_resolve_character_sender_key,
     extract_sender_from_text as _sm_extract_sender_from_text,
+    extract_image_from_text as _sm_extract_image_from_text,
     parse_inline_button_action as _sm_parse_inline_button_action,
 )
 import pytz
@@ -57,7 +59,7 @@ EP3_SCRIPTED_WITNESS_KEYS = {
 EP4_SCRIPTED_LOCATIONS = {"university_ep4", "bar_ep4", "pauline_office_ep4", "motel_ep4"}
 EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"})
 EP4_HUB_MIN_USER_MESSAGES = 3
-EP4_FIONA_MIN_USER_MESSAGES = 8
+EP4_FIONA_MIN_USER_MESSAGES = 10
 EP4_LOCATION_CHARACTERS = {
     "university_ep4": "susan",
     "bar_ep4": "ronnie",
@@ -149,7 +151,6 @@ EP3_USB_SHARE_ACTION = "share_usb_with_james"
 EP3_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
 EP3_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
 EP3_USB_EXPLANATION_FALLBACK = "I think Dr. Thornton needs more information."
-EP3_UNIVERSITY_FINAL_AFTER_DOUBT_IMAGE = "usb_collection.png"
 EP3_HEAD_OUT_ACTION = "ep3_head_out"
 EP3_HEAD_OUT_SWITCHER_NAME = "Let's head out"
 
@@ -778,6 +779,7 @@ def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
                         "location_image": location_cfg.get("location_image"),
                         "switcher_visible": True,
                         "current": location_key == current_location,
+                        "case_materials": _location_case_materials_public(location_cfg),
                     }
                 )
             return locations_info
@@ -793,6 +795,7 @@ def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
                 "location_image": location_cfg.get("location_image"),
                 "switcher_visible": location_cfg.get("show_in_switcher", True),
                 "current": location_key == current_location,
+                "case_materials": _location_case_materials_public(location_cfg),
             }
         )
     return locations_info
@@ -871,6 +874,9 @@ def append_episode_messages(state: Dict, episode, messages: List[Dict]) -> None:
     episode_messages = state.get("episode_messages", {})
     bucket = episode_messages.setdefault(ep_key, [])
     for message in messages:
+        # Drawer-only clue panels are not part of chat history.
+        if isinstance(message, dict) and message.get("type") == "clue":
+            continue
         if isinstance(message, dict):
             bucket.append(_tag_message_with_location(message, location_key))
         else:
@@ -1172,10 +1178,12 @@ def _build_ep1_intercom_ending_message(participant_code: str) -> Optional[Dict]:
 
     sender_key, content_without_sender = _extract_sender_from_text(entrance_text)
     text, _buttons = _extract_buttons_from_text(content_without_sender)
+    image, image_first, text = _extract_image_from_text(text)
     if not text:
         return None
 
     message = _build_character_message_for_sender(participant_code, text, sender_key or "narrator")
+    _apply_scripted_image(message, image, image_first)
     message["ui"] = {"episodeComplete": True, "completedStage": EP1_PARTY_STAGE}
     return message
 
@@ -1187,49 +1195,41 @@ def _build_ep1_party_outro_narrator_messages(participant_code: str) -> List[Dict
         return []
 
     body, buttons = _extract_buttons_from_text(raw)
-    parts = [part.strip() for part in re.split(r"\n---+\n", body) if part.strip()]
-    if not parts:
+    blocks = _extract_scripted_message_blocks(body, default_sender="typewriter")
+    if not blocks:
         return []
 
     messages: List[Dict] = []
-    narrator_text = parts[0]
-    log_message("system", narrator_text, participant_code)
-    narrator_id = generate_message_id()
-    save_message_to_cache(narrator_id, narrator_text)
-    messages.append({
-        "type": "system",
-        "content": narrator_text,
-        "message_id": narrator_id,
-        "show_explain": True,
-        "typewriter_style": True,
-        "image": "ep1/jason-steele-vj6ywmAj0pI-unsplash.jpg",
-        "ui": {"caseMaterialsAccusationAvailable": False},
-    })
-
-    if len(parts) > 1:
-        _sender_key, tutor_content = _extract_sender_from_text(parts[1])
-        tutor_text = tutor_content.strip()
-        if tutor_text:
-            log_message("system", tutor_text, participant_code)
+    for index, block in enumerate(blocks):
+        is_last = index == len(blocks) - 1
+        if index == 0 or (block.sender or "") == "typewriter":
+            message = _build_character_message_for_sender(
+                participant_code, block.text, "typewriter"
+            )
+            message["ui"] = {"caseMaterialsAccusationAvailable": False}
+        elif (block.sender or "") == "tutor":
+            log_message("system", block.text, participant_code)
             tutor_id = generate_message_id()
-            save_message_to_cache(tutor_id, tutor_text)
-            messages.append({
+            save_message_to_cache(tutor_id, block.text)
+            message = {
                 "type": "system",
-                "content": tutor_text,
+                "content": block.text,
                 "message_id": tutor_id,
                 "show_explain": True,
                 "message_style": "tutor",
-                "buttons": buttons,
-                "ui": {
-                    "caseMaterialsAccusationAvailable": False,
-                    "episodeComplete": True,
-                    "completedStage": EP1_PARTY_STAGE,
-                },
-            })
-    elif buttons:
-        messages[-1]["buttons"] = buttons
-        messages[-1].setdefault("ui", {})["episodeComplete"] = True
-        messages[-1]["ui"]["completedStage"] = EP1_PARTY_STAGE
+                "ui": {"caseMaterialsAccusationAvailable": False},
+            }
+        else:
+            message = _build_character_message_for_sender(
+                participant_code, block.text, block.sender or "narrator"
+            )
+            message.setdefault("ui", {})["caseMaterialsAccusationAvailable"] = False
+        _apply_block_image(message, block)
+        if is_last and buttons:
+            message["buttons"] = buttons
+            message.setdefault("ui", {})["episodeComplete"] = True
+            message["ui"]["completedStage"] = EP1_PARTY_STAGE
+        messages.append(message)
 
     return messages
 
@@ -1242,10 +1242,12 @@ def _build_ep2_pauline_entrance_message(participant_code: str) -> Optional[Dict]
 
     sender_key, content_without_sender = _extract_sender_from_text(entrance_text)
     text, buttons = _extract_buttons_from_text(content_without_sender)
+    image, image_first, text = _extract_image_from_text(text)
     if not text:
         return None
 
     message = _build_character_message_for_sender(participant_code, text, sender_key or "narrator")
+    _apply_scripted_image(message, image, image_first)
     if buttons:
         message["buttons"] = buttons
     return message
@@ -1311,6 +1313,15 @@ def get_clue_name_for_stage(stage_number: int, clue_id: str) -> str:
             return clue_name.strip()
 
     return f"Clue {clue_id}"
+
+
+def _location_case_materials_public(location_cfg: Dict) -> List[Dict]:
+    """id/name pairs for the Case Materials drawer (from a location config dict)."""
+    return [
+        {"id": str(m["id"]), "name": str(m["name"]).strip()}
+        for m in (location_cfg.get("case_materials") or [])
+        if isinstance(m, dict) and m.get("id") and isinstance(m.get("name"), str) and m["name"].strip()
+    ]
 
 
 def _contains_any(text: str, keywords: List[str]) -> bool:
@@ -1471,10 +1482,12 @@ async def _build_ep2_witness_opener_messages(
     if opener_text:
         sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
         opener_body, opener_buttons = _extract_buttons_from_text(opener_without_sender)
+        image, image_first, opener_body = _extract_image_from_text(opener_body)
         if opener_body and opener_body.strip():
             opener_message = _build_character_message_for_sender(
                 participant_code, opener_body, sender_key or witness_key
             )
+            _apply_scripted_image(opener_message, image, image_first)
             if opener_buttons:
                 opener_message["buttons"] = opener_buttons
             opener_message["chat_scope"] = chat_scope
@@ -1883,7 +1896,7 @@ def _split_text_messages(content: str) -> List[str]:
 
 def _extract_scripted_message_blocks(
     content: str, default_sender: Optional[str] = None
-) -> List[Tuple[Optional[str], str]]:
+) -> List[ScriptedBlock]:
     return _sm_extract_scripted_message_blocks(content, default_sender=default_sender)
 
 
@@ -1893,6 +1906,28 @@ def _resolve_character_sender_key(raw_sender: str) -> Optional[str]:
 
 def _extract_sender_from_text(content: str) -> Tuple[Optional[str], str]:
     return _sm_extract_sender_from_text(content)
+
+
+def _extract_image_from_text(content: str) -> Tuple[Optional[str], bool, str]:
+    return _sm_extract_image_from_text(content)
+
+
+def _apply_scripted_image(
+    message: Dict,
+    image: Optional[str] = None,
+    image_first: bool = False,
+) -> None:
+    """Attach optional game_texts image metadata to a message dict."""
+    if not image:
+        return
+    message["image"] = image
+    if image_first:
+        ui = message.setdefault("ui", {})
+        ui["imageFirst"] = True
+
+
+def _apply_block_image(message: Dict, block: ScriptedBlock) -> None:
+    _apply_scripted_image(message, block.image, block.image_first)
 
 
 def _append_scripted_game_text_to_messages(
@@ -1907,10 +1942,11 @@ def _append_scripted_game_text_to_messages(
         return False
 
     message_blocks, buttons, sender_key = payload
-    for index, (block_sender, text) in enumerate(message_blocks):
+    for index, block in enumerate(message_blocks):
         message = _build_character_message_for_sender(
-            participant_code, text, block_sender or sender_key
+            participant_code, block.text, block.sender or sender_key
         )
+        _apply_block_image(message, block)
         if buttons and index == len(message_blocks) - 1:
             message["buttons"] = buttons
         messages.append(message)
@@ -1919,7 +1955,7 @@ def _append_scripted_game_text_to_messages(
 
 def resolve_action_text_from_game_texts(
     action: str, episode: int
-) -> Optional[Tuple[List[Tuple[Optional[str], str]], List[Dict[str, str]], str]]:
+) -> Optional[Tuple[List[ScriptedBlock], List[Dict[str, str]], str]]:
     """
     Resolve button action as a game_texts file and return parsed message payload.
     Supports paths with/without `.txt`, e.g.:
@@ -1948,12 +1984,12 @@ def resolve_action_text_from_game_texts(
     if not file_content:
         return None
 
-    sender_key, content_without_sender = _extract_sender_from_text(file_content)
-    text, buttons = _extract_buttons_from_text(content_without_sender)
-    message_blocks = _extract_scripted_message_blocks(text, default_sender=sender_key or "narrator")
+    text, buttons = _extract_buttons_from_text(file_content)
+    message_blocks = _extract_scripted_message_blocks(text, default_sender="narrator")
     if not message_blocks:
         return None
-    return message_blocks, buttons, (sender_key or "narrator")
+    sender_key = message_blocks[0].sender or "narrator"
+    return message_blocks, buttons, sender_key
 
 
 def _build_character_message_for_sender(participant_code: str, text: str, sender_key: str) -> Dict:
@@ -2298,10 +2334,11 @@ async def handle_game_text_action(participant_code: str, action: str) -> List[Di
 
     message_blocks, buttons, sender_key = payload
     messages: List[Dict] = []
-    for index, (block_sender, text) in enumerate(message_blocks):
+    for index, block in enumerate(message_blocks):
         message = _build_character_message_for_sender(
-            participant_code, text, block_sender or sender_key
+            participant_code, block.text, block.sender or sender_key
         )
+        _apply_block_image(message, block)
         if buttons and index == len(message_blocks) - 1:
             message["buttons"] = buttons
         messages.append(message)
@@ -2517,13 +2554,14 @@ async def handle_ep1_usb_received(participant_code: str) -> List[Dict]:
     nina_body, nina_buttons = _extract_buttons_from_text(raw_nina)
     nina_blocks = _extract_scripted_message_blocks(nina_body, default_sender="nina")
     if not nina_blocks:
-        nina_blocks = [("nina", nina_body.strip() or raw_nina)]
+        nina_blocks = [ScriptedBlock(sender="nina", text=nina_body.strip() or raw_nina)]
 
     outro_messages: List[Dict] = []
-    for index, (block_sender, block_text) in enumerate(nina_blocks):
+    for index, block in enumerate(nina_blocks):
         msg = _build_character_message_for_sender(
-            participant_code, block_text, block_sender or "nina"
+            participant_code, block.text, block.sender or "nina"
         )
+        _apply_block_image(msg, block)
         msg["show_explain"] = False
         ui: Dict = {"caseMaterialsAccusationAvailable": False}
         if index == 0:
@@ -2549,13 +2587,14 @@ def _build_scripted_nina_outro_messages(
     nina_body, nina_buttons = _extract_buttons_from_text(raw_nina)
     nina_blocks = _extract_scripted_message_blocks(nina_body, default_sender="nina")
     if not nina_blocks:
-        nina_blocks = [("nina", nina_body.strip() or raw_nina)]
+        nina_blocks = [ScriptedBlock(sender="nina", text=nina_body.strip() or raw_nina)]
 
     outro_messages: List[Dict] = []
-    for index, (block_sender, block_text) in enumerate(nina_blocks):
+    for index, block in enumerate(nina_blocks):
         msg = _build_character_message_for_sender(
-            participant_code, block_text, block_sender or "nina"
+            participant_code, block.text, block.sender or "nina"
         )
+        _apply_block_image(msg, block)
         msg["show_explain"] = False
         msg["chat_scope"] = "public"
         ui: Dict = {"caseMaterialsAccusationAvailable": False}
@@ -2670,6 +2709,7 @@ async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
 
     raw = load_system_prompt(get_game_text_path("outro_narrator.txt", EP2_PAULINE_STAGE))
     narrator_body, narrator_buttons = _extract_buttons_from_text(raw)
+    image, image_first, narrator_body = _extract_image_from_text(narrator_body)
     narrator_body = narrator_body.strip()
     if not narrator_body:
         return [{"type": "system", "content": "Outro text is missing.", "show_explain": False}]
@@ -2685,10 +2725,10 @@ async def handle_ep1_outro_narrator(participant_code: str) -> List[Dict]:
         "message_id": message_id,
         "show_explain": True,
         "typewriter_style": True,
-        "image": "ep1/jason-steele-vj6ywmAj0pI-unsplash.jpg",
         "buttons": narrator_buttons,
         "ui": {"caseMaterialsAccusationAvailable": False},
     }
+    _apply_scripted_image(msg, image, image_first)
     await game_state_manager.save_game_state(participant_code, state)
     return [msg]
 
@@ -2822,6 +2862,53 @@ async def handle_test_chat_command(participant_code: str, message_text: str) -> 
 
     await game_state_manager.save_game_state(participant_code, state)
     return messages
+
+
+def _clear_participant_user_histories(participant_code: str) -> None:
+    """Remove in-memory AI dialogue histories for a participant across episodes/locations."""
+    prefix = f"{participant_code}:"
+    for key in list(user_histories.keys()):
+        key_text = str(key)
+        if key_text == participant_code or key_text.startswith(prefix):
+            user_histories.pop(key, None)
+
+
+async def reset_to_ep1_post_intro(participant_code: str) -> None:
+    """
+    Test-mode reset: clear progress, then restore Episode 1 right after case intro
+    (after case_intro_5_arrest_order.txt has been delivered).
+    """
+    from .utils import clear_chat_history_log
+
+    GAME_STATE.pop(participant_code, None)
+    _clear_participant_user_histories(participant_code)
+    await game_state_manager.delete_game_state(participant_code)
+    progress_manager.clear_participant_progress(participant_code, source=TELL_SOURCE)
+    clear_chat_history_log(participant_code)
+
+    state = initialize_game_state(participant_code)
+    state["onboarding_step"] = "language_selected"
+    state["current_language_level"] = state.get("current_language_level", "B1")
+    state["current_stage"] = EP1_PARTY_STAGE
+    GAME_STATE[participant_code] = state
+
+    intro_files = STAGE_CONFIG.get(EP1_PARTY_STAGE, {}).get("intro_files", [])
+    for step_index in range(len(intro_files)):
+        action = "case_intro_begin" if step_index == 0 else "case_intro_next"
+        messages = await handle_case_intro(participant_code, action)
+        append_episode_messages(state, EP1_PARTY_STAGE, messages)
+
+    stage_progress = _get_stage_progress_entry(state, EP1_PARTY_STAGE)
+    if stage_progress.get("completion_status") == "not_started":
+        stage_progress["completion_status"] = "in_progress"
+        state["stage_progress"][EP1_PARTY_STAGE] = stage_progress
+
+    await game_state_manager.save_game_state(participant_code, state)
+    logger.info(
+        "Participant %s: TEST/ROBERTA reset to Episode 1 post-intro "
+        "(after case_intro_5_arrest_order.txt)",
+        participant_code,
+    )
 
 
 def generate_message_id() -> int:
@@ -3363,26 +3450,28 @@ async def handle_onboarding_button(participant_code: str, action: str) -> List[D
         })
         
         # Then show intro-B1 text separately with typewriter style and buttons
-        intro_b1_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
+        intro_b1_raw = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
+        intro_b1_image, intro_b1_image_first, intro_b1_text = _extract_image_from_text(intro_b1_raw)
         
         # Log second message
         log_message("system", intro_b1_text, participant_code)
         
         message_id2 = generate_message_id()
         save_message_to_cache(message_id2, intro_b1_text)
-        messages.append({
+        intro_b1_message = {
             "type": "system",
             "content": intro_b1_text,
             "message_id": message_id2,
             "show_explain": True,
             "typewriter_style": True,
-            "image": "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg",
             "buttons": [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
                 {"text": "More Advanced", "action": "language_adjust_more_advanced"}
             ]
-        })
+        }
+        _apply_scripted_image(intro_b1_message, intro_b1_image, intro_b1_image_first)
+        messages.append(intro_b1_message)
         
         state["onboarding_step"] = "language_selection"
         state["current_language_level"] = "B1"  # Default to B1
@@ -3407,10 +3496,11 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     language_level_text = load_system_prompt(get_game_text_path("onboarding_4_language_level.txt", episode))
     
     # Determine new level and intro text
+    intro_filename = None
     if action == "language_adjust_easier":
         if current_level == "B2":
             new_level = "B1"
-            intro_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
+            intro_filename = "intro-B1.txt"
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
@@ -3418,7 +3508,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
             ]
         elif current_level == "B1":
             new_level = "A2"
-            intro_text = load_system_prompt(get_game_text_path("intro-A2.txt", episode))
+            intro_filename = "intro-A2.txt"
             buttons = [
                 {"text": "Perfect!", "action": "language_confirm"},
                 {"text": "More Advanced", "action": "language_adjust_more_advanced"}
@@ -3430,7 +3520,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     elif action == "language_adjust_more_advanced":
         if current_level == "A2":
             new_level = "B1"
-            intro_text = load_system_prompt(get_game_text_path("intro-B1.txt", episode))
+            intro_filename = "intro-B1.txt"
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"},
@@ -3438,7 +3528,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
             ]
         elif current_level == "B1":
             new_level = "B2"
-            intro_text = load_system_prompt(get_game_text_path("intro-B2.txt", episode))
+            intro_filename = "intro-B2.txt"
             buttons = [
                 {"text": "Easier", "action": "language_adjust_easier"},
                 {"text": "Perfect!", "action": "language_confirm"}
@@ -3449,6 +3539,9 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
     
     else:
         return messages
+
+    intro_raw = load_system_prompt(get_game_text_path(intro_filename, episode))
+    intro_image, intro_image_first, intro_text = _extract_image_from_text(intro_raw)
     
     # Update state
     state["current_language_level"] = new_level
@@ -3468,7 +3561,7 @@ async def handle_language_adjustment(participant_code: str, action: str) -> List
         "typewriter_style": True,
         "buttons": buttons
     }
-    intro_message["image"] = "ep1/aric-cheng-7Bv9MrBan9s-unsplash.jpg"
+    _apply_scripted_image(intro_message, intro_image, intro_image_first)
     messages.append(intro_message)
     
     # Save state
@@ -3518,18 +3611,16 @@ async def handle_language_confirmation(participant_code: str) -> List[Dict]:
 
 
 def _normalize_intro_step(entry):
-    """Normalize intro_files entry (dict or str) to {file, type, image, character}."""
+    """Normalize intro_files entry (dict or str) to {file, type, character}."""
     if isinstance(entry, dict):
         return {
             "file": entry["file"],
             "type": entry.get("type", "character"),
-            "image": entry.get("image"),
             "character": entry.get("character", "nina"),
         }
     return {
         "file": entry,
         "type": "character",
-        "image": None,
         "character": "nina",
     }
 
@@ -3582,15 +3673,16 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
     default_intro_sender = entry.get("character", "nina") if entry["type"] == "character" else "narrator"
     content_blocks = _extract_scripted_message_blocks(content, default_sender=default_intro_sender)
     if not content_blocks:
-        content_blocks = [(default_intro_sender, "Continue.")]
+        content_blocks = [ScriptedBlock(sender=default_intro_sender, text="Continue.")]
     is_last_intro_step = step >= len(intro_files) - 1
     ep4_skip_menu_after_intro = episode == EP4_STAGE and is_last_intro_step
     default_button_text = "🔍 Game Menu" if is_last_intro_step else "Next"
     fallback_buttons = [{"text": default_button_text, "action": "case_intro_next"}]
 
     buttons = parsed_buttons or fallback_buttons
-    for index, (block_sender, content_part) in enumerate(content_blocks):
-        resolved_intro_sender = block_sender or default_intro_sender
+    for index, block in enumerate(content_blocks):
+        content_part = block.text
+        resolved_intro_sender = block.sender or default_intro_sender
         log_role = resolved_intro_sender if entry["type"] == "character" else "narrator"
         log_message(log_role, content_part, participant_code)
 
@@ -3623,8 +3715,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
                 msg["ui"] = {"showInput": True}
             else:
                 msg["buttons"] = buttons
-        if index == 0 and entry.get("image"):
-            msg["image"] = entry["image"]
+        _apply_block_image(msg, block)
         messages.append(msg)
 
     if ep4_skip_menu_after_intro:
@@ -3735,7 +3826,6 @@ async def handle_location_transition(participant_code: str, action: str) -> List
             ):
                 ep2_state["university_final_after_doubt_done"] = True
                 ep2_state["university_exit_menu_active"] = True
-                messages[-1]["image"] = EP3_UNIVERSITY_FINAL_AFTER_DOUBT_IMAGE
         if target_location in EP3_SCRIPTED_LOCATIONS:
             await _append_ep2_witness_opener_if_needed(
                 participant_code,
@@ -3941,8 +4031,10 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
         if opener_text:
             sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
             opener_text, opener_buttons = _extract_buttons_from_text(opener_without_sender)
+            image, image_first, opener_text = _extract_image_from_text(opener_text)
             if opener_text and opener_text.strip():
                 opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
+                _apply_scripted_image(opener_message, image, image_first)
                 if opener_buttons:
                     opener_message["buttons"] = opener_buttons
                 opener_message["chat_scope"] = f"private:{character_key}"
@@ -4636,9 +4728,39 @@ async def handle_menu_evidence(participant_code: str) -> List[Dict]:
     return messages
 
 
+def _mark_evidence_examined(state: Dict, episode: int, evidence_id: str) -> bool:
+    """Record that a clue/material was examined. Returns True on first examination."""
+    evidence_key = str(evidence_id)
+    examined = state.setdefault("clues_examined", set())
+    is_first_view = evidence_key not in examined
+    examined.add(evidence_key)
+    if isinstance(state.get("stage_progress"), dict):
+        stage_prog = state["stage_progress"].setdefault(episode, {})
+        stage_prog.setdefault("clues_examined", set()).add(evidence_key)
+    return is_first_view
+
+
+def _build_case_material_first_view_message(
+    participant_code: str,
+    content: str,
+    image: Optional[str] = None,
+    buttons: Optional[List[Dict]] = None,
+    button_note: str = "",
+) -> Dict:
+    """First open of a case material: show as a typewriter-style chat message."""
+    message = _build_character_message_for_sender(participant_code, content, "typewriter")
+    if image:
+        message["image"] = image
+        message["ui"] = {"imageFirst": True}
+    if buttons:
+        message["buttons"] = buttons
+    if button_note:
+        message["button_note"] = button_note
+    return message
+
+
 async def handle_clue_examination(participant_code: str, clue_id: str, forced_stage: Optional[int] = None) -> List[Dict]:
     """Handle examination of a specific clue."""
-    messages = []
     state = GAME_STATE.get(participant_code)
     
     if not state:
@@ -4660,49 +4782,110 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
     # Load clue text (episode-specific)
     clue_filepath = resolve_clue_text_path(clue_id, episode)
     try:
-        clue_text = load_system_prompt(clue_filepath)
+        clue_raw = load_system_prompt(clue_filepath)
     except Exception as e:
         logger.error(f"Failed to load clue {clue_id}: {e}")
-        clue_text = f"Error loading clue {clue_id}"
+        clue_raw = f"Error loading clue {clue_id}"
+
+    clue_text, clue_file_buttons = _extract_buttons_from_text(clue_raw)
+    clue_image, _clue_image_first, clue_text = _extract_image_from_text(clue_text)
     
-    # Mark clue as examined in state
-    state.setdefault("clues_examined", set()).add(clue_id)
-    # Keep stage_progress in sync with the legacy EP1 fields.
-    if isinstance(state.get("stage_progress"), dict):
-        stage_prog = state["stage_progress"].setdefault(episode, {})
-        stage_prog.setdefault("clues_examined", set()).add(clue_id)
+    is_first_view = _mark_evidence_examined(state, episode, clue_id)
     
     # Log clue examination
     log_message("clue_examined", f"Clue {clue_id}: {clue_text}", participant_code)
-    
-    clue_image = f"ep{episode}/clue{clue_id}.png"
-    if episode == EP2_PAULINE_STAGE and clue_id == "4":
-        clue_image = "ep1/plane-drive.png"
-    elif episode == EP3_FORMULA_STAGE and clue_id == "1":
-        clue_image = "ep2/clue1.png"
+
+    clue_buttons: List[Dict] = list(clue_file_buttons or [])
+    current_location = get_stage_location(state, episode)
+    if (
+        episode == EP3_FORMULA_STAGE
+        and clue_id == "1"
+        and current_location in {"university_ep3", "university_ep2"}
+        and not clue_buttons
+    ):
+        clue_buttons = [{"text": EP3_USB_SHARE_BUTTON_TEXT, "action": EP3_USB_SHARE_ACTION}]
+
+    # Save state
+    await game_state_manager.save_game_state(participant_code, state)
+
+    if is_first_view:
+        return [
+            _build_case_material_first_view_message(
+                participant_code,
+                clue_text,
+                image=clue_image,
+                buttons=clue_buttons or None,
+            )
+        ]
 
     clue_message = {
         "type": "clue",
         "clue_id": clue_id,
         "clue_name": get_clue_name_for_stage(episode, clue_id),
         "content": clue_text,
-        "image": clue_image,
     }
+    if clue_image:
+        clue_message["image"] = clue_image
+    if clue_buttons:
+        clue_message["buttons"] = clue_buttons
 
-    current_location = get_stage_location(state, episode)
-    if (
-        episode == EP3_FORMULA_STAGE
-        and clue_id == "1"
-        and current_location in {"university_ep3", "university_ep2"}
-    ):
-        clue_message["buttons"] = [{"text": EP3_USB_SHARE_BUTTON_TEXT, "action": EP3_USB_SHARE_ACTION}]
+    return [clue_message]
 
-    messages.append(clue_message)
-    
-    # Save state
+
+async def handle_ep4_material_examination(participant_code: str, material_id: str) -> List[Dict]:
+    """Examine a location-scoped case material in episode 4."""
+    state = GAME_STATE.get(participant_code)
+    if not state or int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "error", "content": "This evidence is not available in the current episode."}]
+
+    location_key = get_stage_location(state, EP4_STAGE)
+    location_cfg = STAGE_CONFIG.get(EP4_STAGE, {}).get("locations", {}).get(location_key or "", {})
+    material = next(
+        (
+            m for m in (location_cfg.get("case_materials") or [])
+            if isinstance(m, dict) and str(m.get("id")) == str(material_id)
+        ),
+        None,
+    )
+    if not material:
+        return [{"type": "system", "content": "That evidence isn't available at this location.", "show_explain": False}]
+
+    text_file = material.get("text_file") or ""
+    try:
+        raw_content = load_system_prompt(get_game_text_path(str(text_file), EP4_STAGE))
+    except Exception as e:
+        logger.error(f"Failed to load ep4 material {material_id}: {e}")
+        raw_content = f"Error loading evidence {material_id}"
+
+    content, material_buttons = _extract_buttons_from_text(raw_content)
+    image, _image_first, content = _extract_image_from_text(content)
+
+    material_key = str(material_id)
+    is_first_view = _mark_evidence_examined(state, EP4_STAGE, material_key)
+    log_message("clue_examined", f"EP4 material {material_id}: {content}", participant_code)
     await game_state_manager.save_game_state(participant_code, state)
-    
-    return messages
+
+    if is_first_view:
+        return [
+            _build_case_material_first_view_message(
+                participant_code,
+                content,
+                image=image,
+                buttons=material_buttons or None,
+            )
+        ]
+
+    message: Dict = {
+        "type": "clue",
+        "clue_id": material_id,
+        "clue_name": material.get("name") or material_id,
+        "content": content,
+    }
+    if image:
+        message["image"] = image
+    if material_buttons:
+        message["buttons"] = material_buttons
+    return [message]
 
 
 def _ep1_investigation_closed(state: Optional[Dict]) -> bool:
@@ -4732,11 +4915,14 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     return False
 
 
-def build_ep4_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
-    """Build EP4 outro text directing participants to the portal exit funnel."""
+def _prepare_ep4_outro_questionnaire(
+    participant_code: str, state: Optional[Dict] = None
+) -> Tuple[str, Optional[str], bool]:
+    """Load EP4 questionnaire text and optional image metadata from game_texts."""
     from .demo_slots import is_demo_mode_participant
 
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", EP4_STAGE))
+    image, image_first, text = _extract_image_from_text(text)
     # Older cached templates may still contain Form placeholders; keep replacements harmless.
     weekly_link = _build_weekly_questionnaire_link(participant_code, state)
     final_link = _build_final_questionnaire_link(participant_code)
@@ -4752,20 +4938,29 @@ def build_ep4_outro_questionnaire_text(participant_code: str, state: Optional[Di
             "Thanks for playing!\n\n"
             "The experiment participant will receive here the following message:"
         )
-        return f"{demo_prefix}\n\n{text}"
+        text = f"{demo_prefix}\n\n{text}"
 
+    return text, image, image_first
+
+
+def build_ep4_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
+    """Build EP4 outro text directing participants to the portal exit funnel."""
+    text, _image, _image_first = _prepare_ep4_outro_questionnaire(participant_code, state)
     return text
 
 
-def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
-    """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
+def _prepare_weekly_outro_questionnaire(
+    participant_code: str, state: Optional[Dict] = None
+) -> Tuple[str, Optional[str], bool]:
+    """Load weekly questionnaire text and optional image metadata from game_texts."""
     from .demo_slots import is_demo_mode_participant
 
     episode = int((state or {}).get("current_stage", 1))
     if episode == EP4_STAGE:
-        return build_ep4_outro_questionnaire_text(participant_code, state)
+        return _prepare_ep4_outro_questionnaire(participant_code, state)
 
     text = load_system_prompt(get_game_text_path("outro_questionnaire.txt", episode))
+    image, image_first, text = _extract_image_from_text(text)
     personalized_link = _build_weekly_questionnaire_link(participant_code, state)
     calendar_link = _build_next_episode_calendar_link(state)
     if WEEKLY_QUESTIONNAIRE_TEMPLATE_LINK in text:
@@ -4780,79 +4975,95 @@ def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional
             "You can keep exploring the next episode whenever you like. "
             "The experiment participant will receive here the following message:"
         )
-        return f"{demo_prefix}\n\n{text}"
+        text = f"{demo_prefix}\n\n{text}"
 
+    return text, image, image_first
+
+
+def build_weekly_outro_questionnaire_text(participant_code: str, state: Optional[Dict] = None) -> str:
+    """Build EP1 questionnaire outro text with personalized questionnaire/calendar links."""
+    text, _image, _image_first = _prepare_weekly_outro_questionnaire(participant_code, state)
     return text
 
 
-def _ep1_party_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
-    text = build_weekly_outro_questionnaire_text(participant_code, state)
-    return {
+def _build_outro_questionnaire_message(
+    text: str,
+    *,
+    image: Optional[str] = None,
+    image_first: bool = False,
+    extra_ui: Optional[Dict] = None,
+    buttons: Optional[List[Dict]] = None,
+) -> Dict:
+    """Build a questionnaire system message; image comes from game_texts metadata."""
+    message: Dict = {
         "type": "system",
         "content": text,
-        "image": "ep1/Ep1-final.png",
         "message_style": "tutor",
         "show_explain": False,
-        "ui": {
-            "caseMaterialsAccusationAvailable": False,
-            "imageFirst": True,
-            "preDisplayDelayMs": 2200,
-        },
+        "ui": {"caseMaterialsAccusationAvailable": False},
     }
+    if buttons:
+        message["buttons"] = buttons
+    if extra_ui:
+        message["ui"].update(extra_ui)
+    _apply_scripted_image(message, image, image_first)
+    return message
+
+
+def _ep1_party_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
+    text, image, image_first = _prepare_weekly_outro_questionnaire(participant_code, state)
+    return _build_outro_questionnaire_message(
+        text,
+        image=image,
+        image_first=image_first,
+        extra_ui={"preDisplayDelayMs": 2200},
+    )
 
 
 def _ep1_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
-    text = build_weekly_outro_questionnaire_text(participant_code, state)
-    return {
-        "type": "system",
-        "content": text,
-        "image": "ep1/Ep1-final.png",
-        "message_style": "tutor",
-        "show_explain": False,
-        "ui": {
-            "caseMaterialsAccusationAvailable": False,
-            "imageFirst": True,
+    text, image, image_first = _prepare_weekly_outro_questionnaire(participant_code, state)
+    return _build_outro_questionnaire_message(
+        text,
+        image=image,
+        image_first=image_first,
+        extra_ui={
             "ep1GameCompleted": True,
             # Pause after Tim's finale lines so the questionnaire does not pop in immediately.
             "preDisplayDelayMs": 2200,
         },
-    }
+    )
 
 
 def _ep3_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
-    text = build_weekly_outro_questionnaire_text(participant_code, state)
-    return {
-        "type": "system",
-        "content": text,
-        "message_style": "tutor",
-        "show_explain": False,
-        "ui": {
-            "caseMaterialsAccusationAvailable": False,
+    text, image, image_first = _prepare_weekly_outro_questionnaire(participant_code, state)
+    return _build_outro_questionnaire_message(
+        text,
+        image=image,
+        image_first=image_first,
+        extra_ui={
             "episodeComplete": True,
             "completedStage": EP3_FORMULA_STAGE,
             "ep3GameCompleted": True,
         },
-    }
+    )
 
 
 def _ep4_outro_questionnaire_message(participant_code: str, state: Optional[Dict]) -> Dict:
-    text = build_ep4_outro_questionnaire_text(participant_code, state)
-    return {
-        "type": "system",
-        "content": text,
-        "message_style": "tutor",
-        "show_explain": False,
-        "buttons": [
+    text, image, image_first = _prepare_ep4_outro_questionnaire(participant_code, state)
+    return _build_outro_questionnaire_message(
+        text,
+        image=image,
+        image_first=image_first,
+        buttons=[
             {"text": "Continue to final checks", "action": "portal_posttest"},
         ],
-        "ui": {
-            "caseMaterialsAccusationAvailable": False,
+        extra_ui={
             "episodeComplete": True,
             "completedStage": EP4_STAGE,
             "ep4GameCompleted": True,
             "portalPosttestCta": True,
         },
-    }
+    )
 
 
 def _ep1_investigation_closed_reply() -> Dict:
@@ -4945,22 +5156,21 @@ def _build_ep2_accuse_tim_finale_messages(participant_code: str) -> List[Dict]:
     win_body, win_buttons = _extract_buttons_from_text(win_text)
     win_blocks = _extract_scripted_message_blocks(win_body, default_sender=accused_key)
     if not win_blocks:
-        win_blocks = [("narrator", win_text)]
+        win_blocks = [ScriptedBlock(sender="narrator", text=win_text)]
 
     win_messages: List[Dict] = []
-    for _index, (block_sender, block_text) in enumerate(win_blocks):
+    for index, block in enumerate(win_blocks):
         msg = _build_character_message_for_sender(
             participant_code=participant_code,
-            text=block_text,
-            sender_key=block_sender or accused_key,
+            text=block.text,
+            sender_key=block.sender or accused_key,
         )
         msg["show_explain"] = False
         msg["ui"] = {"caseMaterialsAccusationAvailable": False}
+        _apply_block_image(msg, block)
+        if win_buttons and index == len(win_blocks) - 1:
+            msg["buttons"] = win_buttons
         win_messages.append(msg)
-
-    if win_buttons and win_messages:
-        win_messages[-1]["buttons"] = win_buttons
-        win_messages[-1]["image"] = "ep1/plane-drive.png"
 
     return win_messages
 
@@ -5166,13 +5376,14 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
             defense_body, _defense_file_buttons = _extract_buttons_from_text(defense_text)
             defense_blocks = _extract_scripted_message_blocks(defense_body, default_sender=accused_key)
             if not defense_blocks:
-                defense_blocks = [("narrator", defense_text)]
-            for _index, (block_sender, block_text) in enumerate(defense_blocks):
+                defense_blocks = [ScriptedBlock(sender="narrator", text=defense_text)]
+            for block in defense_blocks:
                 msg = _build_character_message_for_sender(
                     participant_code=participant_code,
-                    text=block_text,
-                    sender_key=block_sender or accused_key,
+                    text=block.text,
+                    sender_key=block.sender or accused_key,
                 )
+                _apply_block_image(msg, block)
                 msg["show_explain"] = False
                 msg["ui"] = {"caseMaterialsAccusationAvailable": False}
                 messages.append(msg)
@@ -5219,15 +5430,16 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
     defense_body, defense_file_buttons = _extract_buttons_from_text(defense_text)
     defense_blocks = _extract_scripted_message_blocks(defense_body, default_sender=accused_key)
     if not defense_blocks:
-        defense_blocks = [("narrator", defense_text)]
+        defense_blocks = [ScriptedBlock(sender="narrator", text=defense_text)]
 
     defense_messages: List[Dict] = []
-    for index, (block_sender, block_text) in enumerate(defense_blocks):
+    for index, block in enumerate(defense_blocks):
         msg = _build_character_message_for_sender(
             participant_code=participant_code,
-            text=block_text,
-            sender_key=block_sender or accused_key,
+            text=block.text,
+            sender_key=block.sender or accused_key,
         )
+        _apply_block_image(msg, block)
         msg["show_explain"] = False
         msg["ui"] = {"caseMaterialsAccusationAvailable": bool(state.get("accuse_in_case_materials", False))}
         if index == len(defense_blocks) - 1:
@@ -5261,12 +5473,13 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         nina_hint_body, _nina_hint_buttons = _extract_buttons_from_text(nina_hint_text or "")
         nina_hint_blocks = _extract_scripted_message_blocks(nina_hint_body, default_sender="nina")
         nina_hint_messages: List[Dict] = []
-        for _idx, (block_sender, block_text) in enumerate(nina_hint_blocks):
+        for block in nina_hint_blocks:
             n_msg = _build_character_message_for_sender(
                 participant_code=participant_code,
-                text=block_text,
-                sender_key=block_sender or "nina",
+                text=block.text,
+                sender_key=block.sender or "nina",
             )
+            _apply_block_image(n_msg, block)
             n_msg["show_explain"] = False
             n_msg["ui"] = {"caseMaterialsAccusationAvailable": False}
             nina_hint_messages.append(n_msg)

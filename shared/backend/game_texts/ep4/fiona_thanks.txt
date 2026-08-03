@@ -2,4 +2,4 @@
 Thank you, Detective. Please let me know as soon as you have any information.
 
 [buttons]
-Of course|say_as_user>fiona_to_nina
+Of course!|say_as_user>fiona_to_nina
