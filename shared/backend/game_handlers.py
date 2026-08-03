@@ -59,6 +59,7 @@ EP3_SCRIPTED_WITNESS_KEYS = {
 EP4_SCRIPTED_LOCATIONS = {"university_ep4", "bar_ep4", "pauline_office_ep4", "motel_ep4"}
 EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"})
 EP4_HUB_MIN_USER_MESSAGES = 3
+EP4_HUB_MIN_TOTAL_USER_MESSAGES = 25
 EP4_PAULINE_LOG_MIN_USER_MESSAGES = 1
 EP4_FIONA_MIN_USER_MESSAGES = 10
 EP4_LOCATION_CHARACTERS = {
@@ -997,12 +998,16 @@ def _record_ep4_fiona_user_message(state: Dict) -> int:
 
 
 def _ep4_hub_interviews_complete(ep4_state: Dict) -> bool:
-    """True when the player sent enough public messages in every EP4 hub location."""
+    """True when hub interviews meet per-location and total message thresholds."""
     counts = ep4_state.get("location_user_message_counts") or {}
-    return all(
+    per_location_ok = all(
         int(counts.get(location, 0)) >= EP4_HUB_MIN_USER_MESSAGES
         for location in EP4_HUB_LOCATIONS
     )
+    if not per_location_ok:
+        return False
+    total = sum(int(counts.get(location, 0)) for location in EP4_HUB_LOCATIONS)
+    return total >= EP4_HUB_MIN_TOTAL_USER_MESSAGES
 
 
 def _ep4_fiona_has_mentioned_ronnie(reply_text: str) -> bool:
