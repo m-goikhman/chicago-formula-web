@@ -1460,6 +1460,34 @@ def _mark_ep2_witness_opener_played(state: Dict, location: str) -> None:
         played.append(location)
 
 
+def _build_messages_from_scripted_opener_text(
+    participant_code: str,
+    opener_text: str,
+    *,
+    default_sender: str,
+    chat_scope: str,
+) -> List[Dict]:
+    """Parse opener file text with --- / [from:] / [image:] like other game_texts scripts."""
+    body, buttons = _extract_buttons_from_text(opener_text)
+    blocks = _extract_scripted_message_blocks(body, default_sender=default_sender)
+    if not blocks:
+        return []
+
+    messages: List[Dict] = []
+    for index, block in enumerate(blocks):
+        message = _build_character_message_for_sender(
+            participant_code,
+            block.text,
+            block.sender or default_sender,
+        )
+        _apply_block_image(message, block)
+        if buttons and index == len(blocks) - 1:
+            message["buttons"] = buttons
+        message["chat_scope"] = chat_scope
+        messages.append(message)
+    return messages
+
+
 async def _build_ep2_witness_opener_messages(
     participant_code: str,
     state: Dict,
@@ -1480,18 +1508,14 @@ async def _build_ep2_witness_opener_messages(
 
     opener_text = get_private_dialogue_opener(state, current_stage, witness_key)
     if opener_text:
-        sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
-        opener_body, opener_buttons = _extract_buttons_from_text(opener_without_sender)
-        image, image_first, opener_body = _extract_image_from_text(opener_body)
-        if opener_body and opener_body.strip():
-            opener_message = _build_character_message_for_sender(
-                participant_code, opener_body, sender_key or witness_key
-            )
-            _apply_scripted_image(opener_message, image, image_first)
-            if opener_buttons:
-                opener_message["buttons"] = opener_buttons
-            opener_message["chat_scope"] = chat_scope
-            return [opener_message]
+        scripted_messages = _build_messages_from_scripted_opener_text(
+            participant_code,
+            opener_text,
+            default_sender=witness_key,
+            chat_scope=chat_scope,
+        )
+        if scripted_messages:
+            return scripted_messages
 
     witness_opening_trigger = opening_trigger
     opener_reply = ""
@@ -4028,18 +4052,16 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     else:
         # Fallback to configured opener text files for resiliency.
         opener_text = get_private_dialogue_opener(state, current_stage, character_key)
+        scripted_messages: List[Dict] = []
         if opener_text:
-            sender_key, opener_without_sender = _extract_sender_from_text(opener_text)
-            opener_text, opener_buttons = _extract_buttons_from_text(opener_without_sender)
-            image, image_first, opener_text = _extract_image_from_text(opener_text)
-            if opener_text and opener_text.strip():
-                opener_message = _build_character_message_for_sender(participant_code, opener_text, sender_key or "narrator")
-                _apply_scripted_image(opener_message, image, image_first)
-                if opener_buttons:
-                    opener_message["buttons"] = opener_buttons
-                opener_message["chat_scope"] = f"private:{character_key}"
-                messages.append(opener_message)
-        elif character_key in CHARACTER_DATA:
+            scripted_messages = _build_messages_from_scripted_opener_text(
+                participant_code,
+                opener_text,
+                default_sender=character_key,
+                chat_scope=f"private:{character_key}",
+            )
+            messages.extend(scripted_messages)
+        if not scripted_messages and character_key in CHARACTER_DATA:
             # Guaranteed short opener if both AI and file opener are unavailable.
             fallback_line = "I'm here. What do you want to ask me?"
             message_id = generate_message_id()
