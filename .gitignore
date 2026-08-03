@@ -1,26 +1,38 @@
-# Backend
-backend/venv/
-backend/__pycache__/
-backend/*.pyc
-backend/.env
-backend/.env.local
-backend/*.backup
+# Python
+**/venv/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Env / secrets
+**/.env
+**/.env.local
+*.backup
+service-account*.json
+gcloud-key*.json
+*.json
+!firebase.json
 
 # Frontend
-frontend/node_modules/
-frontend/.firebase/
-frontend/.firebaserc
-frontend/.env
-frontend/.env.local
+**/node_modules/
+**/.firebase/
+.firebaserc
 
-# IDE
+# IDE / editor
 .vscode/
 .idea/
 .cursor/rules/
 *.swp
 *.swo
 *~
+
+# macOS junk (AppleDouble / Finder)
 .DS_Store
+**/.DS_Store
+._*
+**/._*
 
 # Logs
 *.log
@@ -28,7 +40,6 @@ logs/
 
 # Local dev (dev-local.sh)
 .dev-local/
-.venv/
 
 # Temporary files
 *.tmp
@@ -37,10 +48,3 @@ logs/
 # MS Word temp/support files
 ~$*
 *.fld/
-
-# Google Cloud credentials (if stored locally)
-*.json
-!firebase.json
-service-account*.json
-gcloud-key*.json
-
