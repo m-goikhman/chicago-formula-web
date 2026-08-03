@@ -634,6 +634,7 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             episode_has_locations,
             maybe_trigger_ep4_nina_phone_located,
             maybe_trigger_ep4_alex_asks_fate,
+            maybe_trigger_ep4_pauline_alex_log,
             _normalize_ep4_public_dialogue_mode,
         )
 
@@ -752,6 +753,12 @@ async def send_message(request: MessageRequest, current_user=Depends(get_current
             )
             if phone_located_messages:
                 messages = (messages or []) + phone_located_messages
+
+            pauline_log_messages = await maybe_trigger_ep4_pauline_alex_log(
+                participant_code, state, request.text
+            )
+            if pauline_log_messages:
+                messages = (messages or []) + pauline_log_messages
 
             alex_fate_messages = await maybe_trigger_ep4_alex_asks_fate(
                 participant_code, state, request.text

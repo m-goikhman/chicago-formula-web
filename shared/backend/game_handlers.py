@@ -59,6 +59,7 @@ EP3_SCRIPTED_WITNESS_KEYS = {
 EP4_SCRIPTED_LOCATIONS = {"university_ep4", "bar_ep4", "pauline_office_ep4", "motel_ep4"}
 EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"})
 EP4_HUB_MIN_USER_MESSAGES = 3
+EP4_PAULINE_LOG_MIN_USER_MESSAGES = 1
 EP4_FIONA_MIN_USER_MESSAGES = 10
 EP4_LOCATION_CHARACTERS = {
     "university_ep4": "susan",
@@ -912,6 +913,7 @@ def _get_ep4_director_state(state: Dict) -> Dict:
     ep4_state.setdefault("location_user_message_counts", {})
     ep4_state.setdefault("fiona_user_message_count", None)
     ep4_state.setdefault("alex_asks_fate_shown", False)
+    ep4_state.setdefault("pauline_alex_log_shown", False)
     ep4_state.setdefault("awaiting_alex_fate_choice", False)
     ep4_state.setdefault("ep4_outro_shown", False)
     ep4_state.setdefault("ep4_outro_questionnaire_shown", False)
@@ -2293,6 +2295,65 @@ async def maybe_trigger_ep4_alex_asks_fate(
         return []
 
     return await handle_ep4_alex_asks_fate(participant_code)
+
+
+async def handle_ep4_pauline_alex_log(participant_code: str) -> List[Dict]:
+    """EP4 Pauline's office: Pauline shares Alex's notebook log."""
+    state = GAME_STATE.get(participant_code)
+    if not state:
+        return [{"type": "error", "content": "Game not initialized."}]
+
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    if get_stage_location(state, EP4_STAGE) != "pauline_office_ep4":
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
+
+    ep4_state = _get_ep4_director_state(state)
+    if ep4_state.get("pauline_alex_log_shown"):
+        return []
+
+    ep4_state["pauline_alex_log_shown"] = True
+    messages: List[Dict] = []
+    if not _append_scripted_game_text_to_messages(
+        participant_code, messages, "pauline_alex_log", EP4_STAGE
+    ):
+        ep4_state["pauline_alex_log_shown"] = False
+        return [{"type": "system", "content": "Script is missing.", "show_explain": False}]
+
+    state["last_public_responder"] = "pauline"
+    _sync_last_public_responder_for_public_mode(state, messages)
+    await game_state_manager.save_game_state(participant_code, state)
+    return messages
+
+
+async def maybe_trigger_ep4_pauline_alex_log(
+    participant_code: str,
+    state: Dict,
+    user_message_text: str,
+) -> List[Dict]:
+    """After the opener and one user reply at Pauline's office, append Alex's log."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return []
+
+    ep4_state = _get_ep4_director_state(state)
+    if ep4_state.get("pauline_alex_log_shown"):
+        return []
+
+    location = get_stage_location(state, EP4_STAGE)
+    if location != "pauline_office_ep4":
+        return []
+
+    if not str(user_message_text or "").strip():
+        return []
+
+    # Hub counts are incremented by maybe_trigger_ep4_nina_phone_located
+    # (called earlier in the same request); only read them here.
+    counts = _ensure_ep4_location_user_message_counts(state)
+    if int(counts.get(location, 0)) < EP4_PAULINE_LOG_MIN_USER_MESSAGES:
+        return []
+
+    return await handle_ep4_pauline_alex_log(participant_code)
 
 
 async def handle_ep4_nina_split_up(participant_code: str) -> List[Dict]:
