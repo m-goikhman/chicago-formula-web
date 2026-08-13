@@ -176,7 +176,6 @@ const EP3_SCRIPTED_LOCATIONS = {
     university_ep3: 'james',
     alex_apartment_ep3: 'alex',
     university_ep2: 'james',
-    alex_apartment_ep2: 'alex',
 };
 
 function getCurrentStageLocationKey() {
@@ -338,6 +337,9 @@ function shouldShowEp2LocationHeader() {
 }
 
 function closeLocationHeaderDropdown() {
+    if (window.locationSwitcherTutorialLock) {
+        return;
+    }
     const context = document.getElementById('chatModeHeaderContext');
     if (context) {
         context.classList.remove('dropdown-open');
@@ -766,6 +768,9 @@ function updatePrivateModeControls() {
         }
     }
     renderLocationHeaderDropdown();
+    if (typeof window.maybeShowLocationSwitcherTutorial === 'function') {
+        window.maybeShowLocationSwitcherTutorial();
+    }
     if (inputElement) {
         if (ep1CaseClosed && isInputVisible) {
             inputElement.disabled = true;
@@ -807,24 +812,58 @@ async function backToCommonDialogue() {
 }
 
 // Populate case materials drawer
-function populateCaseMaterialsDrawer() {
-    const materialsList = document.getElementById('caseMaterialsList');
+function getExaminedCluesSet() {
+    if (window.cluesExamined instanceof Set) {
+        return window.cluesExamined;
+    }
+    const fromList = Array.isArray(window.cluesExamined) ? window.cluesExamined : [];
+    window.cluesExamined = new Set(fromList.map((item) => String(item)));
+    return window.cluesExamined;
+}
+
+function setExaminedClues(list) {
+    window.cluesExamined = new Set((Array.isArray(list) ? list : []).map((item) => String(item)));
+    updateCaseMaterialsBadge();
+}
+
+function evidenceKeyFromExamineAction(action) {
+    const normalized = String(action || '').trim();
+    let match = normalized.match(/^examine_(?:ep\d+_)?clue_(\d+)$/i);
+    if (match) {
+        return match[1];
+    }
+    match = normalized.match(/^examine_ep4_material_(.+)$/i);
+    if (match) {
+        return match[1];
+    }
+    return null;
+}
+
+function markCaseMaterialExamined(evidenceKey) {
+    if (!evidenceKey) {
+        return;
+    }
+    getExaminedCluesSet().add(String(evidenceKey));
+    updateCaseMaterialsBadge();
+}
+
+function getCurrentCaseMaterials() {
     const currentStage = window.currentStageNumber || 1;
     const partyClueMaterials = (includeUsb) => {
         const base = [
-            { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1' },
-            { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2' },
-            { emoji: '🔍', name: 'The Note', action: 'examine_clue_3' }
+            { emoji: '🔍', name: 'Med Report & Personal Items', action: 'examine_clue_1', evidenceKey: '1' },
+            { emoji: '🔍', name: 'The Weapon', action: 'examine_clue_2', evidenceKey: '2' },
+            { emoji: '🔍', name: 'The Note', action: 'examine_clue_3', evidenceKey: '3' }
         ];
         if (includeUsb) {
-            return [{ emoji: '🔍', name: 'The USB Drive', action: 'examine_clue_4' }, ...base];
+            return [{ emoji: '🔍', name: 'The USB Drive', action: 'examine_clue_4', evidenceKey: '4' }, ...base];
         }
         return base;
     };
     const showAccusationButton = currentStage === 1 || currentStage === 2;
     let materials;
     if (currentStage === 3) {
-        materials = [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep3_clue_1' }];
+        materials = [{ emoji: '🔍', name: 'The Formula', action: 'examine_ep3_clue_1', evidenceKey: '1' }];
     } else if (currentStage === 2) {
         materials = partyClueMaterials(Boolean(window.ep1UsbDriveUnlocked));
     } else if (currentStage === 1) {
@@ -837,6 +876,7 @@ function populateCaseMaterialsDrawer() {
                 emoji: '🔍',
                 name: item.name,
                 action: `examine_ep4_material_${item.id}`,
+                evidenceKey: String(item.id),
             }));
     } else {
         materials = [];
@@ -850,6 +890,41 @@ function populateCaseMaterialsDrawer() {
             materials.push({ emoji: '⚖️', name: 'Arrest Order', action: 'accuse_open_menu' });
         }
     }
+    return materials;
+}
+
+function getUnviewedCaseMaterialsCount() {
+    const examined = getExaminedCluesSet();
+    return getCurrentCaseMaterials().filter((item) => {
+        if (!item?.evidenceKey) {
+            return false;
+        }
+        return !examined.has(String(item.evidenceKey));
+    }).length;
+}
+
+function updateCaseMaterialsBadge() {
+    const badge = document.getElementById('caseMaterialsBadge');
+    if (!badge) {
+        return;
+    }
+    const count = getUnviewedCaseMaterialsCount();
+    if (count > 0) {
+        badge.textContent = String(count);
+        badge.hidden = false;
+        badge.setAttribute('aria-hidden', 'false');
+        badge.setAttribute('aria-label', `${count} unviewed`);
+    } else {
+        badge.textContent = '0';
+        badge.hidden = true;
+        badge.setAttribute('aria-hidden', 'true');
+        badge.removeAttribute('aria-label');
+    }
+}
+
+function populateCaseMaterialsDrawer() {
+    const materialsList = document.getElementById('caseMaterialsList');
+    const materials = getCurrentCaseMaterials();
 
     materialsList.innerHTML = '';
     materials.forEach(item => {
@@ -867,6 +942,7 @@ function populateCaseMaterialsDrawer() {
         };
         materialsList.appendChild(material);
     });
+    updateCaseMaterialsBadge();
 }
 
 function renderLocationSwitcher() {
@@ -1040,6 +1116,10 @@ window.closeAllDrawers = closeAllDrawers;
 window.checkAndCloseOverlay = checkAndCloseOverlay;
 window.populateCharactersDrawer = populateCharactersDrawer;
 window.populateCaseMaterialsDrawer = populateCaseMaterialsDrawer;
+window.updateCaseMaterialsBadge = updateCaseMaterialsBadge;
+window.setExaminedClues = setExaminedClues;
+window.markCaseMaterialExamined = markCaseMaterialExamined;
+window.evidenceKeyFromExamineAction = evidenceKeyFromExamineAction;
 window.renderLocationSwitcher = renderLocationSwitcher;
 window.renderLocationHeaderDropdown = renderLocationHeaderDropdown;
 window.closeLocationHeaderDropdown = closeLocationHeaderDropdown;

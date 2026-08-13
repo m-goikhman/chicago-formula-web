@@ -503,7 +503,7 @@ async def handle_game_action(request: ActionRequest, current_user=Depends(get_cu
         messages = await handle_case_intro(participant_code, request.action)
     elif request.action in [
         "go_default_ep3", "go_university_ep3", "go_alex_apartment_ep3",
-        "go_default_ep2", "go_university_ep2", "go_alex_apartment_ep2",
+        "go_default_ep2", "go_university_ep2",
         "go_precinct_ep4", "go_university_ep4", "go_bar_ep4",
         "go_pauline_office_ep4", "go_phone_ep4", "go_motel_ep4",
     ]:
@@ -1204,6 +1204,26 @@ async def get_available_stages(current_user=Depends(get_current_user)):
             "locations": locations_info,
         })
 
+    clues_examined = game_state.get("clues_examined") or set()
+    if isinstance(clues_examined, (list, tuple, set)):
+        clues_examined_list = sorted(str(item) for item in clues_examined)
+    else:
+        clues_examined_list = []
+
+    # Side drawers + EP3/EP4 location header unlock after investigation starts.
+    # Kept server-side so restored sessions (new browser / wiped localStorage) still get the UI.
+    onboarding_step = str(game_state.get("onboarding_step") or "")
+    navigation_unlocked = (
+        onboarding_step == "investigation_started"
+        or int(current_stage or 1) > 1
+        or bool(stages_completed)
+        or any(
+            str((stage_progress.get(stage_num) or stage_progress.get(str(stage_num)) or {}).get("completion_status") or "")
+            in {"in_progress", "completed", "skipped"}
+            for stage_num in range(1, TOTAL_STAGES + 1)
+        )
+    )
+
     return {
         "available_stages": available_stages,
         "current_stage": current_stage,
@@ -1211,7 +1231,9 @@ async def get_available_stages(current_user=Depends(get_current_user)):
         "stages_info": stages_info,
         "game_completed": bool(game_state.get("game_completed", False)),
         "ep1_usb_drive_unlocked": bool(game_state.get("ep1_usb_drive_unlocked", False)),
+        "clues_examined": clues_examined_list,
         "ep4_nina_chat_available": ep4_nina_modal_chat_available(game_state),
+        "navigation_unlocked": navigation_unlocked,
         **get_dialogue_mode_metadata(game_state),
     }
 

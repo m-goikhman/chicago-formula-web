@@ -4,6 +4,54 @@ let tutorialSteps = [];
 let tutorialResizeHandler = null;
 let tutorialResumed = false; // Flag to track if tutorial is resumed manually
 let tutorialStepCleanup = null; // Optional cleanup handler for custom step logic
+let tutorialCompletionKey = null; // When set, endTutorial stores this key instead of the default
+let locationSwitcherTutorialTimer = null;
+let locationSwitcherTutorialShowing = false;
+
+function getLocationSwitcherTutorialStorageKey() {
+    if (typeof participantCode === 'undefined' || !participantCode) {
+        return null;
+    }
+    return `location_switcher_tutorial_completed_${participantCode}`;
+}
+
+function isLocationSwitcherTutorialCompleted() {
+    const key = getLocationSwitcherTutorialStorageKey();
+    return Boolean(key && localStorage.getItem(key));
+}
+
+function getStepHighlightRect(step, element) {
+    if (typeof step.getHighlightRect === 'function') {
+        try {
+            const customRect = step.getHighlightRect(element);
+            if (customRect) {
+                return customRect;
+            }
+        } catch (error) {
+            console.warn('Error computing custom tutorial highlight rect:', error);
+        }
+    }
+    return element.getBoundingClientRect();
+}
+
+function applyTutorialSpotlight(step, element, tooltip) {
+    const rect = getStepHighlightRect(step, element);
+    const padding = step.highlightPadding || 10;
+    const spotlight = document.getElementById('tutorialSpotlight');
+    if (!spotlight) {
+        return rect;
+    }
+    spotlight.style.left = (rect.left - padding) + 'px';
+    spotlight.style.top = (rect.top - padding) + 'px';
+    spotlight.style.width = (rect.width + padding * 2) + 'px';
+    spotlight.style.height = (rect.height + padding * 2) + 'px';
+    spotlight.style.display = 'block';
+    spotlight.classList.add('active');
+    if (tooltip) {
+        positionTooltip(tooltip, step.position, rect);
+    }
+    return rect;
+}
 
 function setupTutorialResizeHandler() {
     if (tutorialResizeHandler) {
@@ -14,17 +62,11 @@ function setupTutorialResizeHandler() {
             const step = tutorialSteps[tutorialStep];
             const element = document.querySelector(step.selector);
             if (element) {
-                const rect = element.getBoundingClientRect();
-                const padding = step.highlightPadding || 10;
                 const spotlight = document.getElementById('tutorialSpotlight');
                 const tooltip = document.getElementById('tutorialTooltip');
                 
                 if (spotlight && spotlight.classList.contains('active')) {
-                    spotlight.style.left = (rect.left - padding) + 'px';
-                    spotlight.style.top = (rect.top - padding) + 'px';
-                    spotlight.style.width = (rect.width + padding * 2) + 'px';
-                    spotlight.style.height = (rect.height + padding * 2) + 'px';
-                    positionTooltip(tooltip, step.position, rect);
+                    applyTutorialSpotlight(step, element, tooltip);
                 }
             }
         }
@@ -112,21 +154,8 @@ function showTutorialStep(stepIndex) {
     // Show overlay
     const overlay = document.getElementById('tutorialOverlay');
     overlay.classList.add('active');
-    
-    // Get element position
-    const rect = elementRect;
-    const padding = step.highlightPadding || 10;
-    
-    // Create spotlight
-    const spotlight = document.getElementById('tutorialSpotlight');
-    spotlight.style.left = (rect.left - padding) + 'px';
-    spotlight.style.top = (rect.top - padding) + 'px';
-    spotlight.style.width = (rect.width + padding * 2) + 'px';
-    spotlight.style.height = (rect.height + padding * 2) + 'px';
-    spotlight.style.display = 'block';
-    spotlight.classList.add('active');
-    
-    // Create tooltip
+
+    // Create tooltip first so onShow can adjust copy if needed
     const tooltip = document.getElementById('tutorialTooltip');
     tooltip.innerHTML = `
         <div class="tutorial-tooltip-title">${step.title}</div>
@@ -136,10 +165,7 @@ function showTutorialStep(stepIndex) {
     `;
     tooltip.className = `tutorial-tooltip tooltip-${step.position}`;
     tooltip.style.display = 'block';
-    
-    // Position tooltip
-    positionTooltip(tooltip, step.position, rect);
-    
+
     if (typeof step.onShow === 'function') {
         try {
             const cleanupHandler = step.onShow(element, tooltip);
@@ -151,17 +177,15 @@ function showTutorialStep(stepIndex) {
         }
     }
 
+    // Position spotlight after onShow so demos can prepare the highlighted area
+    applyTutorialSpotlight(step, element, tooltip);
+
     // Scroll element into view if needed (wait a bit for spotlight to appear)
     setTimeout(() => {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         // Recalculate position after scroll
         setTimeout(() => {
-            const newRect = element.getBoundingClientRect();
-            spotlight.style.left = (newRect.left - padding) + 'px';
-            spotlight.style.top = (newRect.top - padding) + 'px';
-            spotlight.style.width = (newRect.width + padding * 2) + 'px';
-            spotlight.style.height = (newRect.height + padding * 2) + 'px';
-            positionTooltip(tooltip, step.position, newRect);
+            applyTutorialSpotlight(step, element, tooltip);
         }, 300);
     }, 100);
     
@@ -232,19 +256,148 @@ function endTutorial() {
     
     // Mark tutorial as completed (only if called from automatic flow)
     if (!tutorialResumed) {
-        localStorage.setItem(`tutorial_completed_${participantCode}`, 'true');
+        const completionKey = tutorialCompletionKey || `tutorial_completed_${participantCode}`;
+        localStorage.setItem(completionKey, 'true');
     }
+    tutorialCompletionKey = null;
     tutorialResumed = false; // Reset flag
+    locationSwitcherTutorialShowing = false;
+    window.locationSwitcherTutorialLock = false;
 }
 
 function showTutorial() {
-    // If tutorial steps are not initialized, do it now
-    if (!tutorialSteps || tutorialSteps.length === 0) {
-        initTutorial();
-    }
+    // Always restore the main onboarding steps (location tutorial may have replaced them)
+    initTutorial();
     tutorialResumed = true;
+    tutorialCompletionKey = null;
     tutorialStep = 0;
     showTutorialStep(0);
+}
+
+function getLocationSwitcherHighlightRect(element) {
+    const dropdown = document.getElementById('locationHeaderDropdown');
+    const contextRect = element.getBoundingClientRect();
+    if (!dropdown || dropdown.style.display === 'none') {
+        return contextRect;
+    }
+    const dropdownRect = dropdown.getBoundingClientRect();
+    if (dropdownRect.width === 0 || dropdownRect.height === 0) {
+        return contextRect;
+    }
+    const left = Math.min(contextRect.left, dropdownRect.left);
+    const top = Math.min(contextRect.top, dropdownRect.top);
+    const right = Math.max(contextRect.right, dropdownRect.right);
+    const bottom = Math.max(contextRect.bottom, dropdownRect.bottom);
+    return {
+        left,
+        top,
+        right,
+        bottom,
+        width: right - left,
+        height: bottom - top,
+    };
+}
+
+function showLocationSwitcherDemo(element) {
+    if (!element) {
+        return null;
+    }
+
+    const dropdown = document.getElementById('locationHeaderDropdown');
+    if (!dropdown) {
+        return null;
+    }
+
+    window.locationSwitcherTutorialLock = true;
+    element.classList.add('dropdown-open');
+    element.setAttribute('aria-expanded', 'true');
+    dropdown.style.display = 'block';
+
+    return function cleanupLocationSwitcherDemo() {
+        window.locationSwitcherTutorialLock = false;
+        if (typeof window.closeLocationHeaderDropdown === 'function') {
+            window.closeLocationHeaderDropdown();
+        } else {
+            element.classList.remove('dropdown-open');
+            element.setAttribute('aria-expanded', 'false');
+            dropdown.style.display = 'none';
+        }
+    };
+}
+
+function initLocationSwitcherTutorial() {
+    tutorialSteps = [
+        {
+            selector: '#chatModeHeaderContext.has-location-dropdown',
+            title: '📍 Switch Locations',
+            text: 'Tap this location button to open the travel menu. Choose another place to continue the investigation — for example between the university and Alex\'s apartment.',
+            position: 'bottom',
+            highlightPadding: 12,
+            getHighlightRect: getLocationSwitcherHighlightRect,
+            onShow: showLocationSwitcherDemo
+        }
+    ];
+    setupTutorialResizeHandler();
+}
+
+function startLocationSwitcherTutorial() {
+    const context = document.querySelector('#chatModeHeaderContext.has-location-dropdown');
+    if (!context || context.style.display === 'none') {
+        return;
+    }
+    if (isLocationSwitcherTutorialCompleted()) {
+        return;
+    }
+
+    const overlay = document.getElementById('tutorialOverlay');
+    if (overlay && overlay.classList.contains('active') && !locationSwitcherTutorialShowing) {
+        // Another tutorial is already on screen; try again shortly.
+        maybeShowLocationSwitcherTutorial();
+        return;
+    }
+
+    const completionKey = getLocationSwitcherTutorialStorageKey();
+    if (!completionKey) {
+        return;
+    }
+
+    locationSwitcherTutorialShowing = true;
+    tutorialResumed = false;
+    tutorialCompletionKey = completionKey;
+    initLocationSwitcherTutorial();
+    showTutorialStep(0);
+}
+
+function maybeShowLocationSwitcherTutorial() {
+    if (locationSwitcherTutorialShowing) {
+        return;
+    }
+    if (isLocationSwitcherTutorialCompleted()) {
+        return;
+    }
+
+    const context = document.getElementById('chatModeHeaderContext');
+    if (
+        !context
+        || context.style.display === 'none'
+        || !context.classList.contains('has-location-dropdown')
+    ) {
+        return;
+    }
+
+    const stage = Number(window.currentStageNumber || 1);
+    // Location travel first appears in episode 3; ep4 reuses the same control.
+    if (stage !== 3 && stage !== 4) {
+        return;
+    }
+
+    if (locationSwitcherTutorialTimer) {
+        clearTimeout(locationSwitcherTutorialTimer);
+    }
+    locationSwitcherTutorialTimer = setTimeout(() => {
+        locationSwitcherTutorialTimer = null;
+        startLocationSwitcherTutorial();
+    }, 1200);
 }
 
 function showChatHighlightDemo(element, tooltip) {
@@ -370,3 +523,5 @@ window.showTutorial = showTutorial;
 window.initTutorial = initTutorial;
 window.showTutorialStep = showTutorialStep;
 window.positionTooltip = positionTooltip;
+window.maybeShowLocationSwitcherTutorial = maybeShowLocationSwitcherTutorial;
+window.startLocationSwitcherTutorial = startLocationSwitcherTutorial;

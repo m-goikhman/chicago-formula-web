@@ -223,6 +223,8 @@ function displayMessage(msg) {
         window.ep1UsbDriveUnlocked = true;
         if (typeof window.populateCaseMaterialsDrawer === 'function') {
             window.populateCaseMaterialsDrawer();
+        } else if (typeof window.updateCaseMaterialsBadge === 'function') {
+            window.updateCaseMaterialsBadge();
         }
     }
     if (msg.ui && msg.ui.switchToPublicMode === true) {

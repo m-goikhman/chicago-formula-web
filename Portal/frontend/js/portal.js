@@ -225,12 +225,16 @@
     const participantInput = document.getElementById('participantCode');
     const consentToggle1 = document.getElementById('consentToggle1');
     const consentToggle2 = document.getElementById('consentToggle2');
+    const consentToggle3 = document.getElementById('consentToggle3');
     const consentExpandable1 = document.getElementById('consentExpandable1');
     const consentExpandable2 = document.getElementById('consentExpandable2');
+    const consentExpandable3 = document.getElementById('consentExpandable3');
     const consentBody1 = document.getElementById('consentBody1');
     const consentBody2 = document.getElementById('consentBody2');
+    const consentBody3 = document.getElementById('consentBody3');
     const consentCheck1 = document.getElementById('consentCheck1');
     const consentCheck2 = document.getElementById('consentCheck2');
+    const consentCheck3 = document.getElementById('consentCheck3');
     const consentContinueButton = document.getElementById('consentContinueButton');
     const loginButton = document.getElementById('loginButton');
     const loginError = document.getElementById('loginError');
@@ -827,10 +831,15 @@
         if (consentCheck2) {
             consentCheck2.checked = false;
         }
+        if (consentCheck3) {
+            consentCheck3.checked = false;
+        }
         updateConsentToggleAccepted(consentToggle1, consentCheck1);
         updateConsentToggleAccepted(consentToggle2, consentCheck2);
+        updateConsentToggleAccepted(consentToggle3, consentCheck3);
         closeExpandable(consentToggle1, consentExpandable1);
         closeExpandable(consentToggle2, consentExpandable2);
+        closeExpandable(consentToggle3, consentExpandable3);
         updateConsentContinueButton();
     }
 
@@ -1087,8 +1096,11 @@
         if (!consentContinueButton) {
             return;
         }
-        const bothChecked = consentCheck1 && consentCheck1.checked && consentCheck2 && consentCheck2.checked;
-        consentContinueButton.disabled = !bothChecked;
+        const allChecked =
+            consentCheck1 && consentCheck1.checked &&
+            consentCheck2 && consentCheck2.checked &&
+            consentCheck3 && consentCheck3.checked;
+        consentContinueButton.disabled = !allChecked;
     }
 
     function showContinueView(participantCode, arm, options = {}) {
@@ -1373,8 +1385,12 @@
         if (consentToggle2 && consentExpandable2) {
             consentToggle2.addEventListener('click', () => handleToggle(consentToggle2, consentExpandable2));
         }
+        if (consentToggle3 && consentExpandable3) {
+            consentToggle3.addEventListener('click', () => handleToggle(consentToggle3, consentExpandable3));
+        }
         consentExpandable1?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle1, consentExpandable1));
         consentExpandable2?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle2, consentExpandable2));
+        consentExpandable3?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle3, consentExpandable3));
     }
 
     function setupConsentCheckboxes() {
@@ -1391,6 +1407,13 @@
                 updateConsentToggleAccepted(consentToggle2, consentCheck2);
                 update();
                 if (consentCheck2.checked) closeExpandable(consentToggle2, consentExpandable2);
+            });
+        }
+        if (consentCheck3) {
+            consentCheck3.addEventListener('change', () => {
+                updateConsentToggleAccepted(consentToggle3, consentCheck3);
+                update();
+                if (consentCheck3.checked) closeExpandable(consentToggle3, consentExpandable3);
             });
         }
     }

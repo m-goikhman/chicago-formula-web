@@ -22,20 +22,19 @@ var PORTAL_TRANSLATIONS = {
 
         introWho:
             '<h2 class="intro-heading">Chi può partecipare</h2>' +
-            '<p>Adulti (18+) con inglese intermedio (B1–B2).' +
+            '<p>Adulti (18+) con inglese intermedio (B1–B2, nessun certificato richiesto).' +
             ' Puoi leggere e scrivere in inglese, anche se non sempre è facile.</p>' +
-            '<ul class="intro-highlights">' +
-            '<li>2 settimane, 2 episodi/settimana, circa 40–60 min ciascuno</li>' +
-            '<li>Tutto online — telefono o computer</li>' +
-            '<li>280 SONA Time Credits per studenti UniTn</li>' +
+            '<li>Fino a 310 SONA Time Credits per studenti UniTn (280 per le attività online + 30 per l\'intervista facoltativa)</li>' +
             '</ul>',
 
         consentTitle:  'Prima di partecipare',
-        consentIntro:  'Leggi entrambi i documenti e conferma il tuo consenso per procedere.',
+        consentIntro:  'Leggi tutti e tre i documenti e conferma il tuo consenso per procedere.',
         toggle1Title:  'Foglio informativo',
-        toggle2Title:  'Informativa sul trattamento dei dati personali',
+        toggle2Title:  'Dichiarazione di consenso',
+        toggle3Title:  'Informativa sul trattamento dei dati personali',
         check1Label:   'Ho letto e accetto il foglio informativo.',
-        check2Label:   'Ho letto e accetto l’informativa sul trattamento dei dati.',
+        check2Label:   'Presto il mio consenso a partecipare allo studio proposto.',
+        check3Label:   'Ho letto e accetto l’informativa sul trattamento dei dati.',
         continueBtn:   'Continua',
         footerContact: 'Domande? <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a>',
 
@@ -109,15 +108,17 @@ var PORTAL_TRANSLATIONS = {
             '<ul class="intro-highlights">' +
             '<li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>' +
             '<li>All online — phone or computer</li>' +
-            '<li>280 SONA Time Credits for UniTn students</li>' +
+            '<li>up to 310 SONA Time Credits for UniTn students (280 for online activities + 30 for the optional interview)</li>' +
             '</ul>',
 
         consentTitle:  'Before you participate',
-        consentIntro:  'Please read both documents and confirm your consent to proceed.',
+        consentIntro:  'Please read all three documents and confirm your consent to proceed.',
         toggle1Title:  'Study information sheet',
-        toggle2Title:  'Privacy notice for research data processing',
+        toggle2Title:  'Consent declaration',
+        toggle3Title:  'Privacy notice for research data processing',
         check1Label:   'I have read and accept the study information sheet.',
-        check2Label:   'I have read and accept the privacy notice.',
+        check2Label:   'I give my consent to participate in the proposed study.',
+        check3Label:   'I have read and accept the privacy notice.',
         continueBtn:   'Continue',
         footerContact: 'Questions? <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a>',
 
@@ -146,7 +147,7 @@ var PORTAL_TRANSLATIONS = {
         surveyValidationError: 'Please answer all required questions.',
         mearaTitle: 'Vocabulary check',
         mearaLead:
-            'You will see English words one at a time. For each word, decide whether you know it or not. There are no right or wrong answers on screen — just answer honestly.',
+            'You will see words one at a time. For each word, decide whether you know it or not. Some words are real English words, others are made up.',
         mearaProgress: 'Word {current} of {total}',
         mearaKnowBtn: 'I know this word',
         mearaDontKnowBtn: "I don't know this word",

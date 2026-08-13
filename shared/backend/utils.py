@@ -112,7 +112,6 @@ def get_prompt_path(character_key: str, episode: int, location: Optional[str] = 
         legacy_ep3_aliases = {
             "default_ep2": ["default_ep3", "default"],
             "university_ep2": ["university_ep3", "university"],
-            "alex_apartment_ep2": ["alex_apartment_ep3", "alex_apartment"],
         }
         for alias in legacy_ep3_aliases.get(location, []):
             if alias not in location_candidates:
@@ -161,13 +160,27 @@ def get_game_text_path(basename: str, episode: int) -> str:
 
 
 EP3_JAMES_USB_FORMULA_PROMPT_PATH = "prompts/ep3/university_ep3/prompt_james_formula_ep2.md"
+# Keep in sync with game_handlers.EP3_PHASE_VERDICT (cannot import: circular).
+EP3_PHASE_VERDICT = 2
+
+
+def _ep3_verdict_reached(ep2_state: Dict) -> bool:
+    """True once James has called the formula nonsense (phase >= VERDICT)."""
+    raw = ep2_state.get("ep3_phase")
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw >= EP3_PHASE_VERDICT
+    # Pre-refactor saves that never went through _get_ep2_director_state.
+    return bool(
+        ep2_state.get("usb_context_explained", False)
+        or ep2_state.get("university_analysis_done", False)
+    )
 
 
 def _append_ep2_james_usb_formula_prompt(character_prompt: str, state: Optional[Dict]) -> str:
     if not state:
         return character_prompt
     ep2_state = state.get("ep2_director") or {}
-    if not ep2_state.get("usb_context_explained", False):
+    if not _ep3_verdict_reached(ep2_state):
         return character_prompt
     formula_path = EP3_JAMES_USB_FORMULA_PROMPT_PATH
     if not os.path.exists(os.path.join(_BASE_DIR, formula_path)):

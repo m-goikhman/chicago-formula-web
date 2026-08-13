@@ -517,6 +517,55 @@ def clear_user_conversation_history(participant_code: str):
         log_message("history_cleared", "Conversation history cleared due to AI corruption", participant_code)
 
 
+def append_character_line_to_history(
+    participant_code: str,
+    character_key: str,
+    text: str,
+    chat_scope: str = "public",
+) -> None:
+    """
+    Append a character line to the in-memory dialogue history fed to the model.
+
+    Used for both LLM replies and pre-written game_texts lines so the model sees
+    one continuous conversation with no "scripted" distinction.
+    """
+    if not participant_code or not isinstance(text, str):
+        return
+    body = text.strip()
+    if not body:
+        return
+
+    speaker = str(character_key or "").strip()
+    if not speaker:
+        return
+
+    scope_raw = str(chat_scope or "public").strip().lower()
+    if scope_raw == "private" or scope_raw.startswith("private:"):
+        resolved_scope = "private"
+        if scope_raw.startswith("private:") and ":" in scope_raw:
+            # Prefer explicit private:<key> when the caller used UI-style scope.
+            private_key = scope_raw.split(":", 1)[1].strip()
+            if private_key:
+                speaker = private_key
+    else:
+        resolved_scope = "public"
+
+    history_key = _resolve_history_key(participant_code)
+    if history_key not in user_histories:
+        user_histories[history_key] = []
+
+    entry = {
+        "role": "assistant",
+        "content": f"[{speaker}]: {body}",
+        "chat_scope": resolved_scope,
+    }
+    if resolved_scope == "private":
+        entry["character_key"] = speaker
+
+    user_histories[history_key].append(entry)
+    if len(user_histories[history_key]) > 20:
+        user_histories[history_key] = user_histories[history_key][-20:]
+
 
 _DETECTIVE_TAG_PATTERN = re.compile(r"^\[Detective to ([^\]]+)\]:\s*(.*)$", re.DOTALL)
 _SPEAKER_TAG_PATTERN = re.compile(r"^\[([^\]]+)\]:\s*(.*)$", re.DOTALL)
@@ -850,25 +899,32 @@ async def ask_for_dialogue(
         # Store the conversation with character identification
         if character_key:
             tagged_user_message = f"[Detective to {character_key}]: {user_message}"
-            tagged_assistant_reply = f"[{character_key}]: {assistant_reply}"
         else:
             tagged_user_message = user_message
-            tagged_assistant_reply = assistant_reply
-            
+
         resolved_scope = chat_scope if chat_scope in {"public", "private"} else "public"
         history_user = {"role": "user", "content": tagged_user_message, "chat_scope": resolved_scope}
-        history_assistant = {
-            "role": "assistant",
-            "content": tagged_assistant_reply,
-            "chat_scope": resolved_scope,
-        }
         if character_key and resolved_scope == "private":
             history_user["character_key"] = character_key
-            history_assistant["character_key"] = character_key
 
-        user_histories[history_key].extend([history_user, history_assistant])
-        if len(user_histories[history_key]) > 20: 
+        user_histories[history_key].append(history_user)
+        if len(user_histories[history_key]) > 20:
             user_histories[history_key] = user_histories[history_key][-20:]
+
+        if character_key:
+            append_character_line_to_history(
+                participant_code,
+                character_key,
+                assistant_reply,
+                chat_scope=resolved_scope,
+            )
+        else:
+            # Rare path without a character key: keep untagged assistant text.
+            user_histories[history_key].append(
+                {"role": "assistant", "content": assistant_reply, "chat_scope": resolved_scope}
+            )
+            if len(user_histories[history_key]) > 20:
+                user_histories[history_key] = user_histories[history_key][-20:]
         return assistant_reply
     except Exception as e:
         print(f"ERROR: Failed in ask_for_dialogue for participant {participant_code}: {e}")

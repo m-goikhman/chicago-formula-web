@@ -569,6 +569,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            position: relative;
         }
 
         .nav-button:hover {
@@ -581,6 +582,28 @@
 
         .nav-button.right {
             margin-left: auto;
+        }
+
+        .nav-badge {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: #e53935;
+            color: #fff;
+            font-size: 0.72em;
+            font-weight: 700;
+            line-height: 18px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+            pointer-events: none;
+        }
+
+        .nav-badge[hidden] {
+            display: none !important;
         }
 
         /* Hide login until async session check finishes (portal handoff / return visit) */

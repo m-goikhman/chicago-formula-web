@@ -29,7 +29,7 @@ from .game_config import (
 from .game_state_manager import game_state_manager
 from .progress_manager import progress_manager, TELL_SOURCE
 from .auth import is_test_mode_participant
-from .ai_services import ask_for_dialogue
+from .ai_services import ask_for_dialogue, append_character_line_to_history
 from .scripted_messages import (
     ScriptedBlock,
     extract_buttons_from_text as _sm_extract_buttons_from_text,
@@ -147,7 +147,6 @@ EP3_LOCATION_ACTIONS = {
     # Legacy action names from the former episode 2 (formula).
     "go_default_ep2": "default_ep3",
     "go_university_ep2": "university_ep3",
-    "go_alex_apartment_ep2": "alex_apartment_ep3",
 }
 EP3_USB_SHARE_ACTION = "share_usb_with_james"
 EP3_USB_SHARE_BUTTON_TEXT = "Show the USB to James"
@@ -155,6 +154,25 @@ EP3_USB_HANDOVER_NARRATOR = "You hand James the drive. He takes it."
 EP3_USB_EXPLANATION_FALLBACK = "I think Dr. Thornton needs more information."
 EP3_HEAD_OUT_ACTION = "ep3_head_out"
 EP3_HEAD_OUT_SWITCHER_NAME = "Let's head out"
+
+# Episode 3 plot progress. Single monotonic counter: every gate is a comparison,
+# so unreachable/contradictory combinations of the old booleans cannot be expressed.
+#   0 START       - arrived, nothing shown to James yet
+#   1 USB_HANDED  - drive handed over, waiting for the player's explanation
+#   2 VERDICT     - James called the formula nonsense
+#   3 DOUBT       - Scripted alex_plain_plane (plain/plane drive mix-up) played
+#   4 OUTRO       - Nina's university reveal + episode outro played (episode over)
+# The legacy booleans are kept in state as read-only mirrors (see _sync_ep3_legacy_flags)
+# for migrating pre-refactor saves and for saved-state inspection.
+EP3_PHASE_START = 0
+EP3_PHASE_USB_HANDED = 1
+EP3_PHASE_VERDICT = 2
+EP3_PHASE_DOUBT = 3
+EP3_PHASE_OUTRO = 4
+# After James's formula verdict, wait this many university player messages, then Nina pushes to Alex.
+EP3_POST_VERDICT_GO_TO_ALEX_AFTER = 6
+# After alex_plain_plane at the apartment, wait this many player messages, then Nina suggests checking the university.
+EP3_POST_PLAIN_PLANE_SMTH_TO_CHECK_AFTER = 3
 
 EP1_PRIVATE_MIN_TURNS_WITH_TWO_CHARACTERS = 10
 EP1_PRIVATE_MIN_TURNS_ANY = 12
@@ -728,7 +746,9 @@ def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
     current_location = get_stage_location(state, stage_number)
     if stage_number == EP3_FORMULA_STAGE:
         ep2_state = _get_ep2_director_state(state)
-        if ep2_state.get("ep3_outro_nina_shown", False):
+        # Episode over: lock the switcher to the current location. There is no
+        # intermediate "head out" entry any more — the finale plays on arrival.
+        if _get_ep3_phase(ep2_state) >= EP3_PHASE_OUTRO:
             current_cfg = locations_cfg.get(current_location, {})
             return [
                 {
@@ -740,30 +760,6 @@ def get_stage_locations_info(state: Dict, stage_number: int) -> List[Dict]:
                     "switcher_visible": True,
                     "current": True,
                 }
-            ]
-        if (
-            current_location in {"university_ep3", "university_ep2"}
-            and ep2_state.get("university_exit_menu_active", False)
-            and not ep2_state.get("ep3_outro_nina_shown", False)
-        ):
-            current_cfg = locations_cfg.get(current_location, {})
-            return [
-                {
-                    "key": current_location,
-                    "name": current_cfg.get("name", current_location),
-                    "action": current_cfg.get("action"),
-                    "texture_image": current_cfg.get("texture_image"),
-                    "location_image": current_cfg.get("location_image"),
-                    "switcher_visible": True,
-                    "current": True,
-                },
-                {
-                    "key": EP3_HEAD_OUT_ACTION,
-                    "name": EP3_HEAD_OUT_SWITCHER_NAME,
-                    "action": EP3_HEAD_OUT_ACTION,
-                    "switcher_visible": True,
-                    "current": False,
-                },
             ]
 
     if stage_number == EP4_STAGE:
@@ -1336,37 +1332,18 @@ def _contains_any(text: str, keywords: List[str]) -> bool:
     return any(keyword in lowered for keyword in keywords)
 
 
-def _mentions_formula_confrontation(text: str) -> bool:
+def _mentions_usb_or_formula(text: str) -> bool:
+    """True if the player message brings up the USB drive or the formula."""
     return _contains_any(
         text,
         [
             "formula",
-            "drive",
+            "the drive",
             "usb",
-            "files",
+            "the flash",
             "nonsense",
-            "expert",
-            "james",
-            "analysis",
         ],
     )
-
-
-_PLANE_PLAIN_STORY_PATTERNS = [
-    re.compile(r"\bairplane\b", re.IGNORECASE),
-    re.compile(r"\bplane\b", re.IGNORECASE),
-    re.compile(r"\bplain\b", re.IGNORECASE),
-    re.compile(r"\bmix[- ]up\b", re.IGNORECASE),
-    re.compile(r"\bmixed\s+up\b", re.IGNORECASE),
-    re.compile(r"\banother\s+drive\b", re.IGNORECASE),
-    re.compile(r"\bwrong\s+drive\b", re.IGNORECASE),
-]
-
-
-def _mentions_plane_plain_story(text: str) -> bool:
-    if not (text or "").strip():
-        return False
-    return any(pattern.search(text) for pattern in _PLANE_PLAIN_STORY_PATTERNS)
 
 
 def _is_english_usb_explanation(text: str) -> bool:
@@ -1391,60 +1368,91 @@ def _append_james_usb_formula_verdict(
     state: Dict,
     messages: List[Dict],
 ) -> None:
-    """Append the scripted USB formula verdict and mark university analysis done."""
+    """Append the scripted USB formula verdict and advance the episode to VERDICT."""
     ep2_state = _get_ep2_director_state(state)
-    ep2_state["usb_context_explained"] = True
+    # Set before rendering: the verdict prompt inject in utils.py keys off this phase.
+    _set_ep3_phase(ep2_state, EP3_PHASE_VERDICT)
     _append_scripted_game_text_to_messages(
         participant_code, messages, "james_formula_verdict", EP3_FORMULA_STAGE
     )
-    ep2_state["university_analysis_done"] = True
 
 
-def _build_ep2_nina_trigger(location: str, cue: str, user_message: str, other_reply: str) -> str:
-    if location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
-        if cue == "nudge_expert_before_university":
-            return (
-                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "This apartment visit happened before university analysis. Give a brief nudge to have the USB checked by an expert."
-            )
-        if cue == "hint_confront_formula":
-            return (
-                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "University already said the formula is nonsense, but detective is not confronting Alex yet. "
-                "Give a short hint on how to bring up James's analysis."
-            )
-        if cue == "wrap_alex_apartment":
-            return (
-                f"The detective asked: '{user_message}'. Alex replied: '{other_reply}'. "
-                "The apartment exchange is complete. Briefly signal that it's time to wrap up and move on."
-            )
+def _derive_ep3_phase_from_legacy_flags(ep2_state: Dict) -> int:
+    """Map a pre-refactor save onto the phase counter.
 
-    return (
-        f"The detective asked: '{user_message}'. Another character replied: '{other_reply}'. "
-        "Provide a short, useful follow-up."
-    )
+    A save that had the exit menu open but no outro yet lands on DOUBT, so the
+    glued finale replays for that player instead of being silently skipped.
+    """
+    if ep2_state.get("ep3_outro_nina_shown", False):
+        return EP3_PHASE_OUTRO
+    if (
+        ep2_state.get("alex_apartment_doubt_seed_done", False)
+        or ep2_state.get("university_final_after_doubt_done", False)
+        or ep2_state.get("university_exit_menu_active", False)
+    ):
+        return EP3_PHASE_DOUBT
+    if ep2_state.get("university_analysis_done", False) or ep2_state.get(
+        "usb_context_explained", False
+    ):
+        return EP3_PHASE_VERDICT
+    if ep2_state.get("usb_handover_requested", False):
+        return EP3_PHASE_USB_HANDED
+    return EP3_PHASE_START
+
+
+def _get_ep3_phase(ep2_state: Optional[Dict]) -> int:
+    """Current EP3 phase. Safe on raw `state["ep2_director"]` dicts (derives if absent)."""
+    if not ep2_state:
+        return EP3_PHASE_START
+    raw = ep2_state.get("ep3_phase")
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return max(EP3_PHASE_START, min(EP3_PHASE_OUTRO, raw))
+    return _derive_ep3_phase_from_legacy_flags(ep2_state)
+
+
+def _sync_ep3_legacy_flags(ep2_state: Dict, phase: int) -> None:
+    """Mirror the phase onto the old booleans. Phase is the single source of truth."""
+    ep2_state["usb_handover_requested"] = phase >= EP3_PHASE_USB_HANDED
+    ep2_state["usb_handover_reacted"] = phase >= EP3_PHASE_USB_HANDED
+    ep2_state["usb_context_explained"] = phase >= EP3_PHASE_VERDICT
+    ep2_state["university_analysis_done"] = phase >= EP3_PHASE_VERDICT
+    ep2_state["alex_apartment_doubt_seed_done"] = phase >= EP3_PHASE_DOUBT
+    ep2_state["university_final_after_doubt_done"] = phase >= EP3_PHASE_OUTRO
+    ep2_state["ep3_outro_nina_shown"] = phase >= EP3_PHASE_OUTRO
+    # The separate "head out" step is gone: the finale is glued to the outro.
+    ep2_state["university_exit_menu_active"] = False
+
+
+def _set_ep3_phase(ep2_state: Dict, phase: int) -> int:
+    """Advance the phase. Monotonic — a stale or repeated call can never roll the plot back."""
+    new_phase = max(_get_ep3_phase(ep2_state), int(phase))
+    ep2_state["ep3_phase"] = new_phase
+    _sync_ep3_legacy_flags(ep2_state, new_phase)
+    return new_phase
 
 
 def _get_ep2_director_state(state: Dict) -> Dict:
     ep2_state = state.setdefault("ep2_director", {})
     ep2_state.setdefault("visited_locations", [])
-    ep2_state.setdefault("alex_apartment_turns", 0)
     ep2_state.setdefault("university_analysis_done", False)
-    ep2_state.setdefault("alex_apartment_preuni_nudge_done", False)
-    ep2_state.setdefault("alex_apartment_confront_hint_done", False)
     ep2_state.setdefault("alex_apartment_doubt_seed_done", False)
     ep2_state.setdefault("university_final_after_doubt_done", False)
-    ep2_state.setdefault("alex_apartment_wrap_done", False)
-    ep2_state.setdefault("alex_apartment_post_verdict_turns_without_confront", 0)
+    ep2_state.setdefault("alex_post_plain_plane_messages", 0)
+    ep2_state.setdefault("nina_smth_to_check_played", False)
     ep2_state.setdefault("usb_handover_requested", False)
     ep2_state.setdefault("usb_handover_reacted", False)
     ep2_state.setdefault("usb_context_explained", False)
     ep2_state.setdefault("james_player_messages", 0)
     ep2_state.setdefault("james_formula_played", False)
+    ep2_state.setdefault("university_post_verdict_messages", 0)
+    ep2_state.setdefault("nina_go_to_alex_played", False)
     ep2_state.setdefault("witness_openers_played", [])
     ep2_state.setdefault("university_exit_menu_active", False)
     ep2_state.setdefault("ep3_outro_nina_shown", False)
     ep2_state.setdefault("ep3_outro_questionnaire_shown", False)
+    # Normalize on every read: migrates pre-refactor saves once, then keeps the
+    # legacy mirrors consistent with the phase.
+    _set_ep3_phase(ep2_state, _get_ep3_phase(ep2_state))
     return ep2_state
 
 
@@ -1486,11 +1494,11 @@ def _build_messages_from_scripted_opener_text(
             participant_code,
             block.text,
             block.sender or default_sender,
+            chat_scope=chat_scope,
         )
         _apply_block_image(message, block)
         if buttons and index == len(blocks) - 1:
             message["buttons"] = buttons
-        message["chat_scope"] = chat_scope
         messages.append(message)
     return messages
 
@@ -1703,10 +1711,22 @@ async def _handle_ep2_scripted_public_message(
         visited_locations.append(current_location)
         ep2_state["visited_locations"] = visited_locations
 
+    # Episode is at DOUBT and the player is (back) at the university: play the finale
+    # here too, not only on the location transition. Covers migrated saves and any
+    # transition whose scripted insert failed.
     if (
         current_location in {"university_ep3", "university_ep2"}
-        and ep2_state.get("usb_handover_requested", False)
-        and not ep2_state.get("usb_context_explained", False)
+        and _get_ep3_phase(ep2_state) == EP3_PHASE_DOUBT
+    ):
+        finale_messages: List[Dict] = []
+        if _append_ep3_finale_messages(participant_code, state, finale_messages):
+            log_message("user", message_text, participant_code)
+            messages.extend(finale_messages)
+            return messages
+
+    if (
+        current_location in {"university_ep3", "university_ep2"}
+        and _get_ep3_phase(ep2_state) == EP3_PHASE_USB_HANDED
     ):
         if not _is_english_usb_explanation(message_text):
             log_message("user", message_text, participant_code)
@@ -1792,105 +1812,60 @@ async def _handle_ep2_scripted_public_message(
         }
     )
 
-    # Decide if Nina should interject in this turn based on EP2 prompt conditions.
-    nina_cue: Optional[str] = None
-    university_visited = bool(
-        {"university_ep3", "university_ep2"} & set(ep2_state.get("visited_locations", []))
-    )
-    analysis_done = ep2_state.get("university_analysis_done", False)
-
-    if current_location in {"alex_apartment_ep3", "alex_apartment_ep2"}:
-        ep2_state["alex_apartment_turns"] = int(ep2_state.get("alex_apartment_turns", 0)) + 1
-
-        if not analysis_done:
-            if ep2_state["alex_apartment_turns"] >= 3 and not ep2_state.get("alex_apartment_preuni_nudge_done", False):
-                ep2_state["alex_apartment_preuni_nudge_done"] = True
-                nina_cue = "nudge_expert_before_university"
-        else:
-            if _mentions_formula_confrontation(message_text):
-                ep2_state["alex_apartment_post_verdict_turns_without_confront"] = 0
-            else:
-                ep2_state["alex_apartment_post_verdict_turns_without_confront"] = int(
-                    ep2_state.get("alex_apartment_post_verdict_turns_without_confront", 0)
-                ) + 1
-                if (
-                    ep2_state["alex_apartment_post_verdict_turns_without_confront"] >= 2
-                    and not ep2_state.get("alex_apartment_confront_hint_done", False)
-                ):
-                    ep2_state["alex_apartment_confront_hint_done"] = True
-                    nina_cue = "hint_confront_formula"
-
-        if not ep2_state.get("alex_apartment_doubt_seed_done", False) and _mentions_plane_plain_story(other_reply):
-            ep2_state["alex_apartment_doubt_seed_done"] = True
-            _append_scripted_game_text_to_messages(
-                participant_code, messages, "nina_smth_to_check", current_stage
-            )
-
+    if current_location == "alex_apartment_ep3":
+        # Requires VERDICT: visiting Alex first can no longer skip James's analysis.
+        # Alex already answered via LLM above; glue the scripted plain/plane beat after it.
+        # Then wait EP3_POST_PLAIN_PLANE_SMTH_TO_CHECK_AFTER player messages before Nina's follow-up.
         if (
-            not ep2_state.get("alex_apartment_wrap_done", False)
-            and ep2_state["alex_apartment_turns"] >= 5
-            and (
-                ep2_state.get("alex_apartment_preuni_nudge_done", False)
-                or university_visited
+            _get_ep3_phase(ep2_state) == EP3_PHASE_VERDICT
+            and _mentions_usb_or_formula(message_text)
+            and _append_scripted_game_text_to_messages(
+                participant_code, messages, "alex_plain_plane", current_stage
             )
         ):
-            ep2_state["alex_apartment_wrap_done"] = True
-            nina_cue = nina_cue or "wrap_alex_apartment"
-
-    if nina_cue and "nina" in stage_characters and "nina" in CHARACTER_DATA:
-        nina_prompt = load_system_prompt(get_prompt_path("nina", current_stage, current_location))
-        nina_trigger = _build_ep2_nina_trigger(current_location, nina_cue, message_text, other_reply)
-        try:
-            if debug_mode_enabled:
-                debug_snapshot = _build_public_input_debug_snapshot(
-                    participant_code=participant_code,
-                    state=state,
-                    char_key="nina",
-                    system_prompt=nina_prompt,
-                    user_input=nina_trigger,
+            _set_ep3_phase(ep2_state, EP3_PHASE_DOUBT)
+            ep2_state["alex_post_plain_plane_messages"] = 0
+        elif (
+            _get_ep3_phase(ep2_state) == EP3_PHASE_DOUBT
+            and not ep2_state.get("nina_smth_to_check_played", False)
+        ):
+            ep2_state["alex_post_plain_plane_messages"] = (
+                int(ep2_state.get("alex_post_plain_plane_messages", 0)) + 1
+            )
+            if (
+                ep2_state["alex_post_plain_plane_messages"]
+                == EP3_POST_PLAIN_PLANE_SMTH_TO_CHECK_AFTER
+                and _append_scripted_game_text_to_messages(
+                    participant_code, messages, "nina_smth_to_check", current_stage
                 )
-                _append_debug_message(messages, debug_snapshot)
-            nina_reply = await ask_for_dialogue(
-                participant_code,
-                nina_trigger,
-                nina_prompt,
-                "nina",
-                participant_code,
-            )
-            if debug_mode_enabled:
-                _append_contradiction_guard_debug_message(messages, state)
-        except Exception as exc:
-            logger.error(f"Failed to get scripted EP2 Nina interjection: {exc}")
-            nina_reply = None
-
-        if nina_reply:
-            nina_data = CHARACTER_DATA["nina"]
-            nina_message_id = generate_message_id()
-            save_message_to_cache(nina_message_id, nina_reply, "nina")
-            log_message("character_nina", nina_reply, participant_code)
-            messages.append(
-                {
-                    "type": "character",
-                    "character": "nina",
-                    "character_name": nina_data["full_name"],
-                    "character_image": nina_data.get("image"),
-                    "content": nina_reply,
-                    "message_id": nina_message_id,
-                    "show_explain": True,
-                }
-            )
+            ):
+                ep2_state["nina_smth_to_check_played"] = True
 
     if current_location in {"university_ep3", "university_ep2"}:
         ep2_state["james_player_messages"] = int(ep2_state.get("james_player_messages", 0)) + 1
         if (
             ep2_state["james_player_messages"] == 3
             and not ep2_state.get("james_formula_played", False)
-            and not ep2_state.get("usb_handover_requested", False)
+            and _get_ep3_phase(ep2_state) == EP3_PHASE_START
         ):
             ep2_state["james_formula_played"] = True
             _append_scripted_game_text_to_messages(
                 participant_code, messages, "james_formula", current_stage
             )
+
+        if _get_ep3_phase(ep2_state) == EP3_PHASE_VERDICT:
+            ep2_state["university_post_verdict_messages"] = (
+                int(ep2_state.get("university_post_verdict_messages", 0)) + 1
+            )
+            if (
+                ep2_state["university_post_verdict_messages"]
+                == EP3_POST_VERDICT_GO_TO_ALEX_AFTER
+                and not ep2_state.get("nina_go_to_alex_played", False)
+            ):
+                ep2_state["nina_go_to_alex_played"] = True
+                _append_scripted_game_text_to_messages(
+                    participant_code, messages, "nina_go_to_alex", current_stage
+                )
 
     _sync_last_public_responder_from_messages(state, messages)
     return messages
@@ -2023,8 +1998,20 @@ def resolve_action_text_from_game_texts(
     return message_blocks, buttons, sender_key
 
 
-def _build_character_message_for_sender(participant_code: str, text: str, sender_key: str) -> Dict:
-    """Create a character message from sender metadata and log it."""
+def _build_character_message_for_sender(
+    participant_code: str,
+    text: str,
+    sender_key: str,
+    *,
+    chat_scope: str = "public",
+    record_in_history: bool = True,
+) -> Dict:
+    """Create a character message from sender metadata and log it.
+
+    When ``record_in_history`` is True (default), the line is also appended to the
+    in-memory dialogue history fed to the model — same format as LLM replies, with
+    no marker that the line came from a game_texts script.
+    """
     message_id = generate_message_id()
     normalized_sender = str(sender_key or "").strip().lower()
 
@@ -2047,9 +2034,17 @@ def _build_character_message_for_sender(participant_code: str, text: str, sender
     log_role = "narrator" if resolved_sender == "narrator" else f"character_{resolved_sender}"
     log_message(log_role, text, participant_code)
 
+    if record_in_history:
+        append_character_line_to_history(
+            participant_code,
+            resolved_sender,
+            text,
+            chat_scope=chat_scope,
+        )
+
     if resolved_sender == "narrator":
         save_message_to_cache(message_id, text, "narrator")
-        return {
+        message = {
             "type": "character",
             "character": "narrator",
             "character_name": "Narrator",
@@ -2057,18 +2052,22 @@ def _build_character_message_for_sender(participant_code: str, text: str, sender
             "message_id": message_id,
             "show_explain": True,
         }
+    else:
+        char_data = CHARACTER_DATA.get(resolved_sender, {})
+        save_message_to_cache(message_id, text, resolved_sender)
+        message = {
+            "type": "character",
+            "character": resolved_sender,
+            "character_name": char_data.get("full_name", resolved_sender.capitalize()),
+            "character_image": char_data.get("image"),
+            "content": text,
+            "message_id": message_id,
+            "show_explain": True,
+        }
 
-    char_data = CHARACTER_DATA.get(resolved_sender, {})
-    save_message_to_cache(message_id, text, resolved_sender)
-    return {
-        "type": "character",
-        "character": resolved_sender,
-        "character_name": char_data.get("full_name", resolved_sender.capitalize()),
-        "character_image": char_data.get("image"),
-        "content": text,
-        "message_id": message_id,
-        "show_explain": True,
-    }
+    if chat_scope:
+        message["chat_scope"] = chat_scope
+    return message
 
 
 async def handle_ep4_fiona_reassured(participant_code: str) -> List[Dict]:
@@ -2682,11 +2681,10 @@ def _build_scripted_nina_outro_messages(
     outro_messages: List[Dict] = []
     for index, block in enumerate(nina_blocks):
         msg = _build_character_message_for_sender(
-            participant_code, block.text, block.sender or "nina"
+            participant_code, block.text, block.sender or "nina", chat_scope="public"
         )
         _apply_block_image(msg, block)
         msg["show_explain"] = False
-        msg["chat_scope"] = "public"
         ui: Dict = {"caseMaterialsAccusationAvailable": False}
         if index == 0 and first_block_ui:
             ui.update(first_block_ui)
@@ -2699,8 +2697,50 @@ def _build_scripted_nina_outro_messages(
     return outro_messages
 
 
+def _append_ep3_finale_messages(
+    participant_code: str,
+    state: Dict,
+    messages: List[Dict],
+) -> bool:
+    """Play Nina's university reveal glued to the episode outro, and close the episode.
+
+    The reveal is cliffhanger enough to end on, so there is no separate "head out"
+    step any more. The phase only advances if the outro actually rendered — a missing
+    or unreadable text file leaves the player at DOUBT and the next message retries,
+    instead of locking them into a finished episode with nothing to click.
+    """
+    ep2_state = _get_ep2_director_state(state)
+    if _get_ep3_phase(ep2_state) != EP3_PHASE_DOUBT:
+        return False
+
+    finale: List[Dict] = []
+    _append_scripted_game_text_to_messages(
+        participant_code, finale, "nina_university_final", EP3_FORMULA_STAGE
+    )
+
+    try:
+        outro_messages = _build_scripted_nina_outro_messages(participant_code, EP3_FORMULA_STAGE)
+    except Exception as exc:
+        logger.error(f"Failed to build EP3 outro messages: {exc}")
+        outro_messages = []
+
+    if not outro_messages:
+        logger.error("EP3 finale produced no outro; phase left at DOUBT so it can be retried.")
+        return False
+
+    finale.extend(outro_messages)
+    messages.extend(finale)
+    _sync_last_public_responder_for_public_mode(state, finale)
+    _set_ep3_phase(ep2_state, EP3_PHASE_OUTRO)
+    return True
+
+
 async def handle_ep3_head_out(participant_code: str) -> List[Dict]:
-    """Episode 3 university finale: Nina outro in the main chat after the player heads out."""
+    """Legacy EP3 exit action.
+
+    The finale now plays on arrival at the university, so this button is no longer
+    emitted. Kept as a compatibility path for stale clients and cached messages.
+    """
     state = GAME_STATE.get(participant_code)
     if not state:
         return [{"type": "error", "content": "Game not initialized."}]
@@ -2713,22 +2753,15 @@ async def handle_ep3_head_out(participant_code: str) -> List[Dict]:
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
     ep2_state = _get_ep2_director_state(state)
-    if not ep2_state.get("university_final_after_doubt_done", False):
-        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
-
-    if not ep2_state.get("university_exit_menu_active", False):
-        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
-
-    if ep2_state.get("ep3_outro_nina_shown", False):
+    if _get_ep3_phase(ep2_state) >= EP3_PHASE_OUTRO:
         return []
 
-    ep2_state["university_exit_menu_active"] = False
-    ep2_state["ep3_outro_nina_shown"] = True
+    messages: List[Dict] = []
+    if not _append_ep3_finale_messages(participant_code, state, messages):
+        return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
-    outro_messages = _build_scripted_nina_outro_messages(participant_code, EP3_FORMULA_STAGE)
-    _sync_last_public_responder_for_public_mode(state, outro_messages)
     await game_state_manager.save_game_state(participant_code, state)
-    return outro_messages
+    return messages
 
 
 async def handle_ep3_outro_questionnaire(participant_code: str) -> List[Dict]:
@@ -2741,7 +2774,7 @@ async def handle_ep3_outro_questionnaire(participant_code: str) -> List[Dict]:
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
     ep2_state = _get_ep2_director_state(state)
-    if not ep2_state.get("ep3_outro_nina_shown", False):
+    if _get_ep3_phase(ep2_state) < EP3_PHASE_OUTRO:
         return [{"type": "system", "content": "That isn't available right now.", "show_explain": False}]
 
     if ep2_state.get("ep3_outro_questionnaire_shown", False):
@@ -3417,29 +3450,21 @@ async def start_game_handler(participant_code: str) -> Tuple[List[Dict], Dict]:
     
     # Check for existing game state
     saved_state_data = await game_state_manager.load_game_state(participant_code)
-    
+
+    # NOTE: `game_completed` means Episode 2 accusation/resolution finished — NOT the whole
+    # multi-episode study. Never delete persisted progress because of that flag (that wipe
+    # caused participants who continued into EP3/EP4 to lose their history on later login).
+
+    # GCS is source of truth across Cloud Run instances. Always prefer the persisted snapshot
+    # on /api/game/start so a stale in-memory wipe on a warm instance cannot hide a restore.
     if saved_state_data and saved_state_data.get("state"):
-        saved_state = saved_state_data["state"]
-        
-        # If game completed, start fresh
-        if saved_state.get("game_completed"):
-            logger.info(f"Participant {participant_code}: Previous game completed, starting fresh")
-            await game_state_manager.delete_game_state(participant_code)
-            progress_manager.clear_participant_progress(participant_code, source=TELL_SOURCE)
-    
-    # Initialize or restore game state
-    if participant_code not in GAME_STATE:
-        if saved_state_data and saved_state_data.get("state"):
-            # Restore existing state and migrate if needed
-            state = saved_state_data["state"]
-            state = migrate_legacy_game_state(state)
-            GAME_STATE[participant_code] = state
-            logger.info(f"Participant {participant_code}: Game state restored and migrated")
-        else:
-            GAME_STATE[participant_code] = initialize_game_state(participant_code)
-            logger.info(f"Participant {participant_code}: Game state initialized")
+        state = migrate_legacy_game_state(saved_state_data["state"])
+        GAME_STATE[participant_code] = state
+        logger.info(f"Participant {participant_code}: Game state restored and migrated from storage")
+    elif participant_code not in GAME_STATE:
+        GAME_STATE[participant_code] = initialize_game_state(participant_code)
+        logger.info(f"Participant {participant_code}: Game state initialized")
     else:
-        # Ensure in-memory state is migrated
         GAME_STATE[participant_code] = migrate_legacy_game_state(GAME_STATE[participant_code])
     
     state = GAME_STATE[participant_code]
@@ -3872,7 +3897,7 @@ async def handle_location_transition(participant_code: str, action: str) -> List
 
     if stage_number == EP3_FORMULA_STAGE:
         ep2_state = _get_ep2_director_state(state)
-        if ep2_state.get("ep3_outro_nina_shown", False):
+        if _get_ep3_phase(ep2_state) >= EP3_PHASE_OUTRO:
             return [{"type": "error", "content": "That isn't available right now."}]
 
     set_stage_location(state, stage_number, target_location)
@@ -3902,21 +3927,14 @@ async def handle_location_transition(participant_code: str, action: str) -> List
         transition_message["ui"]["imageFirst"] = True
     messages = [transition_message]
     if stage_number == EP3_FORMULA_STAGE:
+        finale_played = False
         if target_location in {"university_ep3", "university_ep2"}:
-            ep2_state = _get_ep2_director_state(state)
-            if (
-                ep2_state.get("alex_apartment_doubt_seed_done", False)
-                and not ep2_state.get("university_final_after_doubt_done", False)
-                and _append_scripted_game_text_to_messages(
-                    participant_code,
-                    messages,
-                    "nina_university_final",
-                    EP3_FORMULA_STAGE,
-                )
-            ):
-                ep2_state["university_final_after_doubt_done"] = True
-                ep2_state["university_exit_menu_active"] = True
-        if target_location in EP3_SCRIPTED_LOCATIONS:
+            # Returning to the university at DOUBT ends the episode: reveal + outro.
+            finale_played = _append_ep3_finale_messages(participant_code, state, messages)
+        if finale_played:
+            # Episode is over — don't tack a greeting onto the outro.
+            pass
+        elif target_location in EP3_SCRIPTED_LOCATIONS:
             await _append_ep2_witness_opener_if_needed(
                 participant_code,
                 state,
@@ -4890,6 +4908,7 @@ async def handle_clue_examination(participant_code: str, clue_id: str, forced_st
         and clue_id == "1"
         and current_location in {"university_ep3", "university_ep2"}
         and not clue_buttons
+        and _get_ep3_phase(_get_ep2_director_state(state)) < EP3_PHASE_VERDICT
     ):
         clue_buttons = [{"text": EP3_USB_SHARE_BUTTON_TEXT, "action": EP3_USB_SHARE_ACTION}]
 
@@ -4995,8 +5014,7 @@ def _ep1_dialogs_closed(state: Optional[Dict]) -> bool:
     if current_stage == EP2_PAULINE_STAGE:
         return bool(state.get("game_completed", False))
     if current_stage == EP3_FORMULA_STAGE:
-        ep2_state = state.get("ep2_director", {})
-        return bool(ep2_state.get("ep3_outro_nina_shown", False))
+        return _get_ep3_phase(state.get("ep2_director", {})) >= EP3_PHASE_OUTRO
     if current_stage == EP4_STAGE:
         ep4_state = state.get("ep4_director", {})
         return bool(ep4_state.get("ep4_outro_shown", False))
@@ -5481,7 +5499,9 @@ async def handle_make_accusation(participant_code: str, accused_key: str) -> Lis
         return messages
 
     # Episode 2: full resolution flow
-    # Correct accusation -> win
+    # Correct accusation -> win.
+    # `game_completed` here is EP2-scoped (closes EP2 input / unlocks USB outro). It must NOT
+    # wipe persisted multi-episode progress on later /api/game/start calls.
     if accused_key == EP2_ACCUSATION_CORRECT_KEY:
         state["game_completed"] = True
         state["accuse_unlocked"] = False
@@ -5803,10 +5823,17 @@ async def handle_share_usb_with_james(participant_code: str) -> List[Dict]:
         return [{"type": "error", "content": "You can show the USB to James only at the university."}]
 
     ep2_state = _get_ep2_director_state(state)
-    ep2_state["usb_handover_requested"] = True
-    ep2_state["usb_handover_reacted"] = True
-    ep2_state["usb_context_explained"] = False
-    ep2_state["university_analysis_done"] = False
+    # Re-examining the clue used to re-arm this action and reset the analysis flags,
+    # knocking the episode backwards. The phase is monotonic, so just refuse instead.
+    if _get_ep3_phase(ep2_state) >= EP3_PHASE_VERDICT:
+        return [
+            {
+                "type": "system",
+                "content": "James has already looked at the drive.",
+                "show_explain": False,
+            }
+        ]
+    _set_ep3_phase(ep2_state, EP3_PHASE_USB_HANDED)
 
     # Force public exchange for this mini-flow so the scripted EP2 gate handles the next player message.
     state["mode"] = "public"

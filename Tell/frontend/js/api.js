@@ -273,6 +273,49 @@ function setNavigationUnlocked(unlocked) {
     }
 }
 
+function unlockNavigationFromServerOrHistory(options = {}) {
+    const alreadyUnlocked = isNavigationUnlocked();
+    const fromServer = Boolean(options.navigationUnlocked);
+    const fromStage = Number(options.currentStage || window.currentStageNumber || 1) > 1;
+    const fromCompleted = Boolean(options.stageCompleted);
+    const fromMessages = shouldUnlockNavigationFromMessages(options.messages);
+    const shouldUnlock = fromServer || fromStage || fromCompleted || fromMessages;
+    if (!shouldUnlock) {
+        return alreadyUnlocked;
+    }
+    setNavigationUnlocked(true);
+    updateNavigationBarVisibility();
+    if (typeof window.updatePrivateModeControls === 'function') {
+        window.updatePrivateModeControls();
+    }
+    syncNinaFloatingButtonVisibility();
+    return true;
+}
+
+function shouldUnlockNavigationFromMessages(messages) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return false;
+    }
+    // Past the intro "Talk / Evidence" choice: any real investigation content.
+    if (messages.some((message) => message && message.type === 'user')) {
+        return true;
+    }
+    if (messages.some((message) => message && message.type === 'menu')) {
+        return true;
+    }
+    return messages.some((message) => {
+        if (!message || typeof message !== 'object') {
+            return false;
+        }
+        if (message.ui && message.ui.showInput === true) {
+            return true;
+        }
+        const content = String(message.content || '').trim();
+        return content.startsWith('You arrived at')
+            || content.startsWith('👥 FOUR PEOPLE ARE IN THE APARTMENT');
+    });
+}
+
 const TELL_CHAT_SCROLL_PREFIX = 'tell_chat_scroll_v1:';
 
 function tellChatScrollStorageKey() {
@@ -605,6 +648,10 @@ async function loadGame() {
             clearNinaChatMessages();
             const displayOptions = data.animate_messages === true ? {} : { instant: true };
             await displayMessagesSequentially(data.messages, 0, displayOptions);
+            unlockNavigationFromServerOrHistory({
+                messages: data.messages,
+                currentStage: window.currentStageNumber,
+            });
             if (shouldRestoreInputFromLoadedMessages(data.messages)) {
                 ensureMainInputVisible();
             }
@@ -879,6 +926,15 @@ async function handleAction(action, closeDrawersOnSuccess = true, selectedOption
         // Close drawers on success
         if (closeDrawersOnSuccess) {
             closeAllDrawers();
+        }
+
+        const examinedEvidenceKey = (
+            typeof window.evidenceKeyFromExamineAction === 'function'
+                ? window.evidenceKeyFromExamineAction(normalizedAction)
+                : null
+        );
+        if (examinedEvidenceKey && typeof window.markCaseMaterialExamined === 'function') {
+            window.markCaseMaterialExamined(examinedEvidenceKey);
         }
         
         // Show Nina floating button when investigation starts (last intro step sends case_intro_next, backend returns menu)
@@ -1601,6 +1657,11 @@ async function loadEpisodeSelector() {
         window.currentStageNumber = currentStage;
         window.ep1GameCompleted = Boolean(data.game_completed);
         window.ep1UsbDriveUnlocked = Boolean(data.ep1_usb_drive_unlocked);
+        if (typeof window.setExaminedClues === 'function') {
+            window.setExaminedClues(data.clues_examined || []);
+        } else {
+            window.cluesExamined = new Set((data.clues_examined || []).map((item) => String(item)));
+        }
         const ep1StageInfo = stagesInfo.find((s) => s.stage === 1);
         window.ep1PartyCompleted = ep1StageInfo?.status === 'completed' || ep1StageInfo?.completed === true;
         const ep3StageInfo = stagesInfo.find((s) => s.stage === 3);
@@ -1608,6 +1669,12 @@ async function loadEpisodeSelector() {
         const ep4StageInfo = stagesInfo.find((s) => s.stage === 4);
         window.ep4GameCompleted = ep4StageInfo?.status === 'completed' || ep4StageInfo?.completed === true;
         window.ep4NinaChatAvailable = Boolean(data.ep4_nina_chat_available);
+
+        unlockNavigationFromServerOrHistory({
+            navigationUnlocked: data.navigation_unlocked,
+            currentStage,
+            stageCompleted: Boolean(window.ep1PartyCompleted) || (Array.isArray(data.stages_completed) && data.stages_completed.length > 0),
+        });
         
         // Set current episode's characters for drawer and typing indicator (before any early return)
         const currentStageInfo = stagesInfo.find(s => s.stage === currentStage);
@@ -1621,6 +1688,9 @@ async function loadEpisodeSelector() {
         if (typeof window.applyEp1CaseClosedUi === 'function') window.applyEp1CaseClosedUi();
         if (window.renderLocationSwitcher) {
             window.renderLocationSwitcher(currentStageInfo || { stage: currentStage, locations: [] });
+        }
+        if (typeof window.updatePrivateModeControls === 'function') {
+            window.updatePrivateModeControls();
         }
 
         const ninaButton = document.getElementById('ninaFloatingButton');

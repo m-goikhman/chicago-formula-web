@@ -1,0 +1,12 @@
+[from: nina]
+Detective, Dr. Thornton — sorry, can I go back to something? I've been thinking about it this whole time.
+---
+[from: nina]
+The formula is nonsense. But someone attacked Alex over it. Maybe they didn't know it was worthless, or the formula they came for isn't the one we're holding.
+---
+[from: nina]
+Let's go to see Alex and ask him why an expert would call his work nonsense.
+
+[buttons]
+Let's go to Alex|go_alex_apartment_ep3
+I have more questions for James|inline::james>>Sure, go ahead.

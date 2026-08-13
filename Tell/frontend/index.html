@@ -118,7 +118,10 @@
             <!-- Navigation buttons -->
             <div class="navigation-bar" id="navigationBar" style="display: none;">
                 <button class="nav-button" onclick="toggleLeftDrawer()">Who's here</button>
-                <button class="nav-button right" onclick="toggleRightDrawer()">Case Materials</button>
+                <button class="nav-button right" id="caseMaterialsNavButton" onclick="toggleRightDrawer()">
+                    Case Materials
+                    <span class="nav-badge" id="caseMaterialsBadge" hidden aria-hidden="true">0</span>
+                </button>
             </div>
             <!-- Left Drawer - Characters -->
             <div id="leftDrawer" class="drawer left-drawer">
