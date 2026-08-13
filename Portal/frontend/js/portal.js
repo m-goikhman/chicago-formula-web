@@ -204,6 +204,120 @@
         return !sharedConfig.isLocalhost;
     }
 
+    const CONSENT_DOCUMENTS = [
+        {
+            id: 1,
+            src: {
+                en: 'consent_forms/information-sheet.en.html',
+                it: 'consent_forms/information-sheet.it.html'
+            },
+            titleKey: 'toggle1Title',
+            titleEn: 'Study information sheet',
+            checkKey: 'check1Label',
+            checkEn: 'I have read and accept the study information sheet.'
+        },
+        {
+            id: 2,
+            src: {
+                en: 'consent_forms/consent-declaration.en.html',
+                it: 'consent_forms/consent-declaration.it.html'
+            },
+            titleKey: 'toggle2Title',
+            titleEn: 'Consent declaration',
+            checkKey: 'check2Label',
+            checkEn: 'I give my consent to participate in the proposed study.'
+        },
+        {
+            id: 3,
+            src: {
+                en: 'consent_forms/privacy-notice.en.html',
+                it: 'consent_forms/privacy-notice.it.html'
+            },
+            titleKey: 'toggle3Title',
+            titleEn: 'Privacy notice for research data processing',
+            checkKey: 'check3Label',
+            checkEn: 'I have read and accept the privacy notice.'
+        }
+    ];
+
+    function renderConsentBlocks() {
+        const root = document.getElementById('consentBlocks');
+        if (!root) {
+            return [];
+        }
+        root.innerHTML = CONSENT_DOCUMENTS.map((doc) => `
+            <div class="consent-block">
+                <button type="button" class="consent-toggle" aria-expanded="false" aria-controls="consentExpandable${doc.id}" id="consentToggle${doc.id}">
+                    <span class="consent-toggle-title" data-i18n="${doc.titleKey}">${doc.titleEn}</span>
+                    <span class="consent-toggle-icon" aria-hidden="true"></span>
+                </button>
+                <div class="consent-expandable" id="consentExpandable${doc.id}">
+                    <button type="button" class="consent-close" aria-label="Close">×</button>
+                    <div class="consent-body" id="consentBody${doc.id}"></div>
+                    <label class="consent-checkbox-label">
+                        <input type="checkbox" class="consent-checkbox" id="consentCheck${doc.id}" autocomplete="off">
+                        <span data-i18n="${doc.checkKey}">${doc.checkEn}</span>
+                    </label>
+                </div>
+            </div>
+        `).join('');
+
+        return CONSENT_DOCUMENTS.map((doc) => ({
+            ...doc,
+            toggle: document.getElementById(`consentToggle${doc.id}`),
+            expandable: document.getElementById(`consentExpandable${doc.id}`),
+            body: document.getElementById(`consentBody${doc.id}`),
+            checkbox: document.getElementById(`consentCheck${doc.id}`)
+        }));
+    }
+
+    const consentHtmlCache = {};
+    let consentLoadSeq = 0;
+
+    function loadConsentBodies(lang) {
+        const resolved = lang === 'it' ? 'it' : 'en';
+        const seq = ++consentLoadSeq;
+        return Promise.all(consentBlocks.map(async (block) => {
+            if (!block.body) {
+                return;
+            }
+            const src = block.src[resolved] || block.src.en;
+            if (block.loadedSrc === src) {
+                return;
+            }
+            try {
+                if (!consentHtmlCache[src]) {
+                    const response = await fetch(src);
+                    if (!response.ok) {
+                        throw new Error(String(response.status));
+                    }
+                    consentHtmlCache[src] = await response.text();
+                }
+                if (seq !== consentLoadSeq) {
+                    return;
+                }
+                block.body.innerHTML = consentHtmlCache[src];
+                block.loadedSrc = src;
+            } catch (err) {
+                if (seq !== consentLoadSeq) {
+                    return;
+                }
+                block.body.innerHTML = resolved === 'it'
+                    ? '<p>Impossibile caricare questo documento. Aggiorna la pagina.</p>'
+                    : '<p>Could not load this document. Please refresh the page.</p>';
+                block.loadedSrc = null;
+            }
+        }));
+    }
+
+    const consentBlocks = renderConsentBlocks();
+    const originalPortalSwitchLang = global.portalSwitchLang;
+    global.portalSwitchLang = function (lang) {
+        if (typeof originalPortalSwitchLang === 'function') {
+            originalPortalSwitchLang(lang);
+        }
+        loadConsentBodies(lang);
+    };
     const consentView = document.getElementById('consentView');
     const surveyView = document.getElementById('surveyView');
     const surveyForm = document.getElementById('surveyForm');
@@ -223,18 +337,6 @@
     const assignedContinueBtn = document.getElementById('assignedContinueBtn');
     const studyCodeInstructions = document.getElementById('studyCodeInstructions');
     const participantInput = document.getElementById('participantCode');
-    const consentToggle1 = document.getElementById('consentToggle1');
-    const consentToggle2 = document.getElementById('consentToggle2');
-    const consentToggle3 = document.getElementById('consentToggle3');
-    const consentExpandable1 = document.getElementById('consentExpandable1');
-    const consentExpandable2 = document.getElementById('consentExpandable2');
-    const consentExpandable3 = document.getElementById('consentExpandable3');
-    const consentBody1 = document.getElementById('consentBody1');
-    const consentBody2 = document.getElementById('consentBody2');
-    const consentBody3 = document.getElementById('consentBody3');
-    const consentCheck1 = document.getElementById('consentCheck1');
-    const consentCheck2 = document.getElementById('consentCheck2');
-    const consentCheck3 = document.getElementById('consentCheck3');
     const consentContinueButton = document.getElementById('consentContinueButton');
     const loginButton = document.getElementById('loginButton');
     const loginError = document.getElementById('loginError');
@@ -825,21 +927,13 @@
     }
 
     function resetConsentUI() {
-        if (consentCheck1) {
-            consentCheck1.checked = false;
-        }
-        if (consentCheck2) {
-            consentCheck2.checked = false;
-        }
-        if (consentCheck3) {
-            consentCheck3.checked = false;
-        }
-        updateConsentToggleAccepted(consentToggle1, consentCheck1);
-        updateConsentToggleAccepted(consentToggle2, consentCheck2);
-        updateConsentToggleAccepted(consentToggle3, consentCheck3);
-        closeExpandable(consentToggle1, consentExpandable1);
-        closeExpandable(consentToggle2, consentExpandable2);
-        closeExpandable(consentToggle3, consentExpandable3);
+        consentBlocks.forEach((block) => {
+            if (block.checkbox) {
+                block.checkbox.checked = false;
+            }
+            updateConsentToggleAccepted(block.toggle, block.checkbox);
+            closeExpandable(block.toggle, block.expandable);
+        });
         updateConsentContinueButton();
     }
 
@@ -854,8 +948,8 @@
         if (typeof portalSwitchLang === 'function') {
             portalSwitchLang(lang);
         }
-        if (consentToggle1) {
-            consentToggle1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (consentBlocks[0]?.toggle) {
+            consentBlocks[0].toggle.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 
@@ -1096,10 +1190,7 @@
         if (!consentContinueButton) {
             return;
         }
-        const allChecked =
-            consentCheck1 && consentCheck1.checked &&
-            consentCheck2 && consentCheck2.checked &&
-            consentCheck3 && consentCheck3.checked;
+        const allChecked = consentBlocks.length > 0 && consentBlocks.every((block) => block.checkbox && block.checkbox.checked);
         consentContinueButton.disabled = !allChecked;
     }
 
@@ -1379,43 +1470,29 @@
                 });
             }
         }
-        if (consentToggle1 && consentExpandable1) {
-            consentToggle1.addEventListener('click', () => handleToggle(consentToggle1, consentExpandable1));
-        }
-        if (consentToggle2 && consentExpandable2) {
-            consentToggle2.addEventListener('click', () => handleToggle(consentToggle2, consentExpandable2));
-        }
-        if (consentToggle3 && consentExpandable3) {
-            consentToggle3.addEventListener('click', () => handleToggle(consentToggle3, consentExpandable3));
-        }
-        consentExpandable1?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle1, consentExpandable1));
-        consentExpandable2?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle2, consentExpandable2));
-        consentExpandable3?.querySelector('.consent-close')?.addEventListener('click', () => closeExpandable(consentToggle3, consentExpandable3));
+        consentBlocks.forEach((block) => {
+            if (block.toggle && block.expandable) {
+                block.toggle.addEventListener('click', () => handleToggle(block.toggle, block.expandable));
+            }
+            block.expandable?.querySelector('.consent-close')?.addEventListener('click', () => {
+                closeExpandable(block.toggle, block.expandable);
+            });
+        });
     }
 
     function setupConsentCheckboxes() {
-        const update = updateConsentContinueButton;
-        if (consentCheck1) {
-            consentCheck1.addEventListener('change', () => {
-                updateConsentToggleAccepted(consentToggle1, consentCheck1);
-                update();
-                if (consentCheck1.checked) closeExpandable(consentToggle1, consentExpandable1);
+        consentBlocks.forEach((block) => {
+            if (!block.checkbox) {
+                return;
+            }
+            block.checkbox.addEventListener('change', () => {
+                updateConsentToggleAccepted(block.toggle, block.checkbox);
+                updateConsentContinueButton();
+                if (block.checkbox.checked) {
+                    closeExpandable(block.toggle, block.expandable);
+                }
             });
-        }
-        if (consentCheck2) {
-            consentCheck2.addEventListener('change', () => {
-                updateConsentToggleAccepted(consentToggle2, consentCheck2);
-                update();
-                if (consentCheck2.checked) closeExpandable(consentToggle2, consentExpandable2);
-            });
-        }
-        if (consentCheck3) {
-            consentCheck3.addEventListener('change', () => {
-                updateConsentToggleAccepted(consentToggle3, consentCheck3);
-                update();
-                if (consentCheck3.checked) closeExpandable(consentToggle3, consentExpandable3);
-            });
-        }
+        });
     }
 
     function handleConsentContinue() {
@@ -1446,6 +1523,7 @@
     }
     setupConsentToggles();
     setupConsentCheckboxes();
+    loadConsentBodies(getPortalLang());
 
     if (surveyForm) {
         surveyForm.addEventListener('submit', handleSurveySubmit);

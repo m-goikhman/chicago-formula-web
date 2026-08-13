@@ -1,7 +1,7 @@
 /* ── Portal i18n ─────────────────────────────────────────────────────
    Two-language support (IT / EN).
-   Long consent-body HTML lives directly in portal.html as
-   <div data-lang="it"> / <div data-lang="en" hidden> sibling blocks.
+   Long consent-body HTML lives in Portal/frontend/consent_forms/ as
+   separate *.en.html / *.it.html files (loaded by portal.js).
    Everything else is swapped via data-i18n / data-i18n-html attributes.
 ──────────────────────────────────────────────────────────────────── */
 
@@ -22,10 +22,7 @@ var PORTAL_TRANSLATIONS = {
 
         introWho:
             '<h2 class="intro-heading">Chi può partecipare</h2>' +
-            '<p>Adulti (18+) con inglese intermedio (B1–B2, nessun certificato richiesto).' +
-            ' Puoi leggere e scrivere in inglese, anche se non sempre è facile.</p>' +
-            '<li>Fino a 310 SONA Time Credits per studenti UniTn (280 per le attività online + 30 per l\'intervista facoltativa)</li>' +
-            '</ul>',
+            '<p>Adulti (18+) con inglese intermedio (B1–B2, nessun certificato richiesto -- puoi leggere e scrivere in inglese, anche se non sempre è facile).</p>',
 
         consentTitle:  'Prima di partecipare',
         consentIntro:  'Leggi tutti e tre i documenti e conferma il tuo consenso per procedere.',
@@ -79,6 +76,9 @@ var PORTAL_TRANSLATIONS = {
             'Completa entrambi i questionari qui sotto. Si aprono in Google Forms.',
         finalFormsWeeklyBtn: 'Questionario settimanale (3–5 min)',
         finalFormsFinalBtn: 'Questionario finale (circa 10 min)',
+        finalFormsInterviewTitle: 'Intervista opzionale',
+        finalFormsInterviewLead: 'Se ti va di condividere le tue riflessioni su questa esperienza, puoi iscriverti a un\'intervista opzionale. È online (in Zoom), dura circa 20-30 minuti e può essere condotta in italiano o inglese.',
+        finalFormsInterviewBtn: 'Prenota su SONA',
         finalFormsThanks: 'Grazie per aver partecipato a questo studio!',
         finalFormsLoadError: 'Impossibile caricare i link dei questionari. Controlla la connessione.',
         sessionClearedHint: 'Sessione azzerata. Inserisci un nuovo codice partecipante.',
@@ -103,15 +103,9 @@ var PORTAL_TRANSLATIONS = {
 
         introWho:
             '<h2 class="intro-heading">Who can join</h2>' +
-            '<p>Adults (18+) with intermediate English (B1–B2).' +
-            ' You can read and write in English, even if it is not always easy.</p>' +
-            '<ul class="intro-highlights">' +
-            '<li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>' +
-            '<li>All online — phone or computer</li>' +
-            '<li>up to 310 SONA Time Credits for UniTn students (280 for online activities + 30 for the optional interview)</li>' +
-            '</ul>',
+            '<p>Adults (18+) with intermediate English (B1–B2, no certificate required -- you can read and write in English, even if it is not always easy).</p>',
 
-        consentTitle:  'Before you participate',
+        consentTitle:  'Before you start',
         consentIntro:  'Please read all three documents and confirm your consent to proceed.',
         toggle1Title:  'Study information sheet',
         toggle2Title:  'Consent declaration',
@@ -162,6 +156,9 @@ var PORTAL_TRANSLATIONS = {
             'Please complete both questionnaires below. They open in Google Forms.',
         finalFormsWeeklyBtn: 'Weekly questionnaire (3–5 min)',
         finalFormsFinalBtn: 'Final questionnaire (about 10 min)',
+        finalFormsInterviewTitle: 'Optional interview',
+        finalFormsInterviewLead: 'If you\'d like to share your thoughts about this experience, you can sign up for an optional interview. It is online (in Zoom), takes about 20-30 minutes and can be conducted either in Italian or English.',
+        finalFormsInterviewBtn: 'Sign up on SONA',
         finalFormsThanks: 'Thank you for taking part in this study!',
         finalFormsLoadError: 'Could not load the questionnaire links. Please check your connection.',
         sessionClearedHint: 'Session cleared. Enter a new participant code.',
@@ -195,17 +192,7 @@ function portalSwitchLang(lang) {
         }
     }
 
-    // 3. Show/hide consent bodies (.lang-btn uses data-lang too; scope avoids hiding switcher buttons)
-    var langEls = document.querySelectorAll('.consent-body [data-lang]');
-    for (var k = 0; k < langEls.length; k++) {
-        if (langEls[k].getAttribute('data-lang') === lang) {
-            langEls[k].removeAttribute('hidden');
-        } else {
-            langEls[k].setAttribute('hidden', '');
-        }
-    }
-
-    // 4. Update switcher button state
+    // 3. Update switcher button state
     var btns = document.querySelectorAll('.lang-btn');
     for (var b = 0; b < btns.length; b++) {
         var active = btns[b].getAttribute('data-lang') === lang;
@@ -218,13 +205,13 @@ function portalSwitchLang(lang) {
         }
     }
 
-    // 5. Page title and document language
+    // 4. Page title and document language
     if (t.pageTitle) {
         document.title = t.pageTitle;
     }
     document.documentElement.lang = lang;
 
-    // 6. Persist choice
+    // 5. Persist choice
     try { localStorage.setItem('portalLang', lang); } catch (e) {}
 
     var pc = document.getElementById('participantCode');

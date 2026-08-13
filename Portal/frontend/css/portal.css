@@ -595,6 +595,13 @@ input[type="text"]:focus {
     padding-bottom: 4px;
 }
 
+.consent-timeline-img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1rem 0;
+}
+
 .consent-body p,
 .consent-body ul,
 .consent-body ol {
@@ -791,6 +798,20 @@ input[type="text"]:focus {
     display: block;
     text-align: center;
     text-decoration: none;
+}
+
+.final-forms-block {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.final-forms-block h3 {
+    margin: 0;
+    font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+    font-weight: 600;
+    color: #1a5563;
 }
 
 .final-forms-thanks {
