@@ -459,6 +459,19 @@ function buildCharactersDrawerList(stageChars) {
         );
     }
 
+    const stageNum = Number(window.currentStageNumber || 1);
+    // EP4 locations have one on-site speaker in the main chat. Listing them as
+    // "Private Chat" switched the UI into private scope and hid Nina + player lines.
+    if (stageNum === 4 && stageChars.length === 1) {
+        const character = stageChars[0];
+        return [{
+            name: character.full_name,
+            status: 'Here',
+            action: 'mode_public',
+            image: character.image,
+        }];
+    }
+
     const privateCharacters = stageChars.length > 0
         ? stageChars.map((character) => ({
             name: character.full_name,
@@ -618,6 +631,11 @@ function resolveCurrentCharacterKey() {
 }
 
 function getActiveChatScope() {
+    const stageNum = Number(window.currentStageNumber || 1);
+    const stageCharacters = Array.isArray(window.currentStageCharacters) ? window.currentStageCharacters : [];
+    if (stageNum === 4 && stageCharacters.length <= 1) {
+        return 'public';
+    }
     const activeKey = resolveCurrentCharacterKey();
     return activeKey ? `private:${activeKey}` : 'public';
 }

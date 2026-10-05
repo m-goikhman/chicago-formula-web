@@ -78,7 +78,14 @@ var PORTAL_TRANSLATIONS = {
         finalFormsFinalBtn: 'Questionario finale (circa 10 min)',
         finalFormsInterviewTitle: 'Intervista opzionale',
         finalFormsInterviewLead: 'Se ti va di condividere le tue riflessioni su questa esperienza, puoi iscriverti a un\'intervista opzionale. È online (in Zoom), dura circa 20-30 minuti e può essere condotta in italiano o inglese.',
+        finalFormsInterviewLeadEmail: 'Se ti va di condividere le tue riflessioni su questa esperienza, lascia il tuo indirizzo email: ti contatteremo per organizzare un\'intervista opzionale. È online (in Zoom), dura circa 20-30 minuti e può essere condotta in italiano o inglese.',
         finalFormsInterviewBtn: 'Prenota su SONA',
+        finalFormsInterviewEmailLabel: 'Indirizzo email',
+        finalFormsInterviewEmailPlaceholder: 'es. nome@email.com',
+        finalFormsInterviewEmailBtn: 'Lascia la tua email',
+        finalFormsInterviewEmailThanks: 'Grazie. Ti contatteremo per organizzare l\'intervista.',
+        finalFormsInterviewEmailInvalid: 'Inserisci un indirizzo email valido.',
+        finalFormsInterviewEmailError: 'Impossibile inviare. Riprova tra poco.',
         finalFormsThanks: 'Grazie per aver partecipato a questo studio!',
         finalFormsLoadError: 'Impossibile caricare i link dei questionari. Controlla la connessione.',
         sessionClearedHint: 'Sessione azzerata. Inserisci un nuovo codice partecipante.',
@@ -103,7 +110,7 @@ var PORTAL_TRANSLATIONS = {
 
         introWho:
             '<h2 class="intro-heading">Who can join</h2>' +
-            '<p>Adults (18+) with intermediate English (B1–B2, no certificate required -- you can read and write in English, even if it is not always easy).</p>',
+            '<p>Adults (18+) with intermediate English (B1–B2, no certificate required — you can read and write in English, even if it is not always easy).</p>',
 
         consentTitle:  'Before you start',
         consentIntro:  'Please read all three documents and confirm your consent to proceed.',
@@ -158,7 +165,14 @@ var PORTAL_TRANSLATIONS = {
         finalFormsFinalBtn: 'Final questionnaire (about 10 min)',
         finalFormsInterviewTitle: 'Optional interview',
         finalFormsInterviewLead: 'If you\'d like to share your thoughts about this experience, you can sign up for an optional interview. It is online (in Zoom), takes about 20-30 minutes and can be conducted either in Italian or English.',
+        finalFormsInterviewLeadEmail: 'If you\'d like to share your thoughts about this experience, leave your email address and we will contact you to arrange an optional interview. It is online (in Zoom), takes about 20-30 minutes and can be conducted either in Italian or English.',
         finalFormsInterviewBtn: 'Sign up on SONA',
+        finalFormsInterviewEmailLabel: 'Email address',
+        finalFormsInterviewEmailPlaceholder: 'e.g. name@email.com',
+        finalFormsInterviewEmailBtn: 'Leave your email',
+        finalFormsInterviewEmailThanks: 'Thank you. We will contact you to arrange the interview.',
+        finalFormsInterviewEmailInvalid: 'Please enter a valid email address.',
+        finalFormsInterviewEmailError: 'Could not send. Please try again later.',
         finalFormsThanks: 'Thank you for taking part in this study!',
         finalFormsLoadError: 'Could not load the questionnaire links. Please check your connection.',
         sessionClearedHint: 'Session cleared. Enter a new participant code.',
@@ -217,6 +231,10 @@ function portalSwitchLang(lang) {
     var pc = document.getElementById('participantCode');
     if (pc && t.participantCodePlaceholder) {
         pc.setAttribute('placeholder', t.participantCodePlaceholder);
+    }
+    var ie = document.getElementById('interviewEmail');
+    if (ie && t.finalFormsInterviewEmailPlaceholder) {
+        ie.setAttribute('placeholder', t.finalFormsInterviewEmailPlaceholder);
     }
 }
 

@@ -2,7 +2,7 @@
 FastAPI main application for the web version of Teach or Tell.
 """
 
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -114,6 +114,17 @@ class StudyProgressResponse(BaseModel):
     study_arm: Optional[str] = None
     weekly_questionnaire_link: Optional[str] = None
     final_questionnaire_link: Optional[str] = None
+    login_source: Optional[str] = None
+    interview_contact_submitted: bool = False
+
+
+class InterviewContactRequest(BaseModel):
+    email: str
+
+
+class InterviewContactResponse(BaseModel):
+    success: bool = True
+    interview_contact_submitted: bool = True
 
 
 class MearaWordsResponse(BaseModel):
@@ -165,6 +176,7 @@ class TeachOutroQuestionnaireResponse(BaseModel):
 
 class TeachClientStateRequest(BaseModel):
     state: dict
+    force: Optional[bool] = False
 
 
 class TeachClientStateResponse(BaseModel):
@@ -346,6 +358,24 @@ async def study_portal_progress(current_user=Depends(get_current_user)):
         final_questionnaire_link=form_links["final_questionnaire_link"],
     )
     return StudyProgressResponse(**progress)
+
+
+@app.post("/api/study/interview-contact", response_model=InterviewContactResponse)
+async def study_interview_contact(
+    request: InterviewContactRequest,
+    background_tasks: BackgroundTasks,
+    current_user=Depends(get_current_user),
+):
+    """Store an email so the researcher can arrange the optional interview."""
+    code = current_user["participant_code"]
+    try:
+        email = study_onboarding.record_interview_email(code, request.email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    from .episode_notify import notify_interview_contact
+
+    background_tasks.add_task(notify_interview_contact, participant_code=code, email=email)
+    return InterviewContactResponse()
 
 
 @app.get("/api/study/meara/words", response_model=MearaWordsResponse)
@@ -1033,6 +1063,8 @@ async def save_teach_open_ended_response(
         improvement_needed=improvement_needed,
         source=TEACH_SOURCE,
         deduplicate_by_query=False,
+        section_id=section_id,
+        week_id=week_id or None,
     )
 
     return {
@@ -1107,6 +1139,7 @@ async def save_teach_client_state(
         participant_code=participant_code,
         client_state=state,
         source=TEACH_SOURCE,
+        force=bool(request.force),
     )
     return {"saved": bool(success)}
 
@@ -1130,9 +1163,16 @@ async def get_teach_outro_questionnaire(
     week_number = max(1, min(4, week_number))
 
     from .game_handlers import build_weekly_outro_questionnaire_text
+    from .episode_notify import notify_episode_completed
 
     pseudo_state = {"questionnaire_week": week_number, "current_stage": week_number}
     text = build_weekly_outro_questionnaire_text(participant_code, pseudo_state)
+    await notify_episode_completed(
+        participant_code=participant_code,
+        episode=week_number,
+        arm="Teach",
+        persist_teach=True,
+    )
     return TeachOutroQuestionnaireResponse(text=text)
 
 

@@ -227,6 +227,10 @@ body {
     gap: 8px;
 }
 
+.input-group[hidden] {
+    display: none;
+}
+
 .input-group label {
     font-weight: 600;
     color: #333;
@@ -239,7 +243,8 @@ body {
     flex-wrap: wrap;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="email"] {
     flex: 1;
     min-width: 220px;
     padding: 14px 16px;
@@ -250,7 +255,8 @@ input[type="text"] {
     transition: border-color 0.2s ease;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="email"]:focus {
     outline: none;
     border-color: #0097b2;
     background: white;
@@ -778,6 +784,46 @@ input[type="text"]:focus {
     gap: 14px;
 }
 
+[data-view="questionnaire-reminder"].hidden {
+    display: none;
+}
+
+[data-view="questionnaire-reminder"]:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.questionnaire-reminder-text {
+    margin: 0;
+    color: #1a3340;
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+
+.questionnaire-reminder-text p {
+    margin: 0 0 12px;
+}
+
+.questionnaire-reminder-text p:last-child {
+    margin-bottom: 0;
+}
+
+.questionnaire-reminder-link {
+    display: inline-block;
+    word-break: break-all;
+    color: #0b6f84;
+    font-weight: 700;
+}
+
+.questionnaire-reminder-actions {
+    margin-top: 8px;
+}
+
+.questionnaire-reminder-actions .button {
+    width: 100%;
+}
+
 .final-forms-lead {
     margin: 0 0 8px;
     color: #3d5666;
@@ -792,6 +838,10 @@ input[type="text"]:focus {
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.final-forms-list[hidden] {
+    display: none;
 }
 
 .final-forms-link {
@@ -812,6 +862,12 @@ input[type="text"]:focus {
     font-size: clamp(1.1rem, 2.5vw, 1.45rem);
     font-weight: 600;
     color: #1a5563;
+}
+
+.final-forms-email-form:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 .final-forms-thanks {

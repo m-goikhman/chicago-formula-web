@@ -34,12 +34,7 @@
                 </div>
                 <div class="intro-item" data-i18n-html="introWho">
                     <h2 class="intro-heading">Who can join</h2>
-                    <p>Adults (18+) with intermediate English (B1–B2). You can read and write in English, even if it is not always easy.</p>
-                    <ul class="intro-highlights">
-                        <li>2 weeks, 2 episodes/week, approx. 40–60 min each</li>
-                        <li>All online — phone or computer</li>
-                        <li>up to 310 SONA Time Credits for UniTn students (280 for the online activities, 30 for the optional interview)</li>
-                    </ul>
+                    <p>Adults (18+) with intermediate English (B1–B2, no certificate required — you can read and write in English, even if it is not always easy).</p>
                 </div>
             </div>
         </div>
@@ -115,15 +110,43 @@
                 </ul>
                 <div class="final-forms-block">
                     <h3 id="finalFormsInterviewTitle" data-i18n="finalFormsInterviewTitle">Optional interview</h3>
-                    <p class="final-forms-lead" data-i18n="finalFormsInterviewLead"></p>
-                    <ul class="final-forms-list">
+                    <p class="final-forms-lead" id="finalFormsInterviewLeadSona" data-i18n="finalFormsInterviewLead">If you'd like to share your thoughts about this experience, you can sign up for an optional interview. It is online (in Zoom), takes about 20-30 minutes and can be conducted either in Italian or English.</p>
+                    <p class="final-forms-lead" id="finalFormsInterviewLeadEmail" data-i18n="finalFormsInterviewLeadEmail" hidden>If you'd like to share your thoughts about this experience, leave your email address and we will contact you to arrange an optional interview. It is online (in Zoom), takes about 20-30 minutes and can be conducted either in Italian or English.</p>
+                    <ul class="final-forms-list" id="finalFormsInterviewSona">
                         <li>
                             <a class="button primary final-forms-link" id="finalFormsInterviewLink" href="https://unitn-dipsco.sona-systems.com/default.aspx?p_return_experiment_id=363" target="_blank" rel="noopener noreferrer" data-i18n="finalFormsInterviewBtn">Sign up on SONA</a>
                         </li>
                     </ul>
+                    <form id="finalFormsInterviewEmailForm" class="final-forms-email-form" hidden>
+                        <div class="input-group" id="interviewEmailFields">
+                            <label for="interviewEmail" data-i18n="finalFormsInterviewEmailLabel">Email address</label>
+                            <div class="input-row">
+                                <input type="email" id="interviewEmail" autocomplete="email" inputmode="email" placeholder="e.g. name@email.com">
+                                <button type="submit" class="button primary" id="interviewEmailSubmitBtn" data-i18n="finalFormsInterviewEmailBtn">Leave your email</button>
+                            </div>
+                        </div>
+                        <div class="status-text error" id="interviewEmailError" role="alert"></div>
+                        <div class="status-text success" id="interviewEmailStatus" hidden></div>
+                    </form>
                 </div>
                 <p class="final-forms-thanks" data-i18n="finalFormsThanks">Thank you for taking part in this study!</p>
                 <div class="status-text error" id="finalFormsError" role="alert"></div>
+            </section>
+
+            <!-- One-off missed onboarding questionnaire (1234, IC0305, TEST) -->
+            <section class="card hidden" data-view="questionnaire-reminder" id="questionnaireReminderView">
+                <div class="questionnaire-reminder-text">
+                    <p>Grazie per aver fatto il primo episodio del gioco!</p>
+                    <p>Potresti per favore completare anche questo questionario? (il link era nel primo messaggio del gioco, probabilmente ti è sfuggito):</p>
+                    <p>
+                        <a id="questionnaireReminderLink" class="questionnaire-reminder-link" href="https://forms.gle/dEu9SNmN7LxWLQ5N8" target="_blank" rel="noopener noreferrer">https://forms.gle/dEu9SNmN7LxWLQ5N8</a>
+                    </p>
+                    <p>Il link si aprirà in una nuova scheda.<br>Nel rispondere, prova per quanto possibile a pensare a come ti sentivi prima di iniziare lo studio e non a come ti senti adesso.</p>
+                    <p>Se hai delle domande, per favore scrivi a Maria Goikhman, <a href="mailto:mariia.goikhman@unitn.it">mariia.goikhman@unitn.it</a></p>
+                </div>
+                <div class="questionnaire-reminder-actions">
+                    <button type="button" class="button primary" id="questionnaireReminderDoneBtn">OK, ho compilato il questionario</button>
+                </div>
             </section>
 
             <!-- Continue view (restored session) -->

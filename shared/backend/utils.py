@@ -63,6 +63,24 @@ def log_message(role: str, content: str, participant_code: str, source: Optional
         print(f"[ERROR] Failed to write log to Cloud Storage for participant {participant_code}: {e}")
 
 
+def read_chat_history_log(participant_code: str, source: Optional[str] = None) -> Optional[str]:
+    """Return a participant chat history log, or None if it does not exist."""
+    bucket = _get_bucket()
+    if not bucket:
+        return None
+
+    try:
+        source_key = _normalize_log_source(source)
+        blob_name = f"participant_logs/{source_key}/chat_history/{participant_code}_chat_history.txt"
+        blob = bucket.blob(blob_name)
+        if not blob.exists():
+            return None
+        return blob.download_as_text(encoding="utf-8")
+    except Exception as e:
+        print(f"[ERROR] Failed to read chat history log for participant {participant_code}: {e}")
+        return None
+
+
 def clear_chat_history_log(participant_code: str, source: Optional[str] = None) -> bool:
     """Delete a participant chat history log from Google Cloud Storage."""
     bucket = _get_bucket()

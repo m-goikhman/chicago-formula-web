@@ -3,7 +3,7 @@ const TeachState = (() => {
     const EPISODE_COMPLETION_THRESHOLD = Number(window.TEACH_CONFIG?.TEACH_EPISODE_COMPLETION_THRESHOLD || 0.75);
     const EPISODE_UNLOCK_AFTER_COMPLETION_MS = Number(
         window.TEACH_CONFIG?.EPISODE_UNLOCK_AFTER_COMPLETION_MS
-    ) || (48 * 60 * 60 * 1000);
+    ) || (12 * 60 * 60 * 1000);
     const EXCLUDED_RENDERERS = new Set(window.TEACH_CONFIG?.TEACH_EXERCISE_PROGRESS_EXCLUDED_RENDERERS || []);
     let weeks = [];
     let currentWeekId = null;
@@ -63,7 +63,7 @@ const TeachState = (() => {
         }
     }
 
-    function persist() {
+    function persist(options = {}) {
         try {
             const payload = {
                 notes: state.notes,
@@ -73,7 +73,7 @@ const TeachState = (() => {
                 weekCompletedAt: state.weekCompletedAt,
                 stepProgressByWeek: state.stepProgressByWeek,
                 exerciseDraftsByWeek: state.exerciseDraftsByWeek,
-                updatedAt: Number(state.updatedAt) || Date.now()
+                updatedAt: Number(state.updatedAt) || 0
             };
             localStorage.setItem(getStorageKey(), JSON.stringify(payload));
             if (storageParticipantSuffix === 'local' && localStorage.getItem(STORAGE_KEY)) {
@@ -86,12 +86,15 @@ const TeachState = (() => {
         } catch (error) {
             console.warn('[TeachState] Failed to persist progress:', error);
         }
+        if (options.emit === false) {
+            return;
+        }
         emitProgressEvent({
             currentWeekId,
             overall: getOverallProgress(),
             notes: state.notes,
             exerciseStatusByWeek: state.exerciseStatusByWeek,
-            updatedAt: Number(state.updatedAt) || Date.now()
+            updatedAt: Number(state.updatedAt) || 0
         });
     }
 
@@ -108,11 +111,64 @@ const TeachState = (() => {
             weekCompletedAt: state.weekCompletedAt,
             stepProgressByWeek: state.stepProgressByWeek,
             exerciseDraftsByWeek: state.exerciseDraftsByWeek,
-            updatedAt: Number(state.updatedAt) || Date.now()
+            updatedAt: Number(state.updatedAt) || 0
         };
     }
 
-    function initialize(loadedWeeks) {
+    function snapshotLooksEmpty(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') {
+            return true;
+        }
+        const steps = snapshot.stepProgressByWeek;
+        const statuses = snapshot.exerciseStatusByWeek;
+        const notes = snapshot.notes;
+        const drafts = snapshot.exerciseDraftsByWeek;
+        const hasAdvancedStep = Boolean(
+            steps &&
+            typeof steps === 'object' &&
+            Object.values(steps).some((value) => Number(value) > 1)
+        );
+        const hasStatus = Boolean(
+            statuses &&
+            typeof statuses === 'object' &&
+            Object.values(statuses).some((bucket) => bucket && typeof bucket === 'object' && Object.keys(bucket).length > 0)
+        );
+        const hasNotes = Boolean(
+            notes &&
+            typeof notes === 'object' &&
+            Object.values(notes).some((text) => String(text || '').trim())
+        );
+        const hasDrafts = Boolean(
+            drafts &&
+            typeof drafts === 'object' &&
+            Object.values(drafts).some((bucket) =>
+                bucket &&
+                typeof bucket === 'object' &&
+                Object.values(bucket).some((text) => String(text || '').trim())
+            )
+        );
+        return !hasAdvancedStep && !hasStatus && !hasNotes && !hasDrafts;
+    }
+
+    function orderedSectionsForWeek(week) {
+        const orderedSections = [...(week?.sections ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        if (String(week?.id || '').toLowerCase() !== 'week1') {
+            return orderedSections;
+        }
+        const suspectsExerciseId = 'week1-suspects-who-is-who';
+        const suspectsIndex = orderedSections.findIndex((section) => section.id === suspectsExerciseId);
+        const fionaIndex = orderedSections.findIndex((section) =>
+            /three suspects/i.test(section.heading || '') &&
+            /\*\*fiona\*\*/i.test(section.content || '')
+        );
+        if (suspectsIndex >= 0 && fionaIndex >= 0 && suspectsIndex > fionaIndex) {
+            const [suspectsSection] = orderedSections.splice(suspectsIndex, 1);
+            orderedSections.splice(fionaIndex, 0, suspectsSection);
+        }
+        return orderedSections;
+    }
+
+    function initialize(loadedWeeks, options = {}) {
         weeks = loadedWeeks ?? [];
         const stored = loadFromStorage();
         const storedSteps =
@@ -134,7 +190,7 @@ const TeachState = (() => {
             weekCompletedAt: { ...storedCompletedAt },
             stepProgressByWeek: { ...storedSteps },
             exerciseDraftsByWeek: { ...storedDrafts },
-            updatedAt: Number(stored?.updatedAt) || Date.now()
+            updatedAt: Number(stored?.updatedAt) || 0
         };
         currentWeekId = stored?.currentWeekId || weeks[0]?.id || null;
 
@@ -162,7 +218,9 @@ const TeachState = (() => {
             const firstUnlocked = weeks.find((week) => !availability.get(week.id)?.locked);
             currentWeekId = firstUnlocked?.id || weeks[0]?.id || null;
         }
-        persist();
+        if (options.persist !== false) {
+            persist({ emit: options.emit !== false });
+        }
     }
 
     function getWeeks() {
@@ -305,7 +363,8 @@ const TeachState = (() => {
         if (!state.stepProgressByWeek || typeof state.stepProgressByWeek !== 'object') {
             state.stepProgressByWeek = {};
         }
-        if (state.stepProgressByWeek[weekId] === n) {
+        const current = getWeekStepProgress(weekId);
+        if (n <= current) {
             return;
         }
         state.stepProgressByWeek[weekId] = n;
@@ -361,42 +420,198 @@ const TeachState = (() => {
         }
     }
 
-    function mergeSnapshot(remoteSnapshot, options = {}) {
-        if (!remoteSnapshot || typeof remoteSnapshot !== 'object') {
+    function positiveInt(value) {
+        const number = Number(value);
+        if (!Number.isFinite(number) || number <= 0) {
+            return 0;
+        }
+        return Math.floor(number);
+    }
+
+    function statusIsPassed(entry) {
+        if (!entry || typeof entry !== 'object') {
             return false;
         }
-        const preferRemote = options.preferRemote !== false;
-        const remoteUpdatedAt = Number(remoteSnapshot.updatedAt) || 0;
-        const localUpdatedAt = Number(state.updatedAt) || 0;
-        if (preferRemote && remoteUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt) {
-            return false;
+        if (entry.passed === true) {
+            return true;
         }
+        return String(entry.status || '').trim().toLowerCase() === 'passed';
+    }
 
-        const nextNotes = (
-            remoteSnapshot.notes && typeof remoteSnapshot.notes === 'object'
-        ) ? remoteSnapshot.notes : {};
-        const nextStatus = (
-            remoteSnapshot.exerciseStatusByWeek && typeof remoteSnapshot.exerciseStatusByWeek === 'object'
-        ) ? remoteSnapshot.exerciseStatusByWeek : {};
-        const nextSteps = (
-            remoteSnapshot.stepProgressByWeek && typeof remoteSnapshot.stepProgressByWeek === 'object'
-        ) ? remoteSnapshot.stepProgressByWeek : {};
-        const nextDrafts = (
-            remoteSnapshot.exerciseDraftsByWeek && typeof remoteSnapshot.exerciseDraftsByWeek === 'object'
-        ) ? remoteSnapshot.exerciseDraftsByWeek : {};
-        const nextCompletedAt = (
-            remoteSnapshot.weekCompletedAt && typeof remoteSnapshot.weekCompletedAt === 'object'
-        ) ? remoteSnapshot.weekCompletedAt : {};
+    function mergeStatusEntry(existing, incoming) {
+        if (!incoming || typeof incoming !== 'object') {
+            return existing;
+        }
+        if (!existing || typeof existing !== 'object') {
+            return { ...incoming };
+        }
+        if (statusIsPassed(existing) && !statusIsPassed(incoming)) {
+            return existing;
+        }
+        return { ...existing, ...incoming };
+    }
 
-        state.notes = { ...nextNotes };
-        state.exerciseStatusByWeek = { ...nextStatus };
-        state.stepProgressByWeek = { ...nextSteps };
-        state.exerciseDraftsByWeek = { ...nextDrafts };
-        state.weekCompletedAt = { ...nextCompletedAt };
-        state.firstLoginAt = Number(remoteSnapshot.firstLoginAt) || state.firstLoginAt || Date.now();
-        state.updatedAt = remoteUpdatedAt || Date.now();
+    function mergeDictOfDicts(base, incoming, valueMerge) {
+        const merged = {};
+        if (base && typeof base === 'object') {
+            Object.entries(base).forEach(([weekId, bucket]) => {
+                merged[weekId] = bucket && typeof bucket === 'object' ? { ...bucket } : bucket;
+            });
+        }
+        if (!incoming || typeof incoming !== 'object') {
+            return merged;
+        }
+        Object.entries(incoming).forEach(([weekId, bucket]) => {
+            if (!bucket || typeof bucket !== 'object') {
+                if (bucket !== undefined && bucket !== null && bucket !== '') {
+                    merged[weekId] = bucket;
+                }
+                return;
+            }
+            if (!merged[weekId] || typeof merged[weekId] !== 'object') {
+                merged[weekId] = {};
+            }
+            Object.entries(bucket).forEach(([key, value]) => {
+                if (typeof valueMerge === 'function') {
+                    merged[weekId][key] = valueMerge(merged[weekId][key], value);
+                    return;
+                }
+                if (String(value || '').trim()) {
+                    merged[weekId][key] = value;
+                } else if (!Object.prototype.hasOwnProperty.call(merged[weekId], key)) {
+                    merged[weekId][key] = value;
+                }
+            });
+        });
+        return merged;
+    }
 
-        const candidateWeek = String(remoteSnapshot.currentWeekId || '').trim();
+    function mergeNotes(existing, incoming) {
+        const notes = existing && typeof existing === 'object' ? { ...existing } : {};
+        if (!incoming || typeof incoming !== 'object') {
+            return notes;
+        }
+        Object.entries(incoming).forEach(([weekId, text]) => {
+            if (String(text || '').trim() && !String(notes[weekId] || '').trim()) {
+                notes[weekId] = text;
+            } else if (!Object.prototype.hasOwnProperty.call(notes, weekId)) {
+                notes[weekId] = text;
+            }
+        });
+        return notes;
+    }
+
+    function weekRank(weekId) {
+        const match = String(weekId || '').match(/(\d+)/);
+        return match ? Number(match[1]) : 0;
+    }
+
+    function pickCurrentWeekId(existingId, incomingId) {
+        const candidates = [existingId, incomingId]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean);
+        if (!candidates.length) {
+            return '';
+        }
+        return candidates.sort((a, b) => weekRank(a) - weekRank(b))[candidates.length - 1];
+    }
+
+    function mergeWeekCompletedAt(existing, incoming) {
+        const merged = {};
+        [existing, incoming].forEach((source) => {
+            if (!source || typeof source !== 'object') {
+                return;
+            }
+            Object.entries(source).forEach(([weekId, value]) => {
+                const stamp = positiveInt(value);
+                if (stamp <= 0) {
+                    return;
+                }
+                const current = positiveInt(merged[weekId]);
+                if (current <= 0 || stamp < current) {
+                    merged[weekId] = stamp;
+                }
+            });
+        });
+        return merged;
+    }
+
+    function mergeClientState(existing, incoming) {
+        const left = existing && typeof existing === 'object' ? existing : {};
+        const right = incoming && typeof incoming === 'object' ? incoming : {};
+        const merged = { ...left };
+        Object.entries(right).forEach(([key, value]) => {
+            if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+                merged[key] = value;
+            }
+        });
+        merged.exerciseStatusByWeek = mergeDictOfDicts(
+            left.exerciseStatusByWeek,
+            right.exerciseStatusByWeek,
+            mergeStatusEntry
+        );
+        merged.exerciseDraftsByWeek = mergeDictOfDicts(
+            left.exerciseDraftsByWeek,
+            right.exerciseDraftsByWeek
+        );
+        const mergedSteps = {};
+        [left, right].forEach((source) => {
+            const steps = source.stepProgressByWeek;
+            if (!steps || typeof steps !== 'object') {
+                return;
+            }
+            Object.entries(steps).forEach(([weekId, value]) => {
+                const number = Number(value);
+                if (!Number.isFinite(number)) {
+                    return;
+                }
+                const current = Number(mergedSteps[weekId] || 1);
+                if (number > current) {
+                    mergedSteps[weekId] = number;
+                }
+            });
+        });
+        if (Object.keys(mergedSteps).length) {
+            merged.stepProgressByWeek = mergedSteps;
+        }
+        merged.updatedAt = Math.max(positiveInt(left.updatedAt), positiveInt(right.updatedAt));
+        const currentWeek = pickCurrentWeekId(left.currentWeekId, right.currentWeekId);
+        if (currentWeek) {
+            merged.currentWeekId = currentWeek;
+        }
+        const firstLogins = [positiveInt(left.firstLoginAt), positiveInt(right.firstLoginAt)].filter((value) => value > 0);
+        if (firstLogins.length) {
+            merged.firstLoginAt = Math.min(...firstLogins);
+        }
+        const completed = mergeWeekCompletedAt(left.weekCompletedAt, right.weekCompletedAt);
+        if (Object.keys(completed).length) {
+            merged.weekCompletedAt = completed;
+        }
+        const notes = mergeNotes(left.notes, right.notes);
+        if (Object.keys(notes).length) {
+            merged.notes = notes;
+        }
+        return merged;
+    }
+
+    function applyMergedSnapshot(merged) {
+        state.notes = merged.notes && typeof merged.notes === 'object' ? { ...merged.notes } : {};
+        state.exerciseStatusByWeek = (
+            merged.exerciseStatusByWeek && typeof merged.exerciseStatusByWeek === 'object'
+        ) ? merged.exerciseStatusByWeek : {};
+        state.stepProgressByWeek = (
+            merged.stepProgressByWeek && typeof merged.stepProgressByWeek === 'object'
+        ) ? merged.stepProgressByWeek : {};
+        state.exerciseDraftsByWeek = (
+            merged.exerciseDraftsByWeek && typeof merged.exerciseDraftsByWeek === 'object'
+        ) ? merged.exerciseDraftsByWeek : {};
+        state.weekCompletedAt = (
+            merged.weekCompletedAt && typeof merged.weekCompletedAt === 'object'
+        ) ? merged.weekCompletedAt : {};
+        state.firstLoginAt = positiveInt(merged.firstLoginAt) || state.firstLoginAt || Date.now();
+        state.updatedAt = positiveInt(merged.updatedAt);
+
+        const candidateWeek = String(merged.currentWeekId || '').trim();
         if (candidateWeek && getWeekById(candidateWeek)) {
             currentWeekId = candidateWeek;
         }
@@ -419,9 +634,65 @@ const TeachState = (() => {
                 state.weekCompletedAt[week.id] = Date.now() - EPISODE_UNLOCK_AFTER_COMPLETION_MS - 1000;
             }
         });
+    }
 
-        persist();
+    function mergeSnapshot(remoteSnapshot, options = {}) {
+        if (!remoteSnapshot || typeof remoteSnapshot !== 'object') {
+            return false;
+        }
+        if (remoteSnapshot.cleared === true || snapshotLooksEmpty(remoteSnapshot)) {
+            return false;
+        }
+
+        const localSnapshot = {
+            notes: state.notes,
+            exerciseStatusByWeek: state.exerciseStatusByWeek,
+            stepProgressByWeek: state.stepProgressByWeek,
+            exerciseDraftsByWeek: state.exerciseDraftsByWeek,
+            weekCompletedAt: state.weekCompletedAt,
+            firstLoginAt: state.firstLoginAt,
+            currentWeekId,
+            updatedAt: state.updatedAt
+        };
+        applyMergedSnapshot(mergeClientState(localSnapshot, remoteSnapshot));
+        persist({ emit: options.emit !== false });
         return true;
+    }
+
+    function ensureStepProgressCoversCompletedWork() {
+        let bumped = false;
+        weeks.forEach((week) => {
+            const ordered = orderedSectionsForWeek(week);
+            const drafts = state.exerciseDraftsByWeek?.[week.id];
+            let lastIndex = -1;
+            ordered.forEach((section, index) => {
+                const evaluation = getExerciseEvaluation(week.id, section.id);
+                const hasDraft = Boolean(
+                    drafts &&
+                    typeof drafts === 'object' &&
+                    Object.entries(drafts).some(([key, text]) =>
+                        String(key || '').includes(section.id) && String(text || '').trim()
+                    )
+                );
+                if (evaluation || hasDraft) {
+                    lastIndex = index;
+                }
+            });
+            if (lastIndex < 0) {
+                return;
+            }
+            const onboardingOffset = String(week.id || '').toLowerCase() === 'week1' ? 1 : 0;
+            const needed = onboardingOffset + lastIndex + 1;
+            if (needed > getWeekStepProgress(week.id)) {
+                state.stepProgressByWeek[week.id] = needed;
+                bumped = true;
+            }
+        });
+        if (bumped) {
+            touchUpdatedAt();
+        }
+        persist();
+        return bumped;
     }
 
     function hasUnrestrictedEpisodeAccess() {
@@ -519,6 +790,7 @@ const TeachState = (() => {
         setExerciseDraft,
         toSerializableSnapshot,
         mergeSnapshot,
+        ensureStepProgressCoversCompletedWork,
         clearPersistedProgress,
         getWeekExerciseSummary,
         getWeekAvailability,

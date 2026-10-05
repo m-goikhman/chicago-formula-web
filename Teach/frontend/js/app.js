@@ -22,6 +22,7 @@
     let appInitialized = false;
     let syncStateTimer = null;
     let syncInFlight = false;
+    let stateSyncReady = false;
 
     const defaultLoginButtonLabel = loginButton ? loginButton.textContent : 'Start Reading Journey';
 
@@ -48,7 +49,7 @@
             if (!response?.ok) {
                 return;
             }
-            TeachState.mergeSnapshot(data?.state || {}, { preferRemote: true });
+            TeachState.mergeSnapshot(data?.state || {}, { preferRemote: true, emit: false });
         } catch (error) {
             console.warn('[TeachApp] Failed to pull state from server:', error);
         }
@@ -81,6 +82,9 @@
     }
 
     function scheduleStateSync() {
+        if (!stateSyncReady) {
+            return;
+        }
         if (syncStateTimer) {
             clearTimeout(syncStateTimer);
         }
@@ -173,7 +177,11 @@
         }
         const token = TeachAuth?.getToken?.();
         if (token && apiClient) {
-            apiClient.postJson('/api/teach/state', { state: {} }, { token })
+            apiClient.postJson(
+                '/api/teach/state',
+                { state: { cleared: true, updatedAt: Date.now() }, force: true },
+                { token }
+            )
                 .catch((error) => {
                     console.warn('[TeachApp] Failed to clear remote Teach state:', error);
                 });
@@ -369,10 +377,14 @@
                 TeachState.setStorageParticipantCode(TeachAuth?.getParticipantCode?.() || '');
             }
             const weeks = await loadTeachContent();
-            TeachState.initialize(weeks);
+            TeachState.initialize(weeks, { persist: false, emit: false });
             await pullStateFromServer();
+            if (typeof TeachState.ensureStepProgressCoversCompletedWork === 'function') {
+                TeachState.ensureStepProgressCoversCompletedWork();
+            }
             applyEpisodeFromUrl();
             render();
+            stateSyncReady = true;
             scheduleStateSync();
         } catch (error) {
             console.error('[TeachApp] Failed to initialise Teach mode:', error);
@@ -505,7 +517,9 @@
         });
 
         window.addEventListener('beforeunload', () => {
-            pushStateToServer();
+            if (stateSyncReady) {
+                pushStateToServer();
+            }
         });
 
     }

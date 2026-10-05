@@ -493,9 +493,21 @@ function shouldRestoreInputFromLoadedMessages(messages) {
             return true;
         }
         if (message.type === 'system') {
-            return String(message.content || '').trim().startsWith('You arrived at');
+            const content = String(message.content || '').trim();
+            if (content.startsWith('You arrived at')) {
+                return true;
+            }
+            // EP1 public-mode banner after talking to suspects.
+            if (content.startsWith("You're now speaking with everyone in public")) {
+                return true;
+            }
         }
         if (message.ui && message.ui.showInput === true) {
+            return true;
+        }
+        // Private suspect openers mean investigation UI should be available.
+        const scope = String(message.chat_scope || '').trim().toLowerCase();
+        if (scope.startsWith('private:') && message.type === 'character') {
             return true;
         }
         return false;

@@ -29,6 +29,7 @@ from .game_config import (
 from .game_state_manager import game_state_manager
 from .progress_manager import progress_manager, TELL_SOURCE
 from .auth import is_test_mode_participant
+from .episode_notify import notify_episode_completed
 from .ai_services import ask_for_dialogue, append_character_line_to_history
 from .scripted_messages import (
     ScriptedBlock,
@@ -61,7 +62,7 @@ EP4_HUB_LOCATIONS = frozenset({"university_ep4", "bar_ep4", "pauline_office_ep4"
 EP4_HUB_MIN_USER_MESSAGES = 3
 EP4_HUB_MIN_TOTAL_USER_MESSAGES = 25
 EP4_PAULINE_LOG_MIN_USER_MESSAGES = 1
-EP4_FIONA_MIN_USER_MESSAGES = 10
+EP4_FIONA_MIN_USER_MESSAGES = 6
 EP4_LOCATION_CHARACTERS = {
     "university_ep4": "susan",
     "bar_ep4": "ronnie",
@@ -1618,12 +1619,17 @@ def _get_ep4_character_for_location(location: Optional[str]) -> Optional[str]:
     return EP4_LOCATION_CHARACTERS.get(location)
 
 
+def _ep4_location_uses_public_dialogue(state: Dict) -> bool:
+    """True when this EP4 location has one on-site speaker in the main (public) chat."""
+    if int(state.get("current_stage", 1)) != EP4_STAGE:
+        return False
+    location = get_stage_location(state, EP4_STAGE)
+    return location == EP4_DEFAULT_LOCATION or location in EP4_SCRIPTED_LOCATIONS
+
+
 def _normalize_ep4_public_dialogue_mode(state: Dict) -> None:
     """EP4 single-character locations use public chat (one responder), not private mode."""
-    if int(state.get("current_stage", 1)) != EP4_STAGE:
-        return
-    location = get_stage_location(state, EP4_STAGE)
-    if location not in EP4_SCRIPTED_LOCATIONS:
+    if not _ep4_location_uses_public_dialogue(state):
         return
     state["mode"] = "public"
     state["current_character"] = None
@@ -2158,6 +2164,7 @@ async def _handle_ep4_precinct_fiona_message(
             "content": reply_text,
             "message_id": message_id,
             "show_explain": True,
+            "chat_scope": "public",
         }
         _maybe_attach_ep4_fiona_reassurance_button(
             ep4_state,
@@ -2175,6 +2182,7 @@ async def _handle_ep4_precinct_fiona_message(
                 "character_image": char_data.get("image"),
                 "content": "[Character is thinking...]",
                 "show_explain": False,
+                "chat_scope": "public",
             }
         )
 
@@ -2785,6 +2793,9 @@ async def handle_ep3_outro_questionnaire(participant_code: str) -> List[Dict]:
 
     outro = _ep3_outro_questionnaire_message(participant_code, state)
     await game_state_manager.save_game_state(participant_code, state)
+    await notify_episode_completed(
+        participant_code=participant_code, episode=EP3_FORMULA_STAGE, arm="Tell"
+    )
     return [outro]
 
 
@@ -2809,6 +2820,9 @@ async def handle_ep4_outro_questionnaire(participant_code: str) -> List[Dict]:
 
     outro = _ep4_outro_questionnaire_message(participant_code, state)
     await game_state_manager.save_game_state(participant_code, state)
+    await notify_episode_completed(
+        participant_code=participant_code, episode=EP4_STAGE, arm="Tell"
+    )
     return [outro]
 
 
@@ -2872,6 +2886,9 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
         state["ep1_party_outro_questionnaire_shown"] = True
         outro = _ep1_party_outro_questionnaire_message(participant_code, state)
         await game_state_manager.save_game_state(participant_code, state)
+        await notify_episode_completed(
+            participant_code=participant_code, episode=EP1_PARTY_STAGE, arm="Tell"
+        )
         return [outro]
 
     if current_stage != EP2_PAULINE_STAGE:
@@ -2887,6 +2904,9 @@ async def handle_ep1_outro_questionnaire(participant_code: str) -> List[Dict]:
     outro = _ep1_outro_questionnaire_message(participant_code, state)
     outro["buttons"] = [{"text": "Get final summary from AI language tutor", "action": "get_final_summary"}]
     await game_state_manager.save_game_state(participant_code, state)
+    await notify_episode_completed(
+        participant_code=participant_code, episode=EP2_PAULINE_STAGE, arm="Tell"
+    )
     return [outro]
 
 
@@ -3783,7 +3803,10 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
         return messages
     
     entry = _normalize_intro_step(intro_files[step])
-    raw_content = _load_intro_file_safe(entry["file"], episode)
+    # Per-participant intro text override (keyed "<episode>:<step>"), stored in the
+    # participant's own saved state. Absent for everyone by default -> stock intro file.
+    intro_override = (state.get("intro_overrides") or {}).get(f"{episode}:{step}")
+    raw_content = intro_override or _load_intro_file_safe(entry["file"], episode)
     content, parsed_buttons = _extract_buttons_from_text(raw_content)
     default_intro_sender = entry.get("character", "nina") if entry["type"] == "character" else "narrator"
     content_blocks = _extract_scripted_message_blocks(content, default_sender=default_intro_sender)
@@ -3815,6 +3838,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
                 "content": content_part,
                 "message_id": message_id,
                 "show_explain": True,
+                "chat_scope": "public",
             }
         else:
             save_message_to_cache(message_id, content_part)
@@ -3823,6 +3847,7 @@ async def handle_case_intro(participant_code: str, action: str) -> List[Dict]:
                 "content": content_part,
                 "message_id": message_id,
                 "show_explain": True,
+                "chat_scope": "public",
             }
 
         if is_last_part:
@@ -4072,11 +4097,23 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
     available_characters = set(get_characters_for_stage(state, current_stage))
     if character_key not in available_characters:
         return [{"type": "error", "content": "Character is not available in this location."}]
+
+    # EP4 precinct/hub/motel: the on-site speaker is already the public chat partner.
+    # Switching to private:{character} hid intro + player lines (participant 7030).
+    if _ep4_location_uses_public_dialogue(state):
+        state["mode"] = "public"
+        state["current_character"] = None
+        _clear_public_followup_lock(state)
+        await game_state_manager.save_game_state(participant_code, state)
+        return []
     
     # Set mode to private
     state["mode"] = "private"
     state["current_character"] = character_key
     _clear_public_followup_lock(state)
+    # Talking to someone means investigation has begun (EP1 intro CTA is client-only).
+    if state.get("onboarding_step") != "investigation_started":
+        _mark_investigation_started(state)
 
     # Only send opening line once per character and episode.
     # On subsequent returns to the same private chat, frontend reuses stored history.
@@ -4131,6 +4168,7 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
                 "message_id": message_id,
                 "chat_scope": f"private:{character_key}",
                 "show_explain": True,
+                "ui": {"showInput": True},
             }
         )
     else:
@@ -4161,8 +4199,14 @@ async def handle_character_talk(participant_code: str, character_key: str) -> Li
                     "message_id": message_id,
                     "chat_scope": f"private:{character_key}",
                     "show_explain": True,
+                    "ui": {"showInput": True},
                 }
             )
+        elif scripted_messages:
+            last = scripted_messages[-1]
+            ui = dict(last.get("ui") or {})
+            ui["showInput"] = True
+            last["ui"] = ui
     
     # Save state
     await game_state_manager.save_game_state(participant_code, state)
@@ -4775,11 +4819,15 @@ async def handle_mode_public(participant_code: str) -> List[Dict]:
     
     # Log system message
     log_message("system", mode_text, participant_code)
+
+    if state.get("onboarding_step") != "investigation_started":
+        _mark_investigation_started(state)
     
     messages.append({
         "type": "system",
         "content": mode_text,
         "message_style": "narrator",
+        "ui": {"showInput": True},
     })
     
     # Save state

@@ -195,6 +195,9 @@
     const STORAGE_POSTTEST_PHASE = 'portalMearaPosttest';
     const MEARA_PHASE_PRETEST = 'pretest';
     const MEARA_PHASE_POSTTEST = 'posttest';
+    const QUESTIONNAIRE_REMINDER_CODES = new Set(['1234', 'IC0305', 'TEST']);
+    const QUESTIONNAIRE_REMINDER_STORAGE_PREFIX = 'portalQuestionnaireReminderDone:';
+    const QUESTIONNAIRE_REMINDER_FORM_URL = 'https://forms.gle/dEu9SNmN7LxWLQ5N8';
 
     function isStudyFlowEnabled() {
         const params = new URLSearchParams(global.location.search || '');
@@ -317,6 +320,7 @@
             originalPortalSwitchLang(lang);
         }
         loadConsentBodies(lang);
+        applyInterviewSignup();
     };
     const consentView = document.getElementById('consentView');
     const surveyView = document.getElementById('surveyView');
@@ -332,8 +336,20 @@
     const finalFormsWeeklyLink = document.getElementById('finalFormsWeeklyLink');
     const finalFormsFinalLink = document.getElementById('finalFormsFinalLink');
     const finalFormsError = document.getElementById('finalFormsError');
+    const finalFormsInterviewLeadSona = document.getElementById('finalFormsInterviewLeadSona');
+    const finalFormsInterviewLeadEmail = document.getElementById('finalFormsInterviewLeadEmail');
+    const finalFormsInterviewSona = document.getElementById('finalFormsInterviewSona');
+    const finalFormsInterviewEmailForm = document.getElementById('finalFormsInterviewEmailForm');
+    const interviewEmailFields = document.getElementById('interviewEmailFields');
+    const interviewEmailInput = document.getElementById('interviewEmail');
+    const interviewEmailSubmitBtn = document.getElementById('interviewEmailSubmitBtn');
+    const interviewEmailError = document.getElementById('interviewEmailError');
+    const interviewEmailStatus = document.getElementById('interviewEmailStatus');
     const loginView = document.getElementById('loginView');
     const modeSelectView = document.getElementById('modeSelectView');
+    const questionnaireReminderView = document.getElementById('questionnaireReminderView');
+    const questionnaireReminderLink = document.getElementById('questionnaireReminderLink');
+    const questionnaireReminderDoneBtn = document.getElementById('questionnaireReminderDoneBtn');
     const assignedContinueBtn = document.getElementById('assignedContinueBtn');
     const studyCodeInstructions = document.getElementById('studyCodeInstructions');
     const participantInput = document.getElementById('participantCode');
@@ -351,6 +367,9 @@
     let mearaIndex = 0;
     let mearaActivePhase = MEARA_PHASE_PRETEST;
     let cachedFinalFormLinks = null;
+    let cachedLoginSource = null;
+    let interviewContactSubmitted = false;
+    let pendingQuestionnaireReminderProceed = null;
 
     function getUnlockButtonLabel() {
         const lang = (typeof localStorage !== 'undefined' && localStorage.getItem('portalLang')) || 'en';
@@ -381,6 +400,93 @@
             return global.portalParams.normalizeParticipantCode(code);
         }
         return String(code || '').trim().toUpperCase();
+    }
+
+    function questionnaireReminderStorageKey(code) {
+        return QUESTIONNAIRE_REMINDER_STORAGE_PREFIX + normalizeParticipantCode(code);
+    }
+
+    function isQuestionnaireReminderDone(code) {
+        const normalized = normalizeParticipantCode(code);
+        if (!normalized) {
+            return false;
+        }
+        try {
+            return localStorage.getItem(questionnaireReminderStorageKey(normalized)) === '1';
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function markQuestionnaireReminderDone(code) {
+        const normalized = normalizeParticipantCode(code);
+        if (!normalized) {
+            return;
+        }
+        try {
+            localStorage.setItem(questionnaireReminderStorageKey(normalized), '1');
+        } catch (error) {
+            console.warn('[Portal] Could not store questionnaire reminder dismissal:', error);
+        }
+    }
+
+    function consumeTestReminderReset() {
+        const params = new URLSearchParams(global.location.search || '');
+        if (params.get('resetReminder') !== '1') {
+            return;
+        }
+        try {
+            localStorage.removeItem(questionnaireReminderStorageKey('TEST'));
+        } catch (error) {
+            console.warn('[Portal] Could not reset TEST questionnaire reminder:', error);
+        }
+    }
+
+    function wantsReminderPreview() {
+        const params = new URLSearchParams(global.location.search || '');
+        return params.get('previewReminder') === '1';
+    }
+
+    function needsQuestionnaireReminder(code) {
+        const normalized = normalizeParticipantCode(code);
+        return QUESTIONNAIRE_REMINDER_CODES.has(normalized) && !isQuestionnaireReminderDone(normalized);
+    }
+
+    function showQuestionnaireReminderView() {
+        hideAllMainSections();
+        if (questionnaireReminderLink) {
+            questionnaireReminderLink.href = QUESTIONNAIRE_REMINDER_FORM_URL;
+        }
+        if (questionnaireReminderView) {
+            questionnaireReminderView.classList.remove('hidden');
+        }
+    }
+
+    function holdIfQuestionnaireReminderPending(code, proceed) {
+        if (!needsQuestionnaireReminder(code)) {
+            return false;
+        }
+        pendingQuestionnaireReminderProceed = typeof proceed === 'function' ? proceed : null;
+        showQuestionnaireReminderView();
+        return true;
+    }
+
+    function handleQuestionnaireReminderDone() {
+        const code = normalizeParticipantCode(localStorage.getItem('participantCode'));
+        markQuestionnaireReminderDone(code);
+        const proceed = pendingQuestionnaireReminderProceed;
+        pendingQuestionnaireReminderProceed = null;
+        if (questionnaireReminderView) {
+            questionnaireReminderView.classList.add('hidden');
+        }
+        if (typeof proceed === 'function') {
+            proceed();
+            return;
+        }
+        const arm = localStorage.getItem(STORAGE_STUDY_ARM);
+        if (arm) {
+            navigateTo(arm, { episode: getPortalEpisode() });
+        }
     }
 
     function setLoading(isLoading) {
@@ -518,6 +624,55 @@
         }
     }
 
+    function cacheInterviewStateFromProgress(progress) {
+        if (!progress) {
+            return;
+        }
+        if (Object.prototype.hasOwnProperty.call(progress, 'login_source')) {
+            cachedLoginSource = progress.login_source || null;
+        }
+        if (typeof progress.interview_contact_submitted === 'boolean') {
+            interviewContactSubmitted = progress.interview_contact_submitted;
+        }
+    }
+
+    function isSonaParticipant() {
+        return String(cachedLoginSource || '').toLowerCase() === 'sona';
+    }
+
+    function applyInterviewSignup() {
+        const sona = isSonaParticipant();
+        if (finalFormsInterviewLeadSona) {
+            finalFormsInterviewLeadSona.hidden = !sona;
+        }
+        if (finalFormsInterviewLeadEmail) {
+            finalFormsInterviewLeadEmail.hidden = sona;
+        }
+        if (finalFormsInterviewSona) {
+            finalFormsInterviewSona.hidden = !sona;
+        }
+        if (finalFormsInterviewEmailForm) {
+            finalFormsInterviewEmailForm.hidden = sona;
+        }
+        if (interviewEmailFields) {
+            interviewEmailFields.hidden = sona || interviewContactSubmitted;
+        }
+        if (interviewEmailError && (sona || interviewContactSubmitted)) {
+            interviewEmailError.textContent = '';
+        }
+        if (interviewEmailStatus) {
+            if (!sona && interviewContactSubmitted) {
+                interviewEmailStatus.hidden = false;
+                interviewEmailStatus.textContent =
+                    t('finalFormsInterviewEmailThanks') ||
+                    'Thank you. We will contact you to arrange the interview.';
+            } else {
+                interviewEmailStatus.hidden = true;
+                interviewEmailStatus.textContent = '';
+            }
+        }
+    }
+
     function shuffleWords(words) {
         const copy = words.slice();
         for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -586,6 +741,7 @@
             return null;
         }
         cacheFormLinksFromProgress(data);
+        cacheInterviewStateFromProgress(data);
         return data;
     }
 
@@ -594,6 +750,7 @@
             return false;
         }
         cacheFormLinksFromProgress(progress);
+        cacheInterviewStateFromProgress(progress);
         if (!isMearaPosttestDone(progress)) {
             showMearaView(MEARA_PHASE_POSTTEST);
             return true;
@@ -647,6 +804,13 @@
     }
 
     async function resumePortalProgress(options = {}) {
+        const reminderCode = normalizeParticipantCode(localStorage.getItem('participantCode'));
+        if (holdIfQuestionnaireReminderPending(reminderCode, () => {
+            resumePortalProgress(options);
+        })) {
+            return true;
+        }
+
         const progress = await fetchPortalProgress();
 
         if (await enterExitFunnelIfNeeded(progress, options)) {
@@ -829,6 +993,7 @@
             finalFormsError.textContent = '';
         }
 
+        cacheInterviewStateFromProgress(progress);
         let links = cachedFinalFormLinks;
         if ((!links || !links.weekly || !links.final) && progress) {
             cacheFormLinksFromProgress(progress);
@@ -839,6 +1004,7 @@
             links = cachedFinalFormLinks;
             if (!links && fresh) {
                 cacheFormLinksFromProgress(fresh);
+                cacheInterviewStateFromProgress(fresh);
                 links = cachedFinalFormLinks;
             }
         }
@@ -876,6 +1042,7 @@
                 t('finalFormsLoadError') || 'Could not load the questionnaire links.';
         }
 
+        applyInterviewSignup();
         if (finalFormsView) {
             finalFormsView.classList.remove('hidden');
         }
@@ -885,6 +1052,64 @@
         }
         // Keep intent so a refresh stays on the exit funnel (forms) instead of bouncing to the game.
         setPosttestIntent();
+    }
+
+    function isValidInterviewEmail(raw) {
+        const email = String(raw || '').trim();
+        return Boolean(email) && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    async function handleInterviewEmailSubmit(event) {
+        event.preventDefault();
+        if (interviewEmailError) {
+            interviewEmailError.textContent = '';
+        }
+        const email = interviewEmailInput ? interviewEmailInput.value.trim() : '';
+        if (!isValidInterviewEmail(email)) {
+            if (interviewEmailError) {
+                interviewEmailError.textContent =
+                    t('finalFormsInterviewEmailInvalid') || 'Please enter a valid email address.';
+            }
+            return;
+        }
+        const token = getSessionToken();
+        if (!token) {
+            showLoginAfterConsent();
+            return;
+        }
+        if (interviewEmailSubmitBtn) {
+            interviewEmailSubmitBtn.disabled = true;
+        }
+        try {
+            const { response } = await apiClient.postJson(
+                '/api/study/interview-contact',
+                { email: email },
+                { token: token }
+            );
+            if (!response.ok) {
+                if (interviewEmailError) {
+                    interviewEmailError.textContent =
+                        (response.status === 400
+                            ? t('finalFormsInterviewEmailInvalid')
+                            : t('finalFormsInterviewEmailError')) ||
+                        'Could not send. Please try again later.';
+                }
+                return;
+            }
+            interviewContactSubmitted = true;
+            applyInterviewSignup();
+        } catch (err) {
+            console.error('[Portal] Interview contact submit failed:', err);
+            if (interviewEmailError) {
+                interviewEmailError.textContent =
+                    t('finalFormsInterviewEmailError') ||
+                    'Could not send. Please try again later.';
+            }
+        } finally {
+            if (interviewEmailSubmitBtn) {
+                interviewEmailSubmitBtn.disabled = false;
+            }
+        }
     }
 
     function resetSurveyForm() {
@@ -954,7 +1179,7 @@
     }
 
     function hideAllMainSections() {
-        [consentView, surveyView, mearaView, finalFormsView, loginView, modeSelectView].forEach((el) => {
+        [consentView, surveyView, mearaView, finalFormsView, loginView, modeSelectView, questionnaireReminderView].forEach((el) => {
             if (!el) {
                 return;
             }
@@ -1195,6 +1420,11 @@
     }
 
     function showContinueView(participantCode, arm, options = {}) {
+        if (holdIfQuestionnaireReminderPending(participantCode, () => {
+            navigateTo(arm, { episode: getPortalEpisode() });
+        })) {
+            return;
+        }
         sessionCodeEl.textContent = participantCode ?? '—';
         if (consentView) {
             consentView.classList.add('hidden');
@@ -1252,6 +1482,12 @@
         const participantCode = normalizeParticipantCode(data?.participant_code || normalizedCode);
         persistSession(token, participantCode);
 
+        if (holdIfQuestionnaireReminderPending(participantCode, () => {
+            completeLoginFlow(data, normalizedCode, options);
+        })) {
+            return true;
+        }
+
         if (wantsPosttestFunnel()) {
             return resumePortalProgress({ ...options, navigate: false });
         }
@@ -1267,20 +1503,17 @@
             return true;
         }
 
-        const studyArm = resolveLoginArm(data);
-        if (studyArm) {
-            storeStudyArm(studyArm);
+        const serverArm = data && data.study_arm;
+        if (serverArm) {
+            storeStudyArm(serverArm);
             if (options.navigate !== false) {
                 const episode = options.episode ?? getPortalEpisode();
-                if (episode) {
-                    navigateTo(studyArm, { episode });
-                } else {
-                    navigateTo(studyArm, { episode });
-                }
+                navigateTo(serverArm, { episode });
             }
             return true;
         }
 
+        localStorage.removeItem(STORAGE_STUDY_ARM);
         return resumePortalProgress(options);
     }
 
@@ -1373,9 +1606,18 @@
             }
 
             const participantCode = (data && data.participant_code) || stored.code;
-            const studyArm = resolveStudyArm(data && data.study_arm);
+            const studyArm = data && data.study_arm;
 
             persistSession(stored.token, participantCode);
+            if (!studyArm) {
+                localStorage.removeItem(STORAGE_STUDY_ARM);
+            }
+
+            if (holdIfQuestionnaireReminderPending(participantCode, () => {
+                tryRestoreSession();
+            })) {
+                return true;
+            }
 
             if (wantsPosttestFunnel()) {
                 return resumePortalProgress({
@@ -1445,6 +1687,12 @@
     }
 
     function navigateTo(mode, options = {}) {
+        const reminderCode = normalizeParticipantCode(localStorage.getItem('participantCode'));
+        if (holdIfQuestionnaireReminderPending(reminderCode, () => {
+            navigateTo(mode, options);
+        })) {
+            return;
+        }
         const destination = resolveDestination(mode);
         if (!destination) {
             modeStatus.textContent = `Destination for ${mode} mode is not configured.`;
@@ -1516,6 +1764,10 @@
         }
     }
 
+    if (questionnaireReminderDoneBtn) {
+        questionnaireReminderDoneBtn.addEventListener('click', handleQuestionnaireReminderDone);
+    }
+
     loginButton.addEventListener('click', handleLogin);
 
     if (consentContinueButton) {
@@ -1527,6 +1779,10 @@
 
     if (surveyForm) {
         surveyForm.addEventListener('submit', handleSurveySubmit);
+    }
+
+    if (finalFormsInterviewEmailForm) {
+        finalFormsInterviewEmailForm.addEventListener('submit', handleInterviewEmailSubmit);
     }
 
     if (mearaKnowBtn) {
@@ -1564,10 +1820,15 @@
             global.portalParams.consumePortalParamsFromLocation();
         }
         consumePosttestPhaseFromLocation();
+        consumeTestReminderReset();
 
         const lang = localStorage.getItem('portalLang') || 'en';
         if (typeof portalSwitchLang === 'function') {
             portalSwitchLang(lang);
+        }
+        if (wantsReminderPreview()) {
+            showQuestionnaireReminderView();
+            return;
         }
         if (hasConsentGiven()) {
             hideConsentOnly();

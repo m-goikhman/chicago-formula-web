@@ -385,27 +385,15 @@ async function runDisplayMessagesSequentially(messages, delay = 0, options = {})
     }
 }
 
-function resolveMessageChatScope(msg, type = (msg?.type || 'bot')) {
+function resolveMessageChatScope(msg, _type = (msg?.type || 'bot')) {
     const explicitScope = typeof msg?.chat_scope === 'string' ? msg.chat_scope.trim().toLowerCase() : '';
-    const activeScope = (typeof window.getActiveChatScope === 'function')
-        ? window.getActiveChatScope()
-        : 'public';
-    const senderKey = String(msg?.character || '').trim().toLowerCase();
-    let chatScope = explicitScope || activeScope || 'public';
-
-    if (!explicitScope && type === 'character') {
-        // Keep only active private character replies in private scope; everything else is public.
-        const expectedPrivateScope = senderKey ? `private:${senderKey}` : '';
-        if (!expectedPrivateScope || !chatScope.startsWith('private:') || chatScope !== expectedPrivateScope) {
-            chatScope = 'public';
-        } else {
-            chatScope = expectedPrivateScope;
-        }
-    } else if (!explicitScope && type !== 'user') {
-        chatScope = 'public';
+    if (explicitScope) {
+        return explicitScope;
     }
-
-    return chatScope;
+    // Unscoped history (intro, public replies) must stay in the main chat.
+    // Never inherit the currently selected private character — that hid half of
+    // EP4 precinct history (Nina + player lines) when Fiona was selected.
+    return 'public';
 }
 
 function resolveTypingCharacterFromMessage(msg) {

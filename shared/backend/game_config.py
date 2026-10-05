@@ -14,7 +14,7 @@ SUSPECT_KEYS = ["tim", "pauline", "fiona", "ronnie"]
 # --- Multi-Stage Game Constants ---
 TOTAL_STAGES = 4
 # Actual unlock is early (buffer). Calendar reminders match the promised wait in outro copy.
-NEXT_EPISODE_UNLOCK_HOURS = 48  # Hours after completing an episode before the next unlocks
+NEXT_EPISODE_UNLOCK_HOURS = 12  # Hours after completing an episode before the next unlocks
 # Reminder offset after completing episode N (before the next one). Ep2 wait is longer.
 CALENDAR_REMINDER_HOURS_BY_COMPLETED_EPISODE = {
     1: 70,  # ~3 days

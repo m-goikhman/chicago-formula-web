@@ -1,7 +1,8 @@
 """
-Study onboarding: questionnaire validation, CEFR band, stratified arm assignment.
+Study onboarding: questionnaire validation, CEFR band, arm assignment.
 
 Experimental arm = Tell; control arm = Teach (see research plan).
+New participants are assigned to Tell. An arm already stored on the record is kept.
 
 Flow: participant code (login) → questionnaire → vocabulary pretest → arm assignment.
 Post-study: game ep4 complete → portal MeARA posttest → final Google Forms.
@@ -15,6 +16,7 @@ import json
 import logging
 import os
 import random
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,9 +31,12 @@ logger = logging.getLogger(__name__)
 
 _GCS_PREFIX = "study_onboarding"
 _PARTICIPANTS_CSV_BLOB = f"{_GCS_PREFIX}/participants.csv"
+_INTERVIEW_CONTACTS_CSV_BLOB = f"{_GCS_PREFIX}/interview_contacts.csv"
 _PARTICIPANT_RECORD_PREFIX = f"{_GCS_PREFIX}/participants"
 _CSV_MULTI_SEPARATOR = " | "
 _VALID_LOGIN_SOURCES = frozenset({"sona", "manual", "direct_app"})
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_INTERVIEW_CONTACTS_FIELDS = ["participant_code", "email", "submitted_at", "login_source"]
 
 # Stratification counters (in-memory; resets on process restart — acceptable for pilot).
 _COUNTERS: Dict[str, Dict[str, int]] = {
@@ -124,6 +129,19 @@ def _normalize_login_source(raw: Any) -> Optional[str]:
     return None
 
 
+def _normalize_email(raw: Any) -> str:
+    email = str(raw or "").strip().lower()
+    if not email or len(email) > 254 or not _EMAIL_RE.match(email):
+        raise ValueError("A valid email address is required")
+    return email
+
+
+def _has_interview_email(record: Optional[Dict[str, Any]]) -> bool:
+    if not record:
+        return False
+    return bool(str(record.get("interview_email") or "").strip())
+
+
 def _participants_csv_fieldnames() -> List[str]:
     meta = [
         "participant_code",
@@ -154,7 +172,7 @@ def _participant_csv_row(record: Dict[str, Any], participant_code: str) -> Dict[
 
 
 def _assign_arm_stratified(band: str) -> str:
-    """Tell = experimental; balance B1/B2 counts between tell and teach."""
+    """Balance B1/B2 counts between tell and teach. Not used while assignment is fixed to tell."""
     tell_n = _COUNTERS["tell"][band]
     teach_n = _COUNTERS["teach"][band]
     if tell_n < teach_n:
@@ -309,6 +327,63 @@ def _append_participants_csv(record: Dict[str, Any], participant_code: str) -> N
     logger.error("Failed to append participants CSV for %s after retries", code)
 
 
+def _upsert_interview_contact_csv(record: Dict[str, Any], participant_code: str) -> None:
+    """Upsert one interview-contact row (PII; kept separate from the analysis CSV)."""
+    bucket = _gcs_bucket()
+    if not bucket:
+        logger.warning("Skipping interview contacts CSV upsert (no bucket)")
+        return
+
+    code = participant_code.upper()
+    blob = bucket.blob(_INTERVIEW_CONTACTS_CSV_BLOB)
+    new_row = {
+        "participant_code": code,
+        "email": str(record.get("interview_email") or ""),
+        "submitted_at": str(record.get("interview_email_submitted_at") or ""),
+        "login_source": str(record.get("login_source") or ""),
+    }
+
+    for attempt in range(3):
+        try:
+            if blob.exists():
+                blob.reload()
+                generation = blob.generation
+                stored_fields, rows = _read_participants_csv_rows(blob)
+                if not rows:
+                    stored_fields = list(_INTERVIEW_CONTACTS_FIELDS)
+            else:
+                generation = None
+                stored_fields, rows = list(_INTERVIEW_CONTACTS_FIELDS), []
+
+            merged_fields = list(_INTERVIEW_CONTACTS_FIELDS)
+            for name in stored_fields:
+                if name not in merged_fields:
+                    merged_fields.append(name)
+
+            updated = False
+            normalized_rows: List[Dict[str, str]] = []
+            for row in rows:
+                if str(row.get("participant_code", "")).upper() == code:
+                    normalized_rows.append({name: new_row.get(name, "") for name in merged_fields})
+                    updated = True
+                else:
+                    normalized_rows.append({name: row.get(name, "") for name in merged_fields})
+            if not updated:
+                normalized_rows.append({name: new_row.get(name, "") for name in merged_fields})
+
+            _write_participants_csv(blob, merged_fields, normalized_rows, generation=generation)
+            logger.info("Upserted interview contact for %s in %s", code, _INTERVIEW_CONTACTS_CSV_BLOB)
+            return
+        except gcp_exceptions.PreconditionFailed:
+            logger.warning("Interview contacts CSV conflict (attempt %s), retrying", attempt + 1)
+            continue
+        except Exception as e:
+            logger.error("Failed to upsert interview contact CSV for %s: %s", code, e)
+            return
+
+    logger.error("Failed to upsert interview contact CSV for %s after retries", code)
+
+
 def _normalize_code(participant_code: str) -> str:
     code = (participant_code or "").strip().upper()
     if not code:
@@ -350,6 +425,23 @@ def record_login_source(participant_code: str, login_source: Optional[str]) -> N
     _persist_participant_record(code, record)
 
 
+def record_interview_email(participant_code: str, email: str) -> str:
+    """Store optional-interview contact email (linked to the participant code)."""
+    code = _normalize_code(participant_code)
+    normalized_email = _normalize_email(email)
+    existing = get_participant_study(code) or {}
+    now = datetime.now(timezone.utc).isoformat()
+    record = dict(existing)
+    record["participant_code"] = code
+    record["interview_email"] = normalized_email
+    record["interview_email_submitted_at"] = now
+    _BY_PARTICIPANT[code] = record
+    _persist_participant_record(code, record)
+    _upsert_interview_contact_csv(record, code)
+    logger.info("Stored interview contact for %s", code)
+    return normalized_email
+
+
 def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str, Dict[str, Any]]:
     """
     Validate answers, compute CEFR band, persist with participant code (no arm yet).
@@ -375,6 +467,9 @@ def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str,
         "assigned_at": existing.get("assigned_at"),
         "login_source": existing.get("login_source"),
         "login_recorded_at": existing.get("login_recorded_at"),
+        "interview_email": existing.get("interview_email"),
+        "interview_email_submitted_at": existing.get("interview_email_submitted_at"),
+        "pinned_arm": existing.get("pinned_arm"),
     }
     _BY_PARTICIPANT[code] = record
     _persist_participant_record(code, record)
@@ -382,7 +477,7 @@ def submit_questionnaire(participant_code: str, answers_raw: dict) -> Tuple[str,
 
 
 def assign_arm(participant_code: str) -> str:
-    """Stratified Tell vs Teach assignment after portal tests are complete."""
+    """Assign Tell after portal tests. An existing arm is returned unchanged."""
     code = _normalize_code(participant_code)
     record = get_participant_study(code)
     if not record or not record.get("answers"):
@@ -396,7 +491,14 @@ def assign_arm(participant_code: str) -> str:
     if band not in ("B1", "B2"):
         raise ValueError("CEFR band is missing or invalid")
 
-    arm = _assign_arm_stratified(band)
+    pinned = str(record.get("pinned_arm") or "").strip().lower()
+    if pinned in ("tell", "teach"):
+        arm = pinned
+        _COUNTERS[arm][band] += 1
+    else:
+        # Stratified balancing is paused: in-memory counters were over-assigning teach.
+        arm = "tell"
+        _COUNTERS[arm][band] += 1
     now = datetime.now(timezone.utc).isoformat()
     record["arm"] = arm
     record["assigned_at"] = now
@@ -419,6 +521,9 @@ def get_portal_progress(
     questionnaire_done = bool(record and record.get("answers"))
     study_arm = record.get("arm") if record else None
     pretest_done = meara_done if meara_pretest_done is None else bool(meara_pretest_done)
+    login_source = None
+    if record and record.get("login_source"):
+        login_source = str(record.get("login_source"))
     progress: Dict[str, Any] = {
         "questionnaire_done": questionnaire_done,
         # Backward-compatible alias for pretest completion.
@@ -426,6 +531,8 @@ def get_portal_progress(
         "meara_pretest_done": pretest_done,
         "meara_posttest_done": bool(meara_posttest_done),
         "study_arm": study_arm,
+        "login_source": login_source,
+        "interview_contact_submitted": _has_interview_email(record),
     }
     if weekly_questionnaire_link:
         progress["weekly_questionnaire_link"] = weekly_questionnaire_link
